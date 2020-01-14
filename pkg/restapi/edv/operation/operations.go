@@ -24,7 +24,7 @@ const (
 	docIDPathVariable   = "docID"
 
 	createVaultEndpoint      = "/data-vaults"
-	storeDocumentEndpoint    = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs"
+	createDocumentEndpoint   = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs"
 	retrieveDocumentEndpoint = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs/{" + docIDPathVariable + "}"
 )
 
@@ -65,15 +65,25 @@ type VaultCollection struct {
 }
 
 func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Request) {
-	config := dataVaultConfiguration{}
+	config := DataVaultConfiguration{}
 
 	err := json.NewDecoder(req.Body).Decode(&config)
-	if err != nil {
+
+	blankReferenceIDProvided := err == nil && config.ReferenceID == ""
+
+	if err != nil || blankReferenceIDProvided {
 		rw.WriteHeader(http.StatusBadRequest)
 
-		_, err = rw.Write([]byte(fmt.Sprintf("Data vault creation failed: %s", err)))
+		var errMsg string
+		if blankReferenceIDProvided {
+			errMsg = "referenceId can't be blank"
+		} else {
+			errMsg = err.Error()
+		}
+
+		_, err = rw.Write([]byte(errMsg))
 		if err != nil {
-			log.Errorf("Failed to write response for data vault creation failure (unable to read request): %s", err.Error())
+			log.Errorf("Failed to write response for data vault creation failure: %s", err.Error())
 		}
 
 		return
@@ -96,24 +106,20 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 		return
 	}
 
+	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+config.ReferenceID)
 	rw.WriteHeader(http.StatusCreated)
-
-	_, err = rw.Write([]byte("Location: " + req.Host + "/encrypted-data-vaults/" + config.ReferenceID))
-	if err != nil {
-		log.Errorf("Failed to write response for data vault creation success: %s", err.Error())
-	}
 }
 
-func (c *Operation) storeDocumentHandler(rw http.ResponseWriter, req *http.Request) {
-	incomingDocument := structuredDocument{}
+func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Request) {
+	incomingDocument := StructuredDocument{}
 
 	err := json.NewDecoder(req.Body).Decode(&incomingDocument)
 	if err != nil {
 		rw.WriteHeader(http.StatusBadRequest)
 
-		_, err = rw.Write([]byte(fmt.Sprintf("Failed to store document: %s", err)))
+		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf("Failed to write response for document storage failure: %s",
+			log.Errorf("Failed to write response for document creation failure: %s",
 				err.Error())
 		}
 
@@ -123,26 +129,21 @@ func (c *Operation) storeDocumentHandler(rw http.ResponseWriter, req *http.Reque
 	vars := mux.Vars(req)
 	vaultID := vars[vaultIDPathVariable]
 
-	err = c.vaultCollection.storeDocument(vaultID, incomingDocument)
+	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
 	if err != nil {
 		rw.WriteHeader(http.StatusBadRequest)
 
-		_, err = rw.Write([]byte(fmt.Sprintf("Failed to store document: %s", err)))
+		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
 			log.Errorf(
-				"Failed to write response for document storage failure: %s", err.Error())
+				"Failed to write response for document creation failure: %s", err.Error())
 		}
 
 		return
 	}
 
+	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+vaultID+"/docs/"+incomingDocument.ID)
 	rw.WriteHeader(http.StatusCreated)
-
-	_, err = rw.Write([]byte("Location: " + req.Host + "/encrypted-data-vaults/" + vaultID +
-		"/docs/" + incomingDocument.ID))
-	if err != nil {
-		log.Errorf("Failed to write response for document storage success: %s", err.Error())
-	}
 }
 
 func (c *Operation) retrieveDocumentHandler(rw http.ResponseWriter, req *http.Request) {
@@ -158,7 +159,7 @@ func (c *Operation) retrieveDocumentHandler(rw http.ResponseWriter, req *http.Re
 			rw.WriteHeader(http.StatusBadRequest)
 		}
 
-		_, err = rw.Write([]byte(fmt.Sprintf("Failed to retrieve document: %s", err.Error())))
+		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
 			log.Errorf("Failed to write response for document retrieval failure: %s", err.Error())
 		}
@@ -189,13 +190,13 @@ func (vc *VaultCollection) createDataVault(id string) error {
 	return nil
 }
 
-func (vc *VaultCollection) storeDocument(vaultID string, document structuredDocument) error {
+func (vc *VaultCollection) createDocument(vaultID string, document StructuredDocument) error {
 	vault, exists := vc.openStores[vaultID]
 	if !exists {
 		return errVaultNotFound
 	}
 
-	// The Store Document API call should not overwrite an existing document.
+	// The Create Document API call should not overwrite an existing document.
 	// So we first check to make sure there is not already a document associated with the id.
 	// If there is, we send back an error.
 	_, err := vault.Get(document.ID)
@@ -234,7 +235,7 @@ func (c *Operation) registerHandler() {
 	// Add more protocol endpoints here to expose them as controller API endpoints
 	c.handlers = []Handler{
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
-		support.NewHTTPHandler(storeDocumentEndpoint, http.MethodPost, c.storeDocumentHandler),
+		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(retrieveDocumentEndpoint, http.MethodGet, c.retrieveDocumentHandler),
 	}
 }

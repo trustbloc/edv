@@ -8,6 +8,7 @@ package operation
 
 import (
 	"bytes"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -21,6 +22,20 @@ import (
 
 const (
 	testVaultID = "urn:uuid:abc5a436-21f9-4b4c-857d-1f5569b2600d"
+
+	testDataVaultConfigurationWithBlankReferenceID = `{
+  "sequence": 0,
+  "controller": "did:example:123456789",
+  "referenceId": "",
+  "kek": {
+    "id": "https://example.com/kms/12345",
+    "type": "AesKeyWrappingKey2019"
+  },
+  "hmac": {
+    "id": "https://example.com/kms/67891",
+    "type": "Sha256HmacKey2019"
+  }
+}`
 
 	testDataVaultConfiguration = `{
   "sequence": 0,
@@ -62,7 +77,26 @@ func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) 
 	createVaultHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "Data vault creation failed: EOF")
+	require.Contains(t, rr.Body.String(), "EOF")
+}
+
+func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	req, err := http.NewRequest(http.MethodPost, createVaultEndpoint,
+		bytes.NewBuffer([]byte(testDataVaultConfigurationWithBlankReferenceID)))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint)
+	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	resp, err := ioutil.ReadAll(rr.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, "referenceId can't be blank", string(resp))
 }
 
 func TestCreateDataVaultHandler_ValidDataVaultConfigurationJSON(t *testing.T) {
@@ -88,23 +122,23 @@ func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 	require.Equal(t, "Data vault creation failed: vault already exists", rr.Body.String())
 }
 
-func TestStoreDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
+func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
 	op := New(memstore.NewProvider())
 
-	storeDocumentEndpointHandler := getHandler(t, op, storeDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
-	req, err := http.NewRequest("POST", storeDocumentEndpoint, bytes.NewBuffer([]byte("")))
+	req, err := http.NewRequest("POST", createDocumentEndpoint, bytes.NewBuffer([]byte("")))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
 
-	storeDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "Failed to store document: EOF")
+	require.Contains(t, rr.Body.String(), "EOF")
 }
 
-func TestStoreDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
+func TestCreateDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
 	op := New(memstore.NewProvider())
 
 	createDataVaultExpectSuccess(t, op)
@@ -112,7 +146,7 @@ func TestStoreDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
 	storeStructuredDocumentExpectSuccess(t, op)
 }
 
-func TestStoreDocumentHandler_DuplicateDocuments(t *testing.T) {
+func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 	op := New(memstore.NewProvider())
 
 	createDataVaultExpectSuccess(t, op)
@@ -130,16 +164,16 @@ func TestStoreDocumentHandler_DuplicateDocuments(t *testing.T) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	storeDocumentEndpointHandler := getHandler(t, op, storeDocumentEndpoint)
-	storeDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "a document with the given id already exists")
 }
 
-func TestStoreDocumentHandler_VaultDoesNotExist(t *testing.T) {
+func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	op := New(memstore.NewProvider())
-	storeDocumentEndpointHandler := getHandler(t, op, storeDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
 	req, err := http.NewRequest("POST", "/encrypted-data-vaults/"+testVaultID+"/docs",
 		bytes.NewBuffer([]byte(testStructuredDocument)))
@@ -152,7 +186,7 @@ func TestStoreDocumentHandler_VaultDoesNotExist(t *testing.T) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	storeDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "specified vault does not exist")
@@ -240,7 +274,7 @@ func TestRetrieveDocumentHandler_DocumentExists(t *testing.T) {
 	require.Equal(t, expectedData, rr.Body.String())
 }
 
-func TestStoreDocument_FailToMarshal(t *testing.T) {
+func TestCreateDocument_FailToMarshal(t *testing.T) {
 	op := New(memstore.NewProvider())
 
 	newStore, err := op.vaultCollection.provider.OpenStore("store1")
@@ -251,7 +285,7 @@ func TestStoreDocument_FailToMarshal(t *testing.T) {
 	unmarshallableMap := make(map[string]interface{})
 	unmarshallableMap["somewhere"] = make(chan int)
 
-	err = op.vaultCollection.storeDocument("store1", structuredDocument{
+	err = op.vaultCollection.createDocument("store1", StructuredDocument{
 		ID:      "",
 		Meta:    unmarshallableMap,
 		Content: nil,
@@ -270,7 +304,7 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	require.Equal(t, "Location: /encrypted-data-vaults/"+testVaultID, rr.Body.String())
+	require.Equal(t, "/encrypted-data-vaults/"+testVaultID, rr.Header().Get("Location"))
 }
 
 func storeStructuredDocumentExpectSuccess(t *testing.T, op *Operation) {
@@ -285,14 +319,12 @@ func storeStructuredDocumentExpectSuccess(t *testing.T, op *Operation) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	storeDocumentEndpointHandler := getHandler(t, op, storeDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
-	storeDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	require.Equal(t,
-		"Location: /encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID,
-		rr.Body.String())
+	require.Equal(t, "/encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID, rr.Header().Get("Location"))
 }
 
 func getHandler(t *testing.T, op *Operation, lookup string) Handler {
