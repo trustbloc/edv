@@ -10,6 +10,8 @@ import (
 	"errors"
 	"net/http"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/gorilla/mux"
 	"github.com/spf13/cobra"
 
@@ -93,6 +95,7 @@ func startEDV(parameters *edvParameters) error {
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
 	}
 
+	log.Infof("Starting edv rest server on host %s", parameters.hostURL)
 	err = parameters.srv.ListenAndServe(parameters.hostURL, router)
 
 	return err

@@ -7,5 +7,5 @@
 [![codecov](https://codecov.io/gh/trustbloc/edv/branch/master/graph/badge.svg)](https://codecov.io/gh/trustbloc/edv)
 [![Go Report Card](https://goreportcard.com/badge/github.com/trustbloc/edv)](https://goreportcard.com/report/github.com/trustbloc/edv)
 
-#edv
+# edv
 An implementation of the [Encrypted Data Vault specification](https://digitalbazaar.github.io/encrypted-data-vaults/).
