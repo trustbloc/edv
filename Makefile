@@ -6,8 +6,8 @@ GO_CMD ?= go
 EDV_REST_PATH=cmd/edv-rest
 
 # Namespace for the agent images
-DOCKER_OUTPUT_NS   ?= edv
-EDV_REST_IMAGE_NAME   ?= edv-rest
+DOCKER_OUTPUT_NS   ?= docker.pkg.github.com
+EDV_REST_IMAGE_NAME   ?= trustbloc/edv/edv-rest
 
 # Tool commands (overridable)
 GO_CMD     ?= go
