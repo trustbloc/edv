@@ -14,8 +14,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
-
-	"github.com/trustbloc/edv/pkg/storage/memstore"
+	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
 	"github.com/stretchr/testify/require"
 )

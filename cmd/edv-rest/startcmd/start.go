@@ -10,13 +10,12 @@ import (
 	"errors"
 	"net/http"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
 	"github.com/trustbloc/edv/pkg/restapi/edv"
-	"github.com/trustbloc/edv/pkg/storage/memstore"
 	cmdutils "github.com/trustbloc/edv/pkg/utils/cmd"
 )
 
