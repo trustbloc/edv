@@ -14,9 +14,9 @@ import (
 
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
+	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/internal/common/support"
-	"github.com/trustbloc/edv/pkg/storage"
 )
 
 const (

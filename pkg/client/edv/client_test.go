@@ -18,14 +18,13 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
 	"github.com/trustbloc/edv/pkg/restapi/edv"
 	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
-	"github.com/trustbloc/edv/pkg/storage/memstore"
 )
 
 const (

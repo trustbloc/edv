@@ -7,8 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package edv
 
 import (
+	"github.com/trustbloc/edge-core/pkg/storage"
+
 	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
-	"github.com/trustbloc/edv/pkg/storage"
 )
 
 // New returns new controller instance.
