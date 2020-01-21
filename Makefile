@@ -2,20 +2,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-GO_CMD ?= go
 EDV_REST_PATH=cmd/edv-rest
 
-# Namespace for the agent images
+# Namespace for the EDV server image
 DOCKER_OUTPUT_NS   ?= docker.pkg.github.com
 EDV_REST_IMAGE_NAME   ?= trustbloc/edv/edv-rest
 
 # Tool commands (overridable)
-GO_CMD     ?= go
 ALPINE_VER ?= 3.10
 GO_VER ?= 1.13.1
 
 .PHONY: all
-all: checks unit-test
+all: checks unit-test bdd-test
 
 .PHONY: checks
 checks: license lint
@@ -40,6 +38,11 @@ edv-rest-docker:
 	@docker build -f ./images/edv-rest/Dockerfile --no-cache -t $(DOCKER_OUTPUT_NS)/$(EDV_REST_IMAGE_NAME):latest \
 	--build-arg GO_VER=$(GO_VER) \
 	--build-arg ALPINE_VER=$(ALPINE_VER) .
+
+.PHONY: bdd-test
+bdd-test: edv-rest-docker
+	@rm -Rf ./test/bdd/*.log
+	@scripts/check_integration.sh
 
 unit-test:
 	@scripts/check_unit.sh
