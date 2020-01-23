@@ -31,6 +31,16 @@ jobs:
       - script: bash <(curl https://codecov.io/bash)
         displayName: Upload coverage to Codecov
 
+  - job: BDDTest
+    pool:
+      vmImage: ubuntu-16.04
+    timeoutInMinutes: 30
+    steps:
+      - template: azp-dependencies.yml
+      - checkout: self
+      - script: make bdd-test
+        displayName: Run BDD tests
+
   - job: Publish
     dependsOn:
       - Checks
