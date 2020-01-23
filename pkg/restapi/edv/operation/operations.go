@@ -8,9 +8,9 @@ package operation
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
@@ -23,15 +23,27 @@ const (
 	vaultIDPathVariable = "vaultID"
 	docIDPathVariable   = "docID"
 
-	createVaultEndpoint      = "/data-vaults"
-	createDocumentEndpoint   = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs"
-	retrieveDocumentEndpoint = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs/{" + docIDPathVariable + "}"
+	createVaultEndpoint    = "/data-vaults"
+	createDocumentEndpoint = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs"
+	readDocumentEndpoint   = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs/{" + docIDPathVariable + "}"
+
+	// VaultNotFoundErrMsg is the message returned by the EDV server when a vault can't be found.
+	VaultNotFoundErrMsg = "specified vault does not exist"
+	// DocumentNotFoundErrMsg is the message returned by the EDV server when a document can't be found
+	// within the given vault.
+	DocumentNotFoundErrMsg = "specified document does not exist"
+	// DuplicateVaultErrMsg is the message returned by the EDV server when an attempt is made to create a vault with
+	// the same ID as an already existing vault.
+	DuplicateVaultErrMsg = "vault already exists"
+	// DuplicateDocumentErrMsg is the message returned by the EDV server when an attempt is made to create a document with
+	// the same ID as an already existing document inside the vault.
+	DuplicateDocumentErrMsg = "a document with the given id already exists"
 )
 
-var errVaultNotFound = errors.New("specified vault does not exist")
-var errDocumentNotFound = errors.New("specified document does not exist")
-var errDuplicateVault = errors.New("vault already exists")
-var errDuplicateDocument = errors.New("a document with the given id already exists")
+var errVaultNotFound = fmt.Errorf("%s", VaultNotFoundErrMsg)
+var errDocumentNotFound = fmt.Errorf("%s", DocumentNotFoundErrMsg)
+var errDuplicateVault = fmt.Errorf("%s", DuplicateVaultErrMsg)
+var errDuplicateDocument = fmt.Errorf("%s", DuplicateDocumentErrMsg)
 
 // Handler http handler for each controller API endpoint
 type Handler interface {
@@ -83,7 +95,8 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 
 		_, err = rw.Write([]byte(errMsg))
 		if err != nil {
-			log.Errorf("Failed to write response for data vault creation failure: %s", err.Error())
+			log.Errorf("Failed to write response for data vault creation failure due to the provided"+
+				" data vault configuration: %s", err.Error())
 		}
 
 		return
@@ -99,14 +112,15 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 
 		_, err = rw.Write([]byte(fmt.Sprintf("Data vault creation failed: %s", err)))
 		if err != nil {
-			log.Errorf("Failed to write response for data vault creation failure: %s",
-				err.Error())
+			log.Errorf("Failed to write response for data vault creation failure: %s", err.Error())
 		}
 
 		return
 	}
 
-	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+config.ReferenceID)
+	urlEncodedReferenceID := url.PathEscape(config.ReferenceID)
+
+	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+urlEncodedReferenceID)
 	rw.WriteHeader(http.StatusCreated)
 }
 
@@ -119,15 +133,16 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf("Failed to write response for document creation failure: %s",
-				err.Error())
+			log.Errorf("Failed to write response for document creation failure: %s", err.Error())
 		}
 
 		return
 	}
 
-	vars := mux.Vars(req)
-	vaultID := vars[vaultIDPathVariable]
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
 
 	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
 	if err != nil {
@@ -142,18 +157,25 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+vaultID+"/docs/"+incomingDocument.ID)
+	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+
+		url.PathEscape(vaultID)+"/docs/"+url.PathEscape(incomingDocument.ID))
 	rw.WriteHeader(http.StatusCreated)
 }
 
-func (c *Operation) retrieveDocumentHandler(rw http.ResponseWriter, req *http.Request) {
-	vars := mux.Vars(req)
-	vaultID := vars[vaultIDPathVariable]
-	docID := vars[docIDPathVariable]
+func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Request) {
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
 
-	documentJSON, err := c.vaultCollection.retrieveDocument(vaultID, docID)
+	docID, success := unescapePathVar(docIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	documentJSON, err := c.vaultCollection.readDocument(vaultID, docID)
 	if err != nil {
-		if err == errDocumentNotFound {
+		if err == errDocumentNotFound || err == errVaultNotFound {
 			rw.WriteHeader(http.StatusNotFound)
 		} else {
 			rw.WriteHeader(http.StatusBadRequest)
@@ -169,8 +191,7 @@ func (c *Operation) retrieveDocumentHandler(rw http.ResponseWriter, req *http.Re
 
 	_, err = rw.Write(documentJSON)
 	if err != nil {
-		log.Errorf("Failed to write response for document retrieval success: %s",
-			err.Error())
+		log.Errorf("Failed to write response for document retrieval success: %s", err.Error())
 	}
 }
 
@@ -214,7 +235,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document StructuredDoc
 	return vault.Put(document.ID, documentJSON)
 }
 
-func (vc *VaultCollection) retrieveDocument(vaultID, docID string) ([]byte, error) {
+func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 	vault, exists := vc.openStores[vaultID]
 	if !exists {
 		return nil, errVaultNotFound
@@ -236,11 +257,29 @@ func (c *Operation) registerHandler() {
 	c.handlers = []Handler{
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
-		support.NewHTTPHandler(retrieveDocumentEndpoint, http.MethodGet, c.retrieveDocumentHandler),
+		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 	}
 }
 
 // GetRESTHandlers get all controller API handler available for this service
 func (c *Operation) GetRESTHandlers() []Handler {
 	return c.handlers
+}
+
+// Unescapes the given path variable from the vars map and writes a response if any failure occurs.
+// Returns the unescaped version of the path variable and a bool indicating whether the unescaping was successful.
+func unescapePathVar(pathVar string, vars map[string]string, rw http.ResponseWriter) (string, bool) {
+	unescapedPathVar, err := url.PathUnescape(vars[pathVar])
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+
+		_, err = rw.Write([]byte(fmt.Sprintf("unable to escape %s path variable: %s", pathVar, err.Error())))
+		if err != nil {
+			log.Errorf("Failed to write response for %s unescaping failure: %s", pathVar, err.Error())
+		}
+
+		return "", false
+	}
+
+	return unescapedPathVar, true
 }

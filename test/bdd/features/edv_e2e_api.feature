@@ -17,7 +17,7 @@ Feature: Using EDV REST API
     Given EDV server has a data vault with id "testvault2"
     Then  Client sends request to create a new document with id "testdocument" in the data vault with id "testvault2" and receives the document location "localhost:8080/encrypted-data-vaults/testvault2/docs/testdocument" in response
 
-  @retrieve_new_document
+  @read_document
   Scenario: Client retrieves a previously stored document
     Given EDV server has a data vault with id "testvault3"
     Given The data vault with id "testvault3" has a document with id "testdocument"

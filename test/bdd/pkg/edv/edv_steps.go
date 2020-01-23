@@ -104,7 +104,7 @@ func (e *Steps) vaultHasDocument(vaultID, docID string) error {
 func (e *Steps) receiveDocument(docID, vaultID, expectedDocumentArgKey string) error {
 	client := edv.New(e.bddContext.EDVHostURL)
 
-	document, err := client.RetrieveDocument(vaultID, docID)
+	document, err := client.ReadDocument(vaultID, docID)
 	if err != nil {
 		return err
 	}

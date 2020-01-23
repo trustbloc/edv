@@ -8,12 +8,16 @@ package operation
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
 	"github.com/stretchr/testify/require"
@@ -104,6 +108,111 @@ func TestCreateDataVaultHandler_ValidDataVaultConfigurationJSON(t *testing.T) {
 	createDataVaultExpectSuccess(t, op)
 }
 
+type failingResponseWriter struct {
+}
+
+func (f failingResponseWriter) Header() http.Header {
+	return nil
+}
+
+func (f failingResponseWriter) Write([]byte) (int, error) {
+	return 0, fmt.Errorf("failingResponseWriter always fails")
+}
+
+func (f failingResponseWriter) WriteHeader(statusCode int) {
+}
+
+type failingReadCloser struct{}
+
+func (m failingReadCloser) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("failingReadCloser always fails")
+}
+
+func (m failingReadCloser) Close() error {
+	return nil
+}
+
+type alwaysReturnBarebonesDataVaultConfigurationReadCloser struct{}
+
+func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Read(p []byte) (n int, err error) {
+	dataVaultConfigBytes := []byte(`{
+  "referenceId": "` + testVaultID + `"
+}`)
+
+	_ = copy(p, dataVaultConfigBytes)
+
+	return 68, io.EOF
+}
+
+func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Close() error {
+	return nil
+}
+
+type alwaysReturnBarebonesStructuredDocumentReadCloser struct{}
+
+func (a alwaysReturnBarebonesStructuredDocumentReadCloser) Read(p []byte) (n int, err error) {
+	documentBytes := []byte(`{
+  "id": "` + testDocID + `"
+}`)
+
+	_ = copy(p, documentBytes)
+
+	return 59, io.EOF
+}
+
+func (a alwaysReturnBarebonesStructuredDocumentReadCloser) Close() error {
+	return nil
+}
+
+type mockContext struct {
+	valueToReturnWhenValueMethodCalled interface{}
+}
+
+func (m mockContext) Deadline() (deadline time.Time, ok bool) {
+	panic("implement me")
+}
+
+func (m mockContext) Done() <-chan struct{} {
+	panic("implement me")
+}
+
+func (m mockContext) Err() error {
+	panic("implement me")
+}
+
+func (m mockContext) Value(key interface{}) interface{} {
+	return m.valueToReturnWhenValueMethodCalled
+}
+
+func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	op := New(memstore.NewProvider())
+
+	op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
+
+	require.Contains(t, logContents.String(), "Failed to write response for data vault creation failure"+
+		" due to the provided data vault configuration: failingResponseWriter always fails")
+}
+
+func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingCreateDataVaultError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	op.createDataVaultHandler(failingResponseWriter{},
+		&http.Request{Body: alwaysReturnBarebonesDataVaultConfigurationReadCloser{}})
+
+	require.Contains(t, logContents.String(), "Failed to write response for data vault creation failure:"+
+		" failingResponseWriter always fails")
+}
+
 func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 	op := New(memstore.NewProvider())
 
@@ -118,7 +227,15 @@ func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusConflict, rr.Code)
-	require.Equal(t, "Data vault creation failed: vault already exists", rr.Body.String())
+	require.Equal(t, fmt.Sprintf("Data vault creation failed: %s", DuplicateVaultErrMsg), rr.Body.String())
+}
+
+func TestCreateDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
 }
 
 func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
@@ -135,14 +252,6 @@ func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "EOF")
-}
-
-func TestCreateDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
-	op := New(memstore.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	storeStructuredDocumentExpectSuccess(t, op)
 }
 
 func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
@@ -167,7 +276,7 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "a document with the given id already exists")
+	require.Contains(t, rr.Body.String(), DuplicateDocumentErrMsg)
 }
 
 func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
@@ -188,89 +297,7 @@ func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "specified vault does not exist")
-}
-
-func TestRetrieveDocumentHandler_VaultDoesNotExist(t *testing.T) {
-	op := New(memstore.NewProvider())
-	retrieveDocumentEndpointHandler := getHandler(t, op, retrieveDocumentEndpoint)
-
-	req, err := http.NewRequest(http.MethodPost,
-		"/encrypted-data-vaults/"+testVaultID+"/"+
-			"docs/"+testDocID,
-		bytes.NewBuffer([]byte("")))
-	require.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-
-	urlVars := make(map[string]string)
-	urlVars[vaultIDPathVariable] = testVaultID
-	urlVars[docIDPathVariable] = testDocID
-
-	req = mux.SetURLVars(req, urlVars)
-
-	retrieveDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "specified vault does not exist")
-}
-
-func TestRetrieveDocumentHandler_DocumentDoesNotExist(t *testing.T) {
-	op := New(memstore.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	retrieveDocumentEndpointHandler := getHandler(t, op, retrieveDocumentEndpoint)
-
-	req, err := http.NewRequest(http.MethodPost,
-		"/encrypted-data-vaults/"+testVaultID+"/"+
-			"docs/"+testDocID,
-		bytes.NewBuffer([]byte("")))
-	require.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-
-	urlVars := make(map[string]string)
-	urlVars[vaultIDPathVariable] = testVaultID
-	urlVars[docIDPathVariable] = testDocID
-
-	req = mux.SetURLVars(req, urlVars)
-
-	retrieveDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
-
-	require.Equal(t, http.StatusNotFound, rr.Code)
-	require.Contains(t, rr.Body.String(), "specified document does not exist")
-}
-
-func TestRetrieveDocumentHandler_DocumentExists(t *testing.T) {
-	op := New(memstore.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	storeStructuredDocumentExpectSuccess(t, op)
-
-	retrieveDocumentEndpointHandler := getHandler(t, op, retrieveDocumentEndpoint)
-
-	req, err := http.NewRequest(http.MethodPost,
-		"/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID,
-		bytes.NewBuffer([]byte("")))
-	require.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-
-	urlVars := make(map[string]string)
-	urlVars[vaultIDPathVariable] = testVaultID
-	urlVars[docIDPathVariable] = testDocID
-
-	req = mux.SetURLVars(req, urlVars)
-
-	retrieveDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
-
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	const expectedData = `{"id":"` + testDocID + `","meta":{"created":"2019-06-18"},"content":{"message":"Hello World!"}}`
-
-	require.Equal(t, expectedData, rr.Body.String())
+	require.Contains(t, rr.Body.String(), VaultNotFoundErrMsg)
 }
 
 func TestCreateDocument_FailToMarshal(t *testing.T) {
@@ -291,6 +318,293 @@ func TestCreateDocument_FailToMarshal(t *testing.T) {
 	})
 
 	require.Equal(t, "json: unsupported type: chan int", err.Error())
+}
+
+func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	req, err := http.NewRequest("POST", "/encrypted-data-vaults/"+testVaultID+"/docs",
+		bytes.NewBuffer([]byte(testStructuredDocument)))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = "%"
+
+	req = mux.SetURLVars(req, urlVars)
+
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.Equal(t, "", rr.Header().Get("Location"))
+	require.Equal(t, fmt.Sprintf(`unable to escape %s path variable: invalid URL escape "%%"`, vaultIDPathVariable),
+		rr.Body.String())
+}
+
+func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	op.createDocumentHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
+
+	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
+		" failingResponseWriter always fails")
+}
+
+func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaultIDError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	request := http.Request{Body: alwaysReturnBarebonesStructuredDocumentReadCloser{}}
+
+	op.createDocumentHandler(failingResponseWriter{},
+		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
+
+	require.Contains(t, logContents.String(),
+		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
+			vaultIDPathVariable))
+}
+
+func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingCreateDocumentError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	op.createDocumentHandler(failingResponseWriter{},
+		&http.Request{Body: alwaysReturnBarebonesStructuredDocumentReadCloser{}})
+
+	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
+		" failingResponseWriter always fails")
+}
+
+func TestReadDocumentHandler_DocumentExists(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+
+	req, err := http.NewRequest(http.MethodGet,
+		"/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID,
+		nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = testVaultID
+	urlVars[docIDPathVariable] = testDocID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	const expectedData = `{"id":"` + testDocID + `","meta":{"created":"2019-06-18"},"content":{"message":"Hello World!"}}`
+
+	require.Equal(t, expectedData, rr.Body.String())
+}
+
+func TestReadDocumentHandler_VaultDoesNotExist(t *testing.T) {
+	op := New(memstore.NewProvider())
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+
+	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = testVaultID
+	urlVars[docIDPathVariable] = testDocID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	require.Contains(t, rr.Body.String(), VaultNotFoundErrMsg)
+}
+
+func TestReadDocumentHandler_DocumentDoesNotExist(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+
+	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = testVaultID
+	urlVars[docIDPathVariable] = testDocID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	require.Contains(t, rr.Body.String(), DocumentNotFoundErrMsg)
+}
+
+func TestReadDocumentHandler_UnableToEscapeVaultIDPathVariable(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+
+	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = "%"
+	urlVars[docIDPathVariable] = testDocID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	require.Equal(t, fmt.Sprintf(`unable to escape %s path variable: invalid URL escape "%%"`, vaultIDPathVariable),
+		rr.Body.String())
+}
+
+func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+
+	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID, nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = vaultIDPathVariable
+	urlVars[docIDPathVariable] = "%"
+
+	req = mux.SetURLVars(req, urlVars)
+
+	readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	require.Equal(t, fmt.Sprintf(`unable to escape %s path variable: invalid URL escape "%%"`, docIDPathVariable),
+		rr.Body.String())
+}
+
+func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaultIDError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	request := http.Request{}
+
+	op.readDocumentHandler(failingResponseWriter{},
+		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
+
+	require.Contains(t, logContents.String(),
+		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
+			vaultIDPathVariable))
+}
+
+func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeDocIDError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	request := http.Request{}
+
+	op.readDocumentHandler(failingResponseWriter{},
+		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithDocIDThatCannotBeEscaped()}))
+
+	require.Contains(t, logContents.String(),
+		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
+			docIDPathVariable))
+}
+
+func TestReadDocumentHandler_ResponseWriterFailsWhileWritingReadDocumentError(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	op.readDocumentHandler(failingResponseWriter{}, &http.Request{})
+
+	require.Contains(t, logContents.String(), "Failed to write response for document retrieval failure:"+
+		" failingResponseWriter always fails")
+}
+
+func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	storeStructuredDocumentExpectSuccess(t, op)
+
+	var logContents bytes.Buffer
+
+	log.SetOutput(&logContents)
+
+	request := http.Request{}
+
+	op.readDocumentHandler(failingResponseWriter{},
+		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithValidVaultIDAndDocID()}))
+
+	require.Contains(t, logContents.String(), "Failed to write response for document retrieval success:"+
+		" failingResponseWriter always fails")
 }
 
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
@@ -347,4 +661,23 @@ func handlerLookup(t *testing.T, op *Operation, lookup string) Handler {
 	require.Fail(t, "unable to find handler")
 
 	return nil
+}
+
+func getMapWithValidVaultIDAndDocID() map[string]string {
+	return map[string]string{
+		"vaultID": testVaultID,
+		"docID":   testDocID,
+	}
+}
+
+func getMapWithVaultIDThatCannotBeEscaped() map[string]string {
+	return map[string]string{
+		"vaultID": "%",
+	}
+}
+
+func getMapWithDocIDThatCannotBeEscaped() map[string]string {
+	return map[string]string{
+		"docID": "%",
+	}
 }

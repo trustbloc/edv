@@ -47,7 +47,7 @@ func TestStartCmdWithMissingHostArg(t *testing.T) {
 	err := startCmd.Execute()
 
 	require.Equal(t,
-		"Neither host-url (command line flag) nor EDV_HOST_URL (environment variable) have been set.",
+		"neither host-url (command line flag) nor EDV_HOST_URL (environment variable) have been set",
 		err.Error())
 }
 

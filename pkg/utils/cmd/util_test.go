@@ -35,7 +35,8 @@ func TestGetUserSetVar(t *testing.T) {
 	env, err := GetUserSetVar(cmd, hostURLFlagName, hostURLEnvKey)
 	require.Error(t, err)
 	require.Empty(t, env)
-	require.Contains(t, err.Error(), "TEST_HOST_URL (environment variable) have been set.")
+	require.Equal(t, "neither host-url (command line flag) nor TEST_HOST_URL (environment variable) have been set",
+		err.Error())
 
 	hostURL := "localhost:8080"
 	err = os.Setenv(hostURLEnvKey, hostURL)
