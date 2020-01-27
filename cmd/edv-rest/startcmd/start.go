@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -26,7 +26,7 @@ const (
 	hostURLEnvKey        = "EDV_HOST_URL"
 )
 
-var errMissingHostURL = errors.New("host URL not provided")
+var errMissingHostURL = fmt.Errorf("host URL not provided")
 
 type edvParameters struct {
 	srv     server
@@ -89,6 +89,7 @@ func startEDV(parameters *edvParameters) error {
 
 	handlers := edvService.GetOperations()
 	router := mux.NewRouter()
+	router.UseEncodedPath()
 
 	for _, handler := range handlers {
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
