@@ -14,7 +14,7 @@ Parameters can be set by command line arguments or environment variables:
 
 ```
 Flags:
-  -u, --host-url string   URL to run the edv instance on. Format: HostName:Port.
+  -u, --host-url string   URL to run the edv instance on. Format: HostName:Port. *
 
 * Indicates a required parameter. It must be set by either command line argument or environment variable.
 (If both the command line argument and environment variable are set for a parameter, then the command line argument takes precedence)
