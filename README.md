@@ -8,4 +8,21 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/trustbloc/edv)](https://goreportcard.com/report/github.com/trustbloc/edv)
 
 # edv
-An implementation of the [Encrypted Data Vault specification](https://digitalbazaar.github.io/encrypted-data-vaults/).
+An implementation of the [Encrypted Data Vault 0.1 (26 January 2020) specification](https://digitalbazaar.github.io/encrypted-data-vaults/). This implementation is at a very early stage; be sure to read the [limitations](#limitations) section which outlines which parts of the specification have yet to be implemented.
+
+## Limitations
+The following has not yet been implemented:
+* Encryption
+* Update and delete document endpoints
+* Streams
+* Indexes
+* Service Discovery
+
+## Testing
+- [Build + BDD Tests](docs/test/build.md)
+
+## Contributing
+Thank you for your interest in contributing. Please see our [community contribution guidelines](https://github.com/trustbloc/community/blob/master/CONTRIBUTING.md) for more information.
+
+## License
+Apache License, Version 2.0 (Apache-2.0). See the [LICENSE](LICENSE) file.
