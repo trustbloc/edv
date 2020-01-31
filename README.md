@@ -19,7 +19,9 @@ The following has not yet been implemented:
 * Service Discovery
 
 ## Testing
-- [Build + BDD Tests](docs/test/build.md)
+- [Build + BDD tests](docs/test/build.md)
+- [Run as Binary with CLI](docs/rest/edv_cli.md)
+- [Run as Docker Container](docs/rest/edv_docker.md)
 
 ## Contributing
 Thank you for your interest in contributing. Please see our [community contribution guidelines](https://github.com/trustbloc/community/blob/master/CONTRIBUTING.md) for more information.
