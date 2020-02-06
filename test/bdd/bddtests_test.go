@@ -118,7 +118,7 @@ func FeatureContext(s *godog.Suite) {
 
 	// set dynamic args
 	bddContext.Args[ExpectedDocument] =
-		`{"id":"testdocument","meta":{"created":"2020-01-10"},"content":{"message":"Hello EDV!"}}`
+		`{"id":"VJYHHJx4C8J9Fsgz7rZqSp","meta":{"created":"2020-01-10"},"content":{"message":"Hello EDV!"}}`
 
 	edv.NewSteps(bddContext).RegisterSteps(s)
 }
