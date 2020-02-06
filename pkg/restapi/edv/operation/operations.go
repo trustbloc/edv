@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/btcsuite/btcutil/base58"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"github.com/trustbloc/edge-core/pkg/storage"
@@ -37,13 +38,22 @@ const (
 	DuplicateVaultErrMsg = "vault already exists"
 	// DuplicateDocumentErrMsg is the message returned by the EDV server when an attempt is made to create a document with
 	// the same ID as an already existing document inside the vault.
-	DuplicateDocumentErrMsg = "a document with the given id already exists"
+	DuplicateDocumentErrMsg = "a document with the given ID already exists"
+	// NotBase58EncodedErrMsg is the message returned by the EDV server when an attempt is made
+	// to create a document with an ID that is not a base58-encoded value (which is required by the EDV spec).
+	NotBase58EncodedErrMsg = "document ID must be a base58-encoded value"
+	// Not128BitValueErrMsg is the message returned by the EDV server when an attempt is made
+	// to create a document with an ID that is base58-encoded, but the original value was not 128 bits long
+	// (which is required by the EDV spec).
+	Not128BitValueErrMsg = "document ID is base58-encoded, but original value before encoding was not 128 bits long"
 )
 
 var errVaultNotFound = fmt.Errorf("%s", VaultNotFoundErrMsg)
 var errDocumentNotFound = fmt.Errorf("%s", DocumentNotFoundErrMsg)
 var errDuplicateVault = fmt.Errorf("%s", DuplicateVaultErrMsg)
 var errDuplicateDocument = fmt.Errorf("%s", DuplicateDocumentErrMsg)
+var errNotBase58Encoded = fmt.Errorf("%s", NotBase58EncodedErrMsg)
+var errNot128BitValue = fmt.Errorf("%s", Not128BitValueErrMsg)
 
 // Handler http handler for each controller API endpoint
 type Handler interface {
@@ -217,6 +227,10 @@ func (vc *VaultCollection) createDocument(vaultID string, document StructuredDoc
 		return errVaultNotFound
 	}
 
+	if err := checkIfBase58Encoded128BitValue(document.ID); err != nil {
+		return err
+	}
+
 	// The Create Document API call should not overwrite an existing document.
 	// So we first check to make sure there is not already a document associated with the id.
 	// If there is, we send back an error.
@@ -233,6 +247,23 @@ func (vc *VaultCollection) createDocument(vaultID string, document StructuredDoc
 	}
 
 	return vault.Put(document.ID, documentJSON)
+}
+
+// This function can't tell if the value before being encoded was precisely 128 bits long.
+// This is because the byte58.decode function returns an array of bytes, not just a string of bits.
+// So the closest I can do is see if the decoded byte array is 16 bytes long,
+// however this means that if the original value was 121 bits to 127 bits long it'll still be accepted.
+func checkIfBase58Encoded128BitValue(id string) error {
+	decodedBytes := base58.Decode(id)
+	if len(decodedBytes) == 0 {
+		return errNotBase58Encoded
+	}
+
+	if len(decodedBytes) != 16 {
+		return errNot128BitValue
+	}
+
+	return nil
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {

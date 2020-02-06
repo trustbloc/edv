@@ -27,10 +27,9 @@ import (
 )
 
 const (
-	testVaultID               = "testvault"
-	testVaultIDWithSlashes    = "http://example.com/" + testVaultID
-	testDocumentID            = "testdocument"
-	testDocumentIDWithSlashes = "http://example.com/" + testDocumentID
+	testVaultID            = "testvault"
+	testVaultIDWithSlashes = "http://example.com/" + testVaultID
+	testDocumentID         = "VJYHHJx4C8J9Fsgz7rZqSp"
 )
 
 type failingReadCloser struct{}
@@ -158,13 +157,13 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	location, err := storeTestDocument(client, false)
 	require.NoError(t, err)
-	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault/docs/testdocument", location)
+	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault/docs/"+testDocumentID, location)
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
 }
 
-func TestClient_CreateDocument_VaultIDAndDocIDContainsSlash(t *testing.T) {
+func TestClient_CreateDocument_VaultIDContainsSlash(t *testing.T) {
 	srvAddr := randomURL()
 
 	srv := startEDVServer(t, srvAddr)
@@ -181,7 +180,7 @@ func TestClient_CreateDocument_VaultIDAndDocIDContainsSlash(t *testing.T) {
 	location, err := storeTestDocument(client, true)
 	require.NoError(t, err)
 	require.Equal(t,
-		srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault/docs/http:%2F%2Fexample.com%2Ftestdocument",
+		srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault/docs/"+testDocumentID,
 		location)
 
 	err = srv.Shutdown(context.Background())
@@ -252,7 +251,7 @@ func TestClient_ReadDocument(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestClient_ReadDocument_VaultIDAndDocIDContainsSlash(t *testing.T) {
+func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
 	srvAddr := randomURL()
 
 	srv := startEDVServer(t, srvAddr)
@@ -268,14 +267,14 @@ func TestClient_ReadDocument_VaultIDAndDocIDContainsSlash(t *testing.T) {
 	_, err = storeTestDocument(client, true)
 	require.NoError(t, err)
 
-	docRaw, err := client.ReadDocument(testVaultIDWithSlashes, testDocumentIDWithSlashes)
+	docRaw, err := client.ReadDocument(testVaultIDWithSlashes, testDocumentID)
 	require.NoError(t, err)
 
 	document := operation.StructuredDocument{}
 	err = json.Unmarshal(docRaw, &document)
 	require.NoError(t, err)
 
-	require.Equal(t, testDocumentIDWithSlashes, document.ID)
+	require.Equal(t, testDocumentID, document.ID)
 	require.Equal(t, "2020-01-10", document.Meta["created"])
 	require.Equal(t, "Hello EDV!", document.Content["message"])
 
@@ -388,7 +387,7 @@ func TestSendPostJSON_Unmarshallable(t *testing.T) {
 	require.Equal(t, "failed to marshal object: json: unsupported type: chan int", err.Error())
 }
 
-func storeTestDocument(client Client, includeSlashInVaultIDAndDocID bool) (string, error) {
+func storeTestDocument(client Client, includeSlashInVaultID bool) (string, error) {
 	meta := make(map[string]interface{})
 	meta["created"] = "2020-01-10"
 
@@ -396,18 +395,17 @@ func storeTestDocument(client Client, includeSlashInVaultIDAndDocID bool) (strin
 	content["message"] = "Hello EDV!"
 
 	testDocument := operation.StructuredDocument{
+		ID:      testDocumentID,
 		Meta:    meta,
 		Content: content,
 	}
 
 	var vaultID string
 
-	if includeSlashInVaultIDAndDocID {
+	if includeSlashInVaultID {
 		vaultID = testVaultIDWithSlashes
-		testDocument.ID = testDocumentIDWithSlashes
 	} else {
 		vaultID = testVaultID
-		testDocument.ID = testDocumentID
 	}
 
 	return client.CreateDocument(vaultID, &testDocument)

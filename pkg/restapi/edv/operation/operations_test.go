@@ -54,7 +54,7 @@ const (
   }
 }`
 
-	testDocID = "urn:uuid:94684128-c42c-4b28-adb0-aec77bf76045"
+	testDocID = "VJYHHJx4C8J9Fsgz7rZqSp"
 
 	testStructuredDocument = `{
   "id":"` + testDocID + `",
@@ -65,6 +65,15 @@ const (
     "message": "Hello World!"
   }
 }`
+
+	// All of the characters in the ID below are NOT in the base58 alphabet, so this ID is not base58 encoded
+	testStructuredDocumentWithNonBase58ID = `{
+  "id": "0OIl"
+}`
+
+	testStructuredDocumentWithIDThatWasNot128BitsBeforeBase58Encoding = `{
+  "id": "2CHi6"
+}`
 )
 
 func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) {
@@ -72,7 +81,7 @@ func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) 
 
 	createVaultHandler := getHandler(t, op, createVaultEndpoint)
 
-	req, err := http.NewRequest(http.MethodPost, "/data-vaults", bytes.NewBuffer([]byte("")))
+	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte("")))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -86,7 +95,7 @@ func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) 
 func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t *testing.T) {
 	op := New(memstore.NewProvider())
 
-	req, err := http.NewRequest(http.MethodPost, createVaultEndpoint,
+	req, err := http.NewRequest(http.MethodPost, "",
 		bytes.NewBuffer([]byte(testDataVaultConfigurationWithBlankReferenceID)))
 	require.NoError(t, err)
 
@@ -218,7 +227,7 @@ func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	req, err := http.NewRequest("POST", createVaultEndpoint, bytes.NewBuffer([]byte(testDataVaultConfiguration)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -243,7 +252,7 @@ func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
 
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
-	req, err := http.NewRequest("POST", createDocumentEndpoint, bytes.NewBuffer([]byte("")))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("")))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -254,6 +263,53 @@ func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "EOF")
 }
 
+func TestCreateDocumentHandler_DocIDIsNotBase58Encoded(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocumentWithNonBase58ID)))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = testVaultID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, NotBase58EncodedErrMsg, rr.Body.String())
+}
+
+func TestCreateDocumentHandler_DocIDWasNot128BitsBeforeEncodingAsBase58(t *testing.T) {
+	op := New(memstore.NewProvider())
+
+	createDataVaultExpectSuccess(t, op)
+
+	req, err := http.NewRequest("POST", "",
+		bytes.NewBuffer([]byte(testStructuredDocumentWithIDThatWasNot128BitsBeforeBase58Encoding)))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = testVaultID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, Not128BitValueErrMsg, rr.Body.String())
+}
+
 func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 	op := New(memstore.NewProvider())
 
@@ -261,8 +317,7 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 
 	storeStructuredDocumentExpectSuccess(t, op)
 
-	req, err := http.NewRequest("POST", "/encrypted-data-vaults/"+testVaultID+"/docs",
-		bytes.NewBuffer([]byte(testStructuredDocument)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -283,8 +338,7 @@ func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	op := New(memstore.NewProvider())
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
-	req, err := http.NewRequest("POST", "/encrypted-data-vaults/"+testVaultID+"/docs",
-		bytes.NewBuffer([]byte(testStructuredDocument)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -312,7 +366,7 @@ func TestCreateDocument_FailToMarshal(t *testing.T) {
 	unmarshallableMap["somewhere"] = make(chan int)
 
 	err = op.vaultCollection.createDocument("store1", StructuredDocument{
-		ID:      "",
+		ID:      testDocID,
 		Meta:    unmarshallableMap,
 		Content: nil,
 	})
@@ -325,8 +379,7 @@ func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	req, err := http.NewRequest("POST", "/encrypted-data-vaults/"+testVaultID+"/docs",
-		bytes.NewBuffer([]byte(testStructuredDocument)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -405,9 +458,7 @@ func TestReadDocumentHandler_DocumentExists(t *testing.T) {
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
-	req, err := http.NewRequest(http.MethodGet,
-		"/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID,
-		nil)
+	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -431,7 +482,7 @@ func TestReadDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	op := New(memstore.NewProvider())
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
-	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID, nil)
+	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -455,7 +506,7 @@ func TestReadDocumentHandler_DocumentDoesNotExist(t *testing.T) {
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
-	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID, nil)
+	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -481,7 +532,7 @@ func TestReadDocumentHandler_UnableToEscapeVaultIDPathVariable(t *testing.T) {
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
-	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID, nil)
+	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -509,7 +560,7 @@ func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) 
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
-	req, err := http.NewRequest(http.MethodGet, "/encrypted-data-vaults/"+testVaultID+"/docs/"+testDocID, nil)
+	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -608,7 +659,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t 
 }
 
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
-	req, err := http.NewRequest(http.MethodPost, createVaultEndpoint, bytes.NewBuffer([]byte(testDataVaultConfiguration)))
+	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -621,7 +672,7 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
 }
 
 func storeStructuredDocumentExpectSuccess(t *testing.T, op *Operation) {
-	req, err := http.NewRequest("POST", "/encrypted-data-vaults/"+testVaultID+"/docs",
+	req, err := http.NewRequest("POST", "",
 		bytes.NewBuffer([]byte(testStructuredDocument)))
 	require.NoError(t, err)
 
