@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -14,7 +15,7 @@ import (
 )
 
 // GetUserSetVar returns values either command line flag or environment variable
-func GetUserSetVar(cmd *cobra.Command, flagName, envKey string) (string, error) {
+func GetUserSetVar(cmd *cobra.Command, flagName, envKey string, isOptional bool) (string, error) {
 	if cmd.Flags().Changed(flagName) {
 		value, err := cmd.Flags().GetString(flagName)
 		if err != nil {
@@ -26,9 +27,10 @@ func GetUserSetVar(cmd *cobra.Command, flagName, envKey string) (string, error) 
 
 	value, isSet := os.LookupEnv(envKey)
 
-	if isSet {
+	if isOptional || isSet {
 		return value, nil
 	}
 
-	return "", fmt.Errorf("neither %s (command line flag) nor %s (environment variable) have been set", flagName, envKey)
+	return "", errors.New("neither " + flagName + " (command line flag) nor " + envKey +
+		" (environment variable) have been set")
 }

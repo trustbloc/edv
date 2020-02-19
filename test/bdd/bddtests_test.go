@@ -50,18 +50,20 @@ func TestMain(m *testing.M) {
 
 func runBDDTests(tags, format string) int {
 	return godog.RunWithOptions("godogs", func(s *godog.Suite) {
-		var composition *dockerutil.Composition
+		var composition []*dockerutil.Composition
+		var composeFiles = []string{"./fixtures/couchdb", "./fixtures/edv-rest"}
 		s.BeforeSuite(func() {
 			if os.Getenv("DISABLE_COMPOSITION") != "true" {
 				// Need a unique name, but docker does not allow '-' in names
 				composeProjectName := strings.ReplaceAll(generateUUID(), "-", "")
 
-				var composeErr error
-				composition, composeErr = dockerutil.NewComposition(composeProjectName, "docker-compose.yml", "./fixtures/edv-rest")
-				if composeErr != nil {
-					panic(fmt.Sprintf("Error composing system in BDD context: %s", composeErr))
+				for _, v := range composeFiles {
+					newComposition, err := dockerutil.NewComposition(composeProjectName, "docker-compose.yml", v)
+					if err != nil {
+						panic(fmt.Sprintf("Error composing system in BDD context: %s", err))
+					}
+					composition = append(composition, newComposition)
 				}
-
 				fmt.Println("docker-compose up ... waiting for containers to start ...")
 				testSleep := 5
 				if os.Getenv("TEST_SLEEP") != "" {
@@ -73,15 +75,20 @@ func runBDDTests(tags, format string) int {
 					}
 				}
 				fmt.Printf("*** testSleep=%d", testSleep)
+				println()
 				time.Sleep(time.Second * time.Duration(testSleep))
 			}
 		})
 		s.AfterSuite(func() {
-			if err := composition.GenerateLogs(composition.Dir, composition.ProjectName+".log"); err != nil {
-				panic(err)
-			}
-			if _, err := composition.Decompose(composition.Dir); err != nil {
-				panic(err)
+			for _, c := range composition {
+				if c != nil {
+					if err := c.GenerateLogs(c.Dir, "docker-compose.log"); err != nil {
+						panic(err)
+					}
+					if _, err := c.Decompose(c.Dir); err != nil {
+						panic(err)
+					}
+				}
 			}
 		})
 		FeatureContext(s)
@@ -118,7 +125,7 @@ func FeatureContext(s *godog.Suite) {
 
 	// set dynamic args
 	bddContext.Args[ExpectedDocument] =
-		`{"id":"VJYHHJx4C8J9Fsgz7rZqSp","meta":{"created":"2020-01-10"},"content":{"message":"Hello EDV!"}}`
+		`{"content":{"message":"Hello EDV!"},"id":"VJYHHJx4C8J9Fsgz7rZqSp","meta":{"created":"2020-01-10"}}`
 
 	edv.NewSteps(bddContext).RegisterSteps(s)
 }
