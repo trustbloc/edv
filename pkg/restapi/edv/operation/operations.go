@@ -66,8 +66,7 @@ type Handler interface {
 func New(provider storage.Provider) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
-			provider:   provider,
-			openStores: make(map[string]storage.Store),
+			provider: provider,
 		}}
 	svc.registerHandler()
 
@@ -82,8 +81,7 @@ type Operation struct {
 
 // VaultCollection represents EDV storage.
 type VaultCollection struct {
-	provider   storage.Provider
-	openStores map[string]storage.Store
+	provider storage.Provider
 }
 
 func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Request) {
@@ -206,47 +204,44 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 }
 
 func (vc *VaultCollection) createDataVault(id string) error {
-	_, exists := vc.openStores[id]
-	if exists {
+	err := vc.provider.CreateStore(id)
+	if err == storage.ErrDuplicateStore {
 		return errDuplicateVault
 	}
 
-	store, err := vc.provider.OpenStore(id)
-	if err != nil {
-		return err
-	}
-
-	vc.openStores[id] = store
-
-	return nil
+	return err
 }
 
 func (vc *VaultCollection) createDocument(vaultID string, document StructuredDocument) error {
-	vault, exists := vc.openStores[vaultID]
-	if !exists {
-		return errVaultNotFound
+	store, err := vc.provider.OpenStore(vaultID)
+	if err != nil {
+		if err == storage.ErrStoreNotFound {
+			return errVaultNotFound
+		}
+
+		return err
 	}
 
-	if err := checkIfBase58Encoded128BitValue(document.ID); err != nil {
-		return err
+	if encodingErr := checkIfBase58Encoded128BitValue(document.ID); encodingErr != nil {
+		return encodingErr
 	}
 
 	// The Create Document API call should not overwrite an existing document.
 	// So we first check to make sure there is not already a document associated with the id.
 	// If there is, we send back an error.
-	_, err := vault.Get(document.ID)
+	_, err = store.Get(document.ID)
 	if err == nil {
 		return errDuplicateDocument
 	} else if err != storage.ErrValueNotFound {
 		return err
 	}
 
-	documentJSON, err := json.Marshal(document)
+	documentBytes, err := json.Marshal(document)
 	if err != nil {
 		return err
 	}
 
-	return vault.Put(document.ID, documentJSON)
+	return store.Put(document.ID, documentBytes)
 }
 
 // This function can't tell if the value before being encoded was precisely 128 bits long.
@@ -267,14 +262,18 @@ func checkIfBase58Encoded128BitValue(id string) error {
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
-	vault, exists := vc.openStores[vaultID]
-	if !exists {
-		return nil, errVaultNotFound
+	store, err := vc.provider.OpenStore(vaultID)
+	if err != nil {
+		if err == storage.ErrStoreNotFound {
+			return nil, errVaultNotFound
+		}
+
+		return nil, err
 	}
 
-	documentJSON, err := vault.Get(docID)
+	documentJSON, err := store.Get(docID)
 	if err == storage.ErrValueNotFound {
-		return nil, errDocumentNotFound // Returns a more specific error message
+		return nil, errDocumentNotFound
 	} else if err != nil {
 		return nil, err
 	}

@@ -357,10 +357,8 @@ func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 func TestCreateDocument_FailToMarshal(t *testing.T) {
 	op := New(memstore.NewProvider())
 
-	newStore, err := op.vaultCollection.provider.OpenStore("store1")
+	err := op.vaultCollection.provider.CreateStore("store1")
 	require.NoError(t, err)
-
-	op.vaultCollection.openStores["store1"] = newStore
 
 	unmarshallableMap := make(map[string]interface{})
 	unmarshallableMap["somewhere"] = make(chan int)
