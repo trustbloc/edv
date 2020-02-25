@@ -41,6 +41,13 @@ const (
 	databaseURLFlagUsage     = "The URL of the database. Not needed if using memstore." +
 		"For CouchDB, include the username:password@ text if required."
 	databaseURLEnvKey = "EDV_DATABASE_URL"
+
+	databasePrefixFlagName      = "database-prefix"
+	databasePrefixFlagShorthand = "p"
+	databasePrefixFlagUsage     = "An optional prefix to be used when creating and retrieving underlying databases." +
+		" This followed by an underscore will be prepended to any incoming vault IDs received in REST calls before" +
+		" creating or accessing underlying databases."
+	databasePrefixEnvKey = "EDV_DATABASE_PREFIX"
 )
 
 var errMissingHostURL = fmt.Errorf("host URL not provided")
@@ -49,10 +56,11 @@ var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type."
 var errMissingDatabaseURL = fmt.Errorf("couchDB database URL not set")
 
 type edvParameters struct {
-	srv          server
-	hostURL      string
-	databaseType string
-	databaseURL  string
+	srv            server
+	hostURL        string
+	databaseType   string
+	databaseURL    string
+	databasePrefix string
 }
 
 type server interface {
@@ -97,11 +105,17 @@ func createStartCmd(srv server) *cobra.Command {
 				return err
 			}
 
+			databasePrefix, err := cmdutils.GetUserSetVar(cmd, databasePrefixFlagName, databasePrefixEnvKey, true)
+			if err != nil {
+				return err
+			}
+
 			parameters := &edvParameters{
-				srv:          srv,
-				hostURL:      hostURL,
-				databaseType: databaseType,
-				databaseURL:  databaseURL,
+				srv:            srv,
+				hostURL:        hostURL,
+				databaseType:   databaseType,
+				databaseURL:    databaseURL,
+				databasePrefix: databasePrefix,
 			}
 			return startEDV(parameters)
 		},
@@ -112,6 +126,7 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(hostURLFlagName, hostURLFlagShorthand, "", hostURLFlagUsage)
 	startCmd.Flags().StringP(databaseTypeFlagName, databaseTypeFlagShorthand, "", databaseTypeFlagUsage)
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
+	startCmd.Flags().StringP(databasePrefixFlagName, databasePrefixFlagShorthand, "", databasePrefixFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error {
@@ -124,7 +139,7 @@ func startEDV(parameters *edvParameters) error {
 		return err
 	}
 
-	edvService, err := edv.New(provider)
+	edvService, err := edv.New(provider, parameters.databasePrefix)
 	if err != nil {
 		return err
 	}

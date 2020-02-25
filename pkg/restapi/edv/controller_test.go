@@ -14,13 +14,13 @@ import (
 )
 
 func TestController_New(t *testing.T) {
-	controller, err := New(nil)
+	controller, err := New(nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, controller)
 }
 
 func TestController_GetOperations(t *testing.T) {
-	controller, err := New(nil)
+	controller, err := New(nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, controller)
 

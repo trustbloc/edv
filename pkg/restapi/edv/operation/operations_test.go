@@ -74,10 +74,11 @@ const (
 	testStructuredDocumentWithIDThatWasNot128BitsBeforeBase58Encoding = `{
   "id": "2CHi6"
 }`
+	testPrefix = "testPrefix"
 )
 
 func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createVaultHandler := getHandler(t, op, createVaultEndpoint)
 
@@ -93,7 +94,7 @@ func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) 
 }
 
 func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	req, err := http.NewRequest(http.MethodPost, "",
 		bytes.NewBuffer([]byte(testDataVaultConfigurationWithBlankReferenceID)))
@@ -112,9 +113,16 @@ func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t
 }
 
 func TestCreateDataVaultHandler_ValidDataVaultConfigurationJSON(t *testing.T) {
-	op := New(memstore.NewProvider())
+	t.Run("Without prefix", func(t *testing.T) {
+		op := New(memstore.NewProvider(), "")
 
-	createDataVaultExpectSuccess(t, op)
+		createDataVaultExpectSuccess(t, op)
+	})
+	t.Run("With prefix", func(t *testing.T) {
+		op := New(memstore.NewProvider(), testPrefix)
+
+		createDataVaultExpectSuccess(t, op)
+	})
 }
 
 type failingResponseWriter struct {
@@ -198,7 +206,7 @@ func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingDecodeError(t *te
 
 	log.SetOutput(&logContents)
 
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
@@ -207,7 +215,7 @@ func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingDecodeError(t *te
 }
 
 func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingCreateDataVaultError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -223,7 +231,7 @@ func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingCreateDataVaultEr
 }
 
 func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -240,15 +248,24 @@ func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 }
 
 func TestCreateDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
-	op := New(memstore.NewProvider())
+	t.Run("Without prefix", func(t *testing.T) {
+		op := New(memstore.NewProvider(), "")
 
-	createDataVaultExpectSuccess(t, op)
+		createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+		storeStructuredDocumentExpectSuccess(t, op)
+	})
+	t.Run("With prefix", func(t *testing.T) {
+		op := New(memstore.NewProvider(), testPrefix)
+
+		createDataVaultExpectSuccess(t, op)
+
+		storeStructuredDocumentExpectSuccess(t, op)
+	})
 }
 
 func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
@@ -264,7 +281,7 @@ func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
 }
 
 func TestCreateDocumentHandler_DocIDIsNotBase58Encoded(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -287,7 +304,7 @@ func TestCreateDocumentHandler_DocIDIsNotBase58Encoded(t *testing.T) {
 }
 
 func TestCreateDocumentHandler_DocIDWasNot128BitsBeforeEncodingAsBase58(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -311,7 +328,7 @@ func TestCreateDocumentHandler_DocIDWasNot128BitsBeforeEncodingAsBase58(t *testi
 }
 
 func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -335,7 +352,7 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 }
 
 func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
 	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
@@ -355,7 +372,7 @@ func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 }
 
 func TestCreateDocument_FailToMarshal(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	err := op.vaultCollection.provider.CreateStore("store1")
 	require.NoError(t, err)
@@ -373,7 +390,7 @@ func TestCreateDocument_FailToMarshal(t *testing.T) {
 }
 
 func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -398,7 +415,7 @@ func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
 }
 
 func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -413,7 +430,7 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingDecodeError(t *tes
 }
 
 func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaultIDError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -432,7 +449,7 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVa
 }
 
 func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingCreateDocumentError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -448,7 +465,16 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingCreateDocumentErro
 }
 
 func TestReadDocumentHandler_DocumentExists(t *testing.T) {
-	op := New(memstore.NewProvider())
+	t.Run("Without prefix", func(t *testing.T) {
+		readDocumentExpectSuccess(t, "")
+	})
+	t.Run("With prefix", func(t *testing.T) {
+		readDocumentExpectSuccess(t, testPrefix)
+	})
+}
+
+func readDocumentExpectSuccess(t *testing.T, prefix string) {
+	op := New(memstore.NewProvider(), prefix)
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -477,7 +503,7 @@ func TestReadDocumentHandler_DocumentExists(t *testing.T) {
 }
 
 func TestReadDocumentHandler_VaultDoesNotExist(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
@@ -498,7 +524,7 @@ func TestReadDocumentHandler_VaultDoesNotExist(t *testing.T) {
 }
 
 func TestReadDocumentHandler_DocumentDoesNotExist(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -522,7 +548,7 @@ func TestReadDocumentHandler_DocumentDoesNotExist(t *testing.T) {
 }
 
 func TestReadDocumentHandler_UnableToEscapeVaultIDPathVariable(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -550,7 +576,7 @@ func TestReadDocumentHandler_UnableToEscapeVaultIDPathVariable(t *testing.T) {
 }
 
 func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -578,7 +604,7 @@ func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) 
 }
 
 func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaultIDError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -599,7 +625,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaul
 }
 
 func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeDocIDError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -620,7 +646,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeDocI
 }
 
 func TestReadDocumentHandler_ResponseWriterFailsWhileWritingReadDocumentError(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -637,7 +663,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingReadDocumentError(t 
 }
 
 func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t *testing.T) {
-	op := New(memstore.NewProvider())
+	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
@@ -654,6 +680,19 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t 
 
 	require.Contains(t, logContents.String(), "Failed to write response for document retrieval success:"+
 		" failingResponseWriter always fails")
+}
+
+func TestGetFullStoreName(t *testing.T) {
+	t.Run("Without prefix", func(t *testing.T) {
+		vc := VaultCollection{dbPrefix: ""}
+		storeName := vc.getFullStoreName(testVaultID)
+		require.Equal(t, testVaultID, storeName)
+	})
+	t.Run("With prefix", func(t *testing.T) {
+		vc := VaultCollection{dbPrefix: testPrefix}
+		storeName := vc.getFullStoreName(testVaultID)
+		require.Equal(t, testPrefix+"_"+testVaultID, storeName)
+	})
 }
 
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
