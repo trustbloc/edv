@@ -13,10 +13,10 @@ import (
 )
 
 // New returns new controller instance.
-func New(provider storage.Provider) (*Controller, error) {
+func New(provider storage.Provider, dbPrefix string) (*Controller, error) {
 	var allHandlers []operation.Handler
 
-	edvService := operation.New(provider)
+	edvService := operation.New(provider, dbPrefix)
 	allHandlers = append(allHandlers, edvService.GetRESTHandlers()...)
 
 	return &Controller{handlers: allHandlers}, nil

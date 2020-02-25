@@ -432,7 +432,7 @@ func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) operation.Da
 
 // Returns a reference to the server so the caller can stop it.
 func startEDVServer(t *testing.T, srvAddr string) *http.Server {
-	edvService, err := edv.New(memstore.NewProvider())
+	edvService, err := edv.New(memstore.NewProvider(), "")
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()

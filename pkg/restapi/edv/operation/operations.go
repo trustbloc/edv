@@ -62,11 +62,13 @@ type Handler interface {
 	Handle() http.HandlerFunc
 }
 
-// New returns EDV instance
-func New(provider storage.Provider) *Operation {
+// New returns a new EDV operations instance.
+// If dbPrefix is blank, then no prefixing will be done to the vault IDs.
+func New(provider storage.Provider, dbPrefix string) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: provider,
+			dbPrefix: dbPrefix,
 		}}
 	svc.registerHandler()
 
@@ -82,6 +84,7 @@ type Operation struct {
 // VaultCollection represents EDV storage.
 type VaultCollection struct {
 	provider storage.Provider
+	dbPrefix string
 }
 
 func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Request) {
@@ -203,8 +206,8 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 	}
 }
 
-func (vc *VaultCollection) createDataVault(id string) error {
-	err := vc.provider.CreateStore(id)
+func (vc *VaultCollection) createDataVault(vaultID string) error {
+	err := vc.provider.CreateStore(vc.getFullStoreName(vaultID))
 	if err == storage.ErrDuplicateStore {
 		return errDuplicateVault
 	}
@@ -213,7 +216,7 @@ func (vc *VaultCollection) createDataVault(id string) error {
 }
 
 func (vc *VaultCollection) createDocument(vaultID string, document StructuredDocument) error {
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
 			return errVaultNotFound
@@ -262,7 +265,7 @@ func checkIfBase58Encoded128BitValue(id string) error {
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
 			return nil, errVaultNotFound
@@ -312,4 +315,15 @@ func unescapePathVar(pathVar string, vars map[string]string, rw http.ResponseWri
 	}
 
 	return unescapedPathVar, true
+}
+
+func (vc *VaultCollection) getFullStoreName(id string) string {
+	var storeName string
+	if vc.dbPrefix == "" {
+		storeName = id
+	} else {
+		storeName = vc.dbPrefix + "_" + id
+	}
+
+	return storeName
 }
