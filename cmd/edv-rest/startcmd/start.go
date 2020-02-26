@@ -24,30 +24,34 @@ import (
 
 const (
 	hostURLFlagName      = "host-url"
-	hostURLFlagShorthand = "u"
-	hostURLFlagUsage     = "URL to run the edv instance on. Format: HostName:Port."
 	hostURLEnvKey        = "EDV_HOST_URL"
+	hostURLFlagShorthand = "u"
+	hostURLFlagUsage     = "URL to run the edv instance on. Format: HostName:Port." +
+		" Alternatively, this can be set with the following environment variable: " + hostURLEnvKey
 
 	databaseTypeFlagName      = "database-type"
-	databaseTypeFlagShorthand = "t"
-	databaseTypeFlagUsage     = "The type of database to use internally in the EDV. Supported options: mem, couchdb."
 	databaseTypeEnvKey        = "EDV_DATABASE_TYPE"
+	databaseTypeFlagShorthand = "t"
+	databaseTypeFlagUsage     = "The type of database to use internally in the EDV. Supported options: mem, couchdb." +
+		" Alternatively, this can be set with the following environment variable: " + databaseTypeEnvKey
 
 	databaseTypeMemOption     = "mem"
 	databaseTypeCouchDBOption = "couchdb"
 
 	databaseURLFlagName      = "database-url"
+	databaseURLEnvKey        = "EDV_DATABASE_URL"
 	databaseURLFlagShorthand = "l"
 	databaseURLFlagUsage     = "The URL of the database. Not needed if using memstore." +
-		"For CouchDB, include the username:password@ text if required."
-	databaseURLEnvKey = "EDV_DATABASE_URL"
+		" For CouchDB, include the username:password@ text if required." +
+		" Alternatively, this can be set with the following environment variable: " + databaseURLEnvKey
 
 	databasePrefixFlagName      = "database-prefix"
+	databasePrefixEnvKey        = "EDV_DATABASE_PREFIX"
 	databasePrefixFlagShorthand = "p"
 	databasePrefixFlagUsage     = "An optional prefix to be used when creating and retrieving underlying databases." +
 		" This followed by an underscore will be prepended to any incoming vault IDs received in REST calls before" +
-		" creating or accessing underlying databases."
-	databasePrefixEnvKey = "EDV_DATABASE_PREFIX"
+		" creating or accessing underlying databases." +
+		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
 )
 
 var errMissingHostURL = fmt.Errorf("host URL not provided")
