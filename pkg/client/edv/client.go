@@ -38,7 +38,7 @@ func (c *Client) CreateDataVault(config *operation.DataVaultConfiguration) (stri
 
 // CreateDocument sends the EDV server a request to store the specified document.
 // The location of the newly created document is returned.
-func (c *Client) CreateDocument(vaultID string, document *operation.StructuredDocument) (string, error) {
+func (c *Client) CreateDocument(vaultID string, document *operation.EncryptedDocument) (string, error) {
 	return c.sendCreateRequest(document, fmt.Sprintf("/encrypted-data-vaults/%s/docs", url.PathEscape(vaultID)), "")
 }
 

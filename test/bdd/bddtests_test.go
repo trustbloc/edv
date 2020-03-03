@@ -22,8 +22,6 @@ import (
 	"github.com/trustbloc/edv/test/bdd/pkg/edv"
 )
 
-const ExpectedDocument = "${EXPECTED_DOCUMENT}"
-
 func TestMain(m *testing.M) {
 	// default is to run all tests with tag @all
 	tags := "all"
@@ -122,10 +120,6 @@ func FeatureContext(s *godog.Suite) {
 	if err != nil {
 		panic(fmt.Sprintf("Error returned from NewBDDContext: %s", err))
 	}
-
-	// set dynamic args
-	bddContext.Args[ExpectedDocument] =
-		`{"content":{"message":"Hello EDV!"},"id":"VJYHHJx4C8J9Fsgz7rZqSp","meta":{"created":"2020-01-10"}}`
 
 	edv.NewSteps(bddContext).RegisterSteps(s)
 }

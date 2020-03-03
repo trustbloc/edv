@@ -56,22 +56,21 @@ const (
 
 	testDocID = "VJYHHJx4C8J9Fsgz7rZqSp"
 
-	testStructuredDocument = `{
-  "id":"` + testDocID + `",
-  "meta": {
-    "created": "2019-06-18"
-  },
-  "content": {
-    "message": "Hello World!"
-  }
-}`
+	testEncryptedDocument = `{"id":"` + testDocID + `","sequence":0,"jwe":{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxM` +
+		`zA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQXV0aGNyeXB0IiwicmVjaXBpZW50cyI6W3siZW5jcnlwdGVkX2tleSI6ImdLcXNYN` +
+		`m1HUXYtS3oyelQzMndIbE5DUjFiVU54ZlRTd0ZYcFVWb3FIMjctQUN0bURpZHBQdlVRcEdKSDZqMDkiLCJoZWFkZXIiOnsia2lkIjoiNzd6e` +
+		`WlNeHY0SlRzc2tMeFdFOWI1cVlDN2o1b3Fxc1VMUnFhcVNqd1oya1kiLCJzZW5kZXIiOiJiNmhrRkpXM2RfNmZZVjAtcjV0WEJoWnBVVmtrY` +
+		`XhBSFBDUEZxUDVyTHh3aGpwdFJraTRURjBmTEFNcy1seWd0Ym9PQmtnUDhWNWlwaDdndEVNcTAycmFDTEstQm5GRWo3dWk5Rmo5NkRleFRlR` +
+		`zl6OGdab1lveXY5ZE09IiwiaXYiOiJjNHMzdzBlRzhyZGhnaC1EZnNjOW5Cb3BYVHA1OEhNZiJ9fV19","iv":"e8mXGCAamvwYcdf2",` +
+		`"ciphertext":"dLKWmjFyL-G1uqF588Ya0g10QModI-q0f7vw_v3_jhzskuNqX7Yx4aSD7x2jhUdat82kHS4qLYw8BuUGvGimI_sCQ9m3On` +
+		`QTHSjZnpg7VWRqAULBC3MSTtBa1DtZjZL4C0Y=","tag":"W4yJzyuGYzuZtZMRv2bDUg=="}}`
 
 	// All of the characters in the ID below are NOT in the base58 alphabet, so this ID is not base58 encoded
-	testStructuredDocumentWithNonBase58ID = `{
+	testEncryptedDocumentWithNonBase58ID = `{
   "id": "0OIl"
 }`
 
-	testStructuredDocumentWithIDThatWasNot128BitsBeforeBase58Encoding = `{
+	testEncryptedDocumentWithIDThatWasNot128BitsBeforeBase58Encoding = `{
   "id": "2CHi6"
 }`
 	testPrefix = "testPrefix"
@@ -165,9 +164,9 @@ func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Close() error {
 	return nil
 }
 
-type alwaysReturnBarebonesStructuredDocumentReadCloser struct{}
+type alwaysReturnBarebonesEncryptedDocumentReadCloser struct{}
 
-func (a alwaysReturnBarebonesStructuredDocumentReadCloser) Read(p []byte) (n int, err error) {
+func (a alwaysReturnBarebonesEncryptedDocumentReadCloser) Read(p []byte) (n int, err error) {
 	documentBytes := []byte(`{
   "id": "` + testDocID + `"
 }`)
@@ -177,7 +176,7 @@ func (a alwaysReturnBarebonesStructuredDocumentReadCloser) Read(p []byte) (n int
 	return 59, io.EOF
 }
 
-func (a alwaysReturnBarebonesStructuredDocumentReadCloser) Close() error {
+func (a alwaysReturnBarebonesEncryptedDocumentReadCloser) Close() error {
 	return nil
 }
 
@@ -247,24 +246,24 @@ func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("Data vault creation failed: %s", DuplicateVaultErrMsg), rr.Body.String())
 }
 
-func TestCreateDocumentHandler_ValidStructuredDocumentJSON(t *testing.T) {
+func TestCreateDocumentHandler_ValidEncryptedDocumentJSON(t *testing.T) {
 	t.Run("Without prefix", func(t *testing.T) {
 		op := New(memstore.NewProvider(), "")
 
 		createDataVaultExpectSuccess(t, op)
 
-		storeStructuredDocumentExpectSuccess(t, op)
+		storeEncryptedDocumentExpectSuccess(t, op)
 	})
 	t.Run("With prefix", func(t *testing.T) {
 		op := New(memstore.NewProvider(), testPrefix)
 
 		createDataVaultExpectSuccess(t, op)
 
-		storeStructuredDocumentExpectSuccess(t, op)
+		storeEncryptedDocumentExpectSuccess(t, op)
 	})
 }
 
-func TestCreateDocumentHandler_InvalidStructuredDocumentJSON(t *testing.T) {
+func TestCreateDocumentHandler_InvalidEncryptedDocumentJSON(t *testing.T) {
 	op := New(memstore.NewProvider(), "")
 
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
@@ -285,7 +284,7 @@ func TestCreateDocumentHandler_DocIDIsNotBase58Encoded(t *testing.T) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocumentWithNonBase58ID)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocumentWithNonBase58ID)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -309,7 +308,7 @@ func TestCreateDocumentHandler_DocIDWasNot128BitsBeforeEncodingAsBase58(t *testi
 	createDataVaultExpectSuccess(t, op)
 
 	req, err := http.NewRequest("POST", "",
-		bytes.NewBuffer([]byte(testStructuredDocumentWithIDThatWasNot128BitsBeforeBase58Encoding)))
+		bytes.NewBuffer([]byte(testEncryptedDocumentWithIDThatWasNot128BitsBeforeBase58Encoding)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -332,9 +331,9 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
-	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -355,7 +354,7 @@ func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	op := New(memstore.NewProvider(), "")
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 
-	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -371,30 +370,12 @@ func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	require.Contains(t, rr.Body.String(), VaultNotFoundErrMsg)
 }
 
-func TestCreateDocument_FailToMarshal(t *testing.T) {
-	op := New(memstore.NewProvider(), "")
-
-	err := op.vaultCollection.provider.CreateStore("store1")
-	require.NoError(t, err)
-
-	unmarshallableMap := make(map[string]interface{})
-	unmarshallableMap["somewhere"] = make(chan int)
-
-	err = op.vaultCollection.createDocument("store1", StructuredDocument{
-		ID:      testDocID,
-		Meta:    unmarshallableMap,
-		Content: nil,
-	})
-
-	require.Equal(t, "json: unsupported type: chan int", err.Error())
-}
-
 func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
 	op := New(memstore.NewProvider(), "")
 
 	createDataVaultExpectSuccess(t, op)
 
-	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testStructuredDocument)))
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -438,7 +419,7 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVa
 
 	log.SetOutput(&logContents)
 
-	request := http.Request{Body: alwaysReturnBarebonesStructuredDocumentReadCloser{}}
+	request := http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}}
 
 	op.createDocumentHandler(failingResponseWriter{},
 		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
@@ -458,7 +439,7 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingCreateDocumentErro
 	log.SetOutput(&logContents)
 
 	op.createDocumentHandler(failingResponseWriter{},
-		&http.Request{Body: alwaysReturnBarebonesStructuredDocumentReadCloser{}})
+		&http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}})
 
 	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
 		" failingResponseWriter always fails")
@@ -478,7 +459,7 @@ func readDocumentExpectSuccess(t *testing.T, prefix string) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
@@ -497,9 +478,7 @@ func readDocumentExpectSuccess(t *testing.T, prefix string) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	const expectedData = `{"id":"` + testDocID + `","meta":{"created":"2019-06-18"},"content":{"message":"Hello World!"}}`
-
-	require.Equal(t, expectedData, rr.Body.String())
+	require.Equal(t, testEncryptedDocument, rr.Body.String())
 }
 
 func TestReadDocumentHandler_VaultDoesNotExist(t *testing.T) {
@@ -552,7 +531,7 @@ func TestReadDocumentHandler_UnableToEscapeVaultIDPathVariable(t *testing.T) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
@@ -580,7 +559,7 @@ func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) 
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
 
@@ -608,7 +587,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaul
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	var logContents bytes.Buffer
 
@@ -629,7 +608,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeDocI
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	var logContents bytes.Buffer
 
@@ -650,7 +629,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingReadDocumentError(t 
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	var logContents bytes.Buffer
 
@@ -667,7 +646,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t 
 
 	createDataVaultExpectSuccess(t, op)
 
-	storeStructuredDocumentExpectSuccess(t, op)
+	storeEncryptedDocumentExpectSuccess(t, op)
 
 	var logContents bytes.Buffer
 
@@ -708,9 +687,9 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
 	require.Equal(t, "/encrypted-data-vaults/"+testVaultID, rr.Header().Get("Location"))
 }
 
-func storeStructuredDocumentExpectSuccess(t *testing.T, op *Operation) {
+func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation) {
 	req, err := http.NewRequest("POST", "",
-		bytes.NewBuffer([]byte(testStructuredDocument)))
+		bytes.NewBuffer([]byte(testEncryptedDocument)))
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()

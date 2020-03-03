@@ -30,6 +30,14 @@ const (
 	testVaultID            = "testvault"
 	testVaultIDWithSlashes = "http://example.com/" + testVaultID
 	testDocumentID         = "VJYHHJx4C8J9Fsgz7rZqSp"
+	testEncryptedDocJWE    = `{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxMzA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQ` +
+		`XV0aGNyeXB0IiwicmVjaXBpZW50cyI6W3siZW5jcnlwdGVkX2tleSI6ImdLcXNYNm1HUXYtS3oyelQzMndIbE5DUjFiVU54ZlRTd0ZYcFVWb` +
+		`3FIMjctQUN0bURpZHBQdlVRcEdKSDZqMDkiLCJoZWFkZXIiOnsia2lkIjoiNzd6eWlNeHY0SlRzc2tMeFdFOWI1cVlDN2o1b3Fxc1VMUnFhc` +
+		`VNqd1oya1kiLCJzZW5kZXIiOiJiNmhrRkpXM2RfNmZZVjAtcjV0WEJoWnBVVmtrYXhBSFBDUEZxUDVyTHh3aGpwdFJraTRURjBmTEFNcy1se` +
+		`Wd0Ym9PQmtnUDhWNWlwaDdndEVNcTAycmFDTEstQm5GRWo3dWk5Rmo5NkRleFRlRzl6OGdab1lveXY5ZE09IiwiaXYiOiJjNHMzdzBlRzhyZ` +
+		`GhnaC1EZnNjOW5Cb3BYVHA1OEhNZiJ9fV19","iv":"e8mXGCAamvwYcdf2","ciphertext":"dLKWmjFyL-G1uqF588Ya0g10QModI-q0f` +
+		`7vw_v3_jhzskuNqX7Yx4aSD7x2jhUdat82kHS4qLYw8BuUGvGimI_sCQ9m3On` +
+		`QTHSjZnpg7VWRqAULBC3MSTtBa1DtZjZL4C0Y=","tag":"W4yJzyuGYzuZtZMRv2bDUg=="}`
 )
 
 type failingReadCloser struct{}
@@ -210,7 +218,7 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 
 	client := Client{edvServerURL: "http://" + srvAddr}
 
-	location, err := client.CreateDocument(testVaultID, &operation.StructuredDocument{})
+	location, err := client.CreateDocument(testVaultID, &operation.EncryptedDocument{})
 	require.Empty(t, location)
 
 	// For some reason on the Azure CI "E0F" is returned and locally "connection refused" is returned.
@@ -239,13 +247,13 @@ func TestClient_ReadDocument(t *testing.T) {
 	docRaw, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.NoError(t, err)
 
-	document := operation.StructuredDocument{}
+	document := operation.EncryptedDocument{}
 	err = json.Unmarshal(docRaw, &document)
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
-	require.Equal(t, "2020-01-10", document.Meta["created"])
-	require.Equal(t, "Hello EDV!", document.Content["message"])
+	require.Equal(t, 0, document.Sequence)
+	require.Equal(t, testEncryptedDocJWE, string(document.JWE))
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -270,13 +278,13 @@ func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
 	docRaw, err := client.ReadDocument(testVaultIDWithSlashes, testDocumentID)
 	require.NoError(t, err)
 
-	document := operation.StructuredDocument{}
+	document := operation.EncryptedDocument{}
 	err = json.Unmarshal(docRaw, &document)
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
-	require.Equal(t, "2020-01-10", document.Meta["created"])
-	require.Equal(t, "Hello EDV!", document.Content["message"])
+	require.Equal(t, 0, document.Sequence)
+	require.Equal(t, testEncryptedDocJWE, string(document.JWE))
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -388,18 +396,6 @@ func TestSendPostJSON_Unmarshallable(t *testing.T) {
 }
 
 func storeTestDocument(client Client, includeSlashInVaultID bool) (string, error) {
-	meta := make(map[string]interface{})
-	meta["created"] = "2020-01-10"
-
-	content := make(map[string]interface{})
-	content["message"] = "Hello EDV!"
-
-	testDocument := operation.StructuredDocument{
-		ID:      testDocumentID,
-		Meta:    meta,
-		Content: content,
-	}
-
 	var vaultID string
 
 	if includeSlashInVaultID {
@@ -408,7 +404,13 @@ func storeTestDocument(client Client, includeSlashInVaultID bool) (string, error
 		vaultID = testVaultID
 	}
 
-	return client.CreateDocument(vaultID, &testDocument)
+	testEncryptedDoc := operation.EncryptedDocument{
+		ID:       testDocumentID,
+		Sequence: 0,
+		JWE:      []byte(testEncryptedDocJWE),
+	}
+
+	return client.CreateDocument(vaultID, &testEncryptedDoc)
 }
 
 func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) operation.DataVaultConfiguration {
