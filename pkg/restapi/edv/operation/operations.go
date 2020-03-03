@@ -136,7 +136,7 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 }
 
 func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Request) {
-	incomingDocument := StructuredDocument{}
+	incomingDocument := EncryptedDocument{}
 
 	err := json.NewDecoder(req.Body).Decode(&incomingDocument)
 	if err != nil {
@@ -184,7 +184,7 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	documentJSON, err := c.vaultCollection.readDocument(vaultID, docID)
+	documentBytes, err := c.vaultCollection.readDocument(vaultID, docID)
 	if err != nil {
 		if err == errDocumentNotFound || err == errVaultNotFound {
 			rw.WriteHeader(http.StatusNotFound)
@@ -200,7 +200,7 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	_, err = rw.Write(documentJSON)
+	_, err = rw.Write(documentBytes)
 	if err != nil {
 		log.Errorf("Failed to write response for document retrieval success: %s", err.Error())
 	}
@@ -215,7 +215,7 @@ func (vc *VaultCollection) createDataVault(vaultID string) error {
 	return err
 }
 
-func (vc *VaultCollection) createDocument(vaultID string, document StructuredDocument) error {
+func (vc *VaultCollection) createDocument(vaultID string, document EncryptedDocument) error {
 	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
@@ -274,14 +274,14 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 		return nil, err
 	}
 
-	documentJSON, err := store.Get(docID)
+	documentBytes, err := store.Get(docID)
 	if err == storage.ErrValueNotFound {
 		return nil, errDocumentNotFound
 	} else if err != nil {
 		return nil, err
 	}
 
-	return documentJSON, err
+	return documentBytes, err
 }
 
 // registerHandler register handlers to be exposed from this service as REST API endpoints

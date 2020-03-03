@@ -6,7 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 package operation
 
-// DataVaultConfiguration represents a Data Vault Configuration. For use with an EDV.
+import "encoding/json"
+
+// DataVaultConfiguration represents a Data Vault Configuration.
 type DataVaultConfiguration struct {
 	Sequence    int        `json:"sequence"`
 	Controller  string     `json:"controller"`
@@ -23,9 +25,16 @@ type IDTypePair struct {
 	Type string `json:"type"`
 }
 
-// StructuredDocument represents a Structured Document. For use with an EDV.
+// StructuredDocument represents a Structured Document.
 type StructuredDocument struct {
 	ID      string                 `json:"id"`
 	Meta    map[string]interface{} `json:"meta"`
 	Content map[string]interface{} `json:"content"`
+}
+
+// EncryptedDocument represents an Encrypted Document.
+type EncryptedDocument struct {
+	ID       string          `json:"id"`
+	Sequence int             `json:"sequence"`
+	JWE      json.RawMessage `json:"jwe"`
 }
