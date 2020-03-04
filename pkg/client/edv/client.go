@@ -44,7 +44,7 @@ func (c *Client) CreateDocument(vaultID string, document *operation.EncryptedDoc
 
 // ReadDocument sends the EDV server a request to retrieve the specified document.
 // The requested document is returned.
-func (c *Client) ReadDocument(vaultID, docID string) ([]byte, error) {
+func (c *Client) ReadDocument(vaultID, docID string) (*operation.EncryptedDocument, error) {
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
 	resp, err := http.Get(fmt.Sprintf("%s/encrypted-data-vaults/%s/docs/%s", //nolint: bodyclose
@@ -62,9 +62,16 @@ func (c *Client) ReadDocument(vaultID, docID string) ([]byte, error) {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return respBytes, nil
+		document := operation.EncryptedDocument{}
+
+		err = json.Unmarshal(respBytes, &document)
+		if err != nil {
+			return nil, err
+		}
+
+		return &document, nil
 	case http.StatusNotFound:
-		return checkStatusNotFoundErr(respBytes)
+		return nil, getStatusNotFoundErr(respBytes)
 	default:
 		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
 			resp.StatusCode, respBytes)
@@ -120,13 +127,13 @@ func getError(resp *http.Response) error {
 	return fmt.Errorf("the EDV server returned the following error: %s", string(respMsg))
 }
 
-func checkStatusNotFoundErr(respBytes []byte) ([]byte, error) {
+func getStatusNotFoundErr(respBytes []byte) error {
 	respString := string(respBytes)
 
 	serverEndpointReached := respString == operation.VaultNotFoundErrMsg || respString == operation.DocumentNotFoundErrMsg
 	if serverEndpointReached {
-		return nil, fmt.Errorf(fmt.Sprintf("failed to retrieve document: %s", respBytes))
+		return fmt.Errorf(fmt.Sprintf("failed to retrieve document: %s", respBytes))
 	}
 
-	return nil, fmt.Errorf("unable to reach the EDV server Read Credential endpoint")
+	return fmt.Errorf("unable to reach the EDV server Read Credential endpoint")
 }

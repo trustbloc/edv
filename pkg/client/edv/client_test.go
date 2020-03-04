@@ -9,7 +9,6 @@ package edv
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
+	"github.com/trustbloc/edv/pkg/internal/common/support"
 	"github.com/trustbloc/edv/pkg/restapi/edv"
 	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
 )
@@ -163,7 +163,7 @@ func TestClient_CreateDocument(t *testing.T) {
 	_, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	location, err := storeTestDocument(client, false)
+	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault/docs/"+testDocumentID, location)
 
@@ -185,7 +185,7 @@ func TestClient_CreateDocument_VaultIDContainsSlash(t *testing.T) {
 	_, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	location, err := storeTestDocument(client, true)
+	location, err := client.CreateDocument(testVaultIDWithSlashes, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 	require.Equal(t,
 		srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault/docs/"+testDocumentID,
@@ -204,7 +204,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	client := Client{edvServerURL: "http://" + srvAddr}
 
-	location, err := storeTestDocument(client, false)
+	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.Empty(t, location)
 	require.Equal(t, fmt.Sprintf("the EDV server returned the following error: %s", operation.VaultNotFoundErrMsg),
 		err.Error())
@@ -241,19 +241,36 @@ func TestClient_ReadDocument(t *testing.T) {
 	_, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	_, err = storeTestDocument(client, false)
+	_, err = client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 
-	docRaw, err := client.ReadDocument(testVaultID, testDocumentID)
-	require.NoError(t, err)
-
-	document := operation.EncryptedDocument{}
-	err = json.Unmarshal(docRaw, &document)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
 	require.Equal(t, 0, document.Sequence)
 	require.Equal(t, testEncryptedDocJWE, string(document.JWE))
+
+	err = srv.Shutdown(context.Background())
+	require.NoError(t, err)
+}
+
+func TestClient_ReadDocument_UnmarshalFail(t *testing.T) {
+	srvAddr := randomURL()
+
+	mockReadDocumentHTTPHandler :=
+		support.NewHTTPHandler("/encrypted-data-vaults/{vaultIDPathVariable}/docs/{docID}", http.MethodGet,
+			mockReadDocumentHandler)
+
+	srv := startMockEDVServer(srvAddr, mockReadDocumentHTTPHandler)
+
+	waitForServerToStart(t, srvAddr)
+
+	client := Client{edvServerURL: "http://" + srvAddr}
+
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	require.Nil(t, document)
+	require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -272,14 +289,10 @@ func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
 	_, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	_, err = storeTestDocument(client, true)
+	_, err = client.CreateDocument(testVaultIDWithSlashes, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 
-	docRaw, err := client.ReadDocument(testVaultIDWithSlashes, testDocumentID)
-	require.NoError(t, err)
-
-	document := operation.EncryptedDocument{}
-	err = json.Unmarshal(docRaw, &document)
+	document, err := client.ReadDocument(testVaultIDWithSlashes, testDocumentID)
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
@@ -303,11 +316,11 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 	_, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	_, err = storeTestDocument(client, false)
+	_, err = client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 
-	docRaw, err := client.ReadDocument("wrongvault", testDocumentID)
-	require.Nil(t, docRaw)
+	document, err := client.ReadDocument("wrongvault", testDocumentID)
+	require.Nil(t, document)
 	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s", operation.VaultNotFoundErrMsg), err.Error())
 
 	err = srv.Shutdown(context.Background())
@@ -327,8 +340,8 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 	_, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	docRaw, err := client.ReadDocument(testVaultID, testDocumentID)
-	require.Nil(t, docRaw)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	require.Nil(t, document)
 	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s", operation.DocumentNotFoundErrMsg), err.Error())
 
 	err = srv.Shutdown(context.Background())
@@ -340,8 +353,8 @@ func TestClient_ReadDocument_ServerUnreachable(t *testing.T) {
 
 	client := Client{edvServerURL: "http://" + srvAddr}
 
-	resp, err := client.ReadDocument(testVaultID, testDocumentID)
-	require.Nil(t, resp)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	require.Nil(t, document)
 	require.Contains(t, err.Error(), "connection refused")
 }
 
@@ -350,14 +363,14 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 
 	// This mock server will be reachable,
 	// but won't have the Read Credential endpoint that the client is going to try to hit.
-	srv := startMockServer(srvAddr)
+	srv := startMockEDVServer(srvAddr, nil)
 
 	waitForServerToStart(t, srvAddr)
 
 	client := Client{edvServerURL: "http://" + srvAddr}
 
-	docRaw, err := client.ReadDocument(testVaultID, testDocumentID)
-	require.Nil(t, docRaw)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	require.Nil(t, document)
 	require.Equal(t, "unable to reach the EDV server Read Credential endpoint", err.Error())
 
 	err = srv.Shutdown(context.Background())
@@ -395,24 +408,6 @@ func TestSendPostJSON_Unmarshallable(t *testing.T) {
 	require.Equal(t, "failed to marshal object: json: unsupported type: chan int", err.Error())
 }
 
-func storeTestDocument(client Client, includeSlashInVaultID bool) (string, error) {
-	var vaultID string
-
-	if includeSlashInVaultID {
-		vaultID = testVaultIDWithSlashes
-	} else {
-		vaultID = testVaultID
-	}
-
-	testEncryptedDoc := operation.EncryptedDocument{
-		ID:       testDocumentID,
-		Sequence: 0,
-		JWE:      []byte(testEncryptedDocJWE),
-	}
-
-	return client.CreateDocument(vaultID, &testEncryptedDoc)
-}
-
 func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) operation.DataVaultConfiguration {
 	testDataVaultConfiguration := operation.DataVaultConfiguration{
 		Sequence:   0,
@@ -430,6 +425,14 @@ func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) operation.Da
 	}
 
 	return testDataVaultConfiguration
+}
+
+func getTestValidEncryptedDocument() *operation.EncryptedDocument {
+	return &operation.EncryptedDocument{
+		ID:       testDocumentID,
+		Sequence: 0,
+		JWE:      []byte(testEncryptedDocJWE),
+	}
 }
 
 // Returns a reference to the server so the caller can stop it.
@@ -457,8 +460,12 @@ func startEDVServer(t *testing.T, srvAddr string) *http.Server {
 }
 
 // Returns a reference to the server so the caller can stop it.
-func startMockServer(srvAddr string) *http.Server {
+func startMockEDVServer(srvAddr string, httpHandler operation.Handler) *http.Server {
 	router := mux.NewRouter()
+
+	if httpHandler != nil {
+		router.HandleFunc(httpHandler.Path(), httpHandler.Handle()).Methods(httpHandler.Method())
+	}
 
 	srv := http.Server{Addr: srvAddr, Handler: router}
 	go func(srv *http.Server) {
@@ -469,6 +476,14 @@ func startMockServer(srvAddr string) *http.Server {
 	}(&srv)
 
 	return &srv
+}
+
+// Just writes some invalid JSON to the response.
+func mockReadDocumentHandler(rw http.ResponseWriter, req *http.Request) {
+	_, err := rw.Write([]byte("this is invalid JSON and will cause json.Unmarshal to fail"))
+	if err != nil {
+		log.Fatal("failed to write in mock read document handler")
+	}
 }
 
 func waitForServerToStart(t *testing.T, srvAddr string) {
