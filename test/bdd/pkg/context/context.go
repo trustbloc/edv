@@ -18,9 +18,9 @@ type BDDContext struct {
 	EDVHostURL string
 	// TODO: Replace with JWE document instead of legacy/authcrypt: https://github.com/trustbloc/edv/issues/41
 	Packer                     *authcrypt.Packer
-	StructuredDocToBeEncrypted operation.StructuredDocument
-	EncryptedDocToStore        operation.EncryptedDocument
-	ReceivedEncryptedDoc       operation.EncryptedDocument
+	StructuredDocToBeEncrypted *operation.StructuredDocument
+	EncryptedDocToStore        *operation.EncryptedDocument
+	ReceivedEncryptedDoc       *operation.EncryptedDocument
 }
 
 // NewBDDContext create new BDDContext
