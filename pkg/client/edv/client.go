@@ -8,6 +8,7 @@ package edv
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,11 +24,28 @@ import (
 // Client is used to interact with an EDV server.
 type Client struct {
 	edvServerURL string
+	httpClient   *http.Client
+}
+
+// Option configures the edv client
+type Option func(opts *Client)
+
+// WithTLSConfig option is for definition of secured HTTP transport using a tls.Config instance
+func WithTLSConfig(tlsConfig *tls.Config) Option {
+	return func(opts *Client) {
+		opts.httpClient.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
 }
 
 // New returns a new instance of an EDV client.
-func New(edvServerURL string) *Client {
-	return &Client{edvServerURL: edvServerURL}
+func New(edvServerURL string, opts ...Option) *Client {
+	c := &Client{edvServerURL: edvServerURL, httpClient: &http.Client{}}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // CreateDataVault sends the EDV server a request to create a new data vault.
@@ -47,7 +65,7 @@ func (c *Client) CreateDocument(vaultID string, document *operation.EncryptedDoc
 func (c *Client) ReadDocument(vaultID, docID string) (*operation.EncryptedDocument, error) {
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
-	resp, err := http.Get(fmt.Sprintf("%s/encrypted-data-vaults/%s/docs/%s", //nolint: bodyclose
+	resp, err := c.httpClient.Get(fmt.Sprintf("%s/encrypted-data-vaults/%s/docs/%s", //nolint: bodyclose
 		c.edvServerURL, url.PathEscape(vaultID), url.PathEscape(docID)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send GET message: %w", err)
@@ -85,7 +103,7 @@ func (c *Client) sendCreateRequest(objectToMarshal interface{},
 		return "", fmt.Errorf("failed to marshal object: %w", err)
 	}
 
-	resp, err := http.Post(c.edvServerURL+endpoint, "application/json", bytes.NewBuffer(jsonToSend))
+	resp, err := c.httpClient.Post(c.edvServerURL+endpoint, "application/json", bytes.NewBuffer(jsonToSend))
 	if err != nil {
 		return "", fmt.Errorf("failed to send POST message: %w", err)
 	}
