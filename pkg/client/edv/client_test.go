@@ -9,6 +9,7 @@ package edv
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -51,9 +52,11 @@ func (f failingReadCloser) Close() error {
 }
 
 func TestClient_New(t *testing.T) {
-	client := New("")
+	client := New("", WithTLSConfig(&tls.Config{ServerName: "name"}))
 
 	require.NotNil(t, client)
+
+	require.NotNil(t, client.httpClient.Transport)
 }
 
 func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
@@ -63,7 +66,7 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	location, err := client.CreateDataVault(&validConfig)
@@ -81,7 +84,7 @@ func TestClient_CreateDataVault_VaultIDContainsSlash(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(true)
 	location, err := client.CreateDataVault(&validConfig)
@@ -99,7 +102,7 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	invalidConfig := operation.DataVaultConfiguration{}
 	location, err := client.CreateDataVault(&invalidConfig)
@@ -118,7 +121,7 @@ func TestClient_CreateDataVault_DuplicateVault(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -135,7 +138,7 @@ func TestClient_CreateDataVault_DuplicateVault(t *testing.T) {
 func TestClient_CreateDataVault_ServerUnreachable(t *testing.T) {
 	srvAddr := randomURL()
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	location, err := client.CreateDataVault(&validConfig)
@@ -156,7 +159,7 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 
@@ -178,7 +181,7 @@ func TestClient_CreateDocument_VaultIDContainsSlash(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(true)
 
@@ -202,7 +205,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.Empty(t, location)
@@ -216,7 +219,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 	srvAddr := randomURL()
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	location, err := client.CreateDocument(testVaultID, &operation.EncryptedDocument{})
 	require.Empty(t, location)
@@ -235,7 +238,7 @@ func TestClient_ReadDocument(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -266,7 +269,7 @@ func TestClient_ReadDocument_UnmarshalFail(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
@@ -283,7 +286,7 @@ func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(true)
 	_, err := client.CreateDataVault(&validConfig)
@@ -310,7 +313,7 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -334,7 +337,7 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -351,7 +354,7 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 func TestClient_ReadDocument_ServerUnreachable(t *testing.T) {
 	srvAddr := randomURL()
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
@@ -367,7 +370,7 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := Client{edvServerURL: "http://" + srvAddr}
+	client := New("http://" + srvAddr)
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
