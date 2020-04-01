@@ -11,32 +11,38 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 )
 
 func TestController_New(t *testing.T) {
-	controller, err := New(nil, "")
+	controller, err := New(memedvprovider.NewProvider(), "")
 	require.NoError(t, err)
 	require.NotNil(t, controller)
 }
 
 func TestController_GetOperations(t *testing.T) {
-	controller, err := New(nil, "")
+	controller, err := New(memedvprovider.NewProvider(), "")
 	require.NoError(t, err)
 	require.NotNil(t, controller)
 
 	ops := controller.GetOperations()
 
-	require.Equal(t, 3, len(ops))
+	require.Equal(t, 4, len(ops))
 
-	require.Equal(t, "/data-vaults", ops[0].Path())
+	require.Equal(t, "/encrypted-data-vaults", ops[0].Path())
 	require.Equal(t, http.MethodPost, ops[0].Method())
 	require.NotNil(t, ops[0].Handle())
 
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/docs", ops[1].Path())
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/queries", ops[1].Path())
 	require.Equal(t, http.MethodPost, ops[1].Method())
 	require.NotNil(t, ops[1].Handle())
 
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/docs/{docID}", ops[2].Path())
-	require.Equal(t, http.MethodGet, ops[2].Method())
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/docs", ops[2].Path())
+	require.Equal(t, http.MethodPost, ops[2].Method())
 	require.NotNil(t, ops[2].Handle())
+
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/docs/{docID}", ops[3].Path())
+	require.Equal(t, http.MethodGet, ops[3].Method())
+	require.NotNil(t, ops[3].Handle())
 }

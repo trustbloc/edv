@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer/legacy/authcrypt"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/legacykms"
@@ -17,7 +19,6 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/storage/mem"
 
 	"github.com/trustbloc/edv/pkg/client/edv"
-	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
 
 	"github.com/DATA-DOG/godog"
@@ -78,7 +79,7 @@ func (p provider) StorageProvider() storage.Provider {
 func (e *Steps) createDataVault(vaultID, expectedVaultLocation string) error {
 	client := edv.New(e.bddContext.EDVHostURL)
 
-	config := operation.DataVaultConfiguration{ReferenceID: vaultID}
+	config := models.DataVaultConfiguration{ReferenceID: vaultID}
 
 	vaultLocation, err := client.CreateDataVault(&config)
 	if err != nil {
@@ -99,7 +100,7 @@ func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
 	content := make(map[string]interface{})
 	content["message"] = "In Bloc we trust"
 
-	e.bddContext.StructuredDocToBeEncrypted = &operation.StructuredDocument{
+	e.bddContext.StructuredDocToBeEncrypted = &models.StructuredDocument{
 		ID:      docID,
 		Meta:    meta,
 		Content: content,
@@ -146,7 +147,7 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 		return err
 	}
 
-	e.bddContext.EncryptedDocToStore = &operation.EncryptedDocument{
+	e.bddContext.EncryptedDocToStore = &models.EncryptedDocument{
 		ID:       e.bddContext.StructuredDocToBeEncrypted.ID,
 		Sequence: 0,
 		JWE:      encryptedStructuredDoc,
@@ -196,7 +197,7 @@ func (e *Steps) decryptDocument() error {
 		return err
 	}
 
-	decryptedDoc := operation.StructuredDocument{}
+	decryptedDoc := models.StructuredDocument{}
 
 	err = json.Unmarshal(decryptedEnvelope.Message, &decryptedDoc)
 	if err != nil {
@@ -211,7 +212,7 @@ func (e *Steps) decryptDocument() error {
 	return nil
 }
 
-func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *operation.EncryptedDocument) error {
+func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *models.EncryptedDocument) error {
 	if retrievedDocument.ID != expectedDocument.ID {
 		return unexpectedValueError(expectedDocument.ID, retrievedDocument.ID)
 	}
@@ -228,7 +229,7 @@ func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *operation.
 	return nil
 }
 
-func verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument *operation.EncryptedDocument) error {
+func verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument *models.EncryptedDocument) error {
 	// CouchDB likes to switch around the order of the fields in the JSON.
 	// This means that we can't do a direct string comparison of the JWE (json.rawmessage) fields
 	// in the EncryptedDocument structs. Instead we need to check each field manually.
@@ -316,7 +317,7 @@ func verifyFieldsAreEqual(retrievedProtectedFieldValue, expectedProtectedFieldVa
 	return nil
 }
 
-func verifyStructuredDocsAreEqual(decryptedDoc, expectedDoc *operation.StructuredDocument) error {
+func verifyStructuredDocsAreEqual(decryptedDoc, expectedDoc *models.StructuredDocument) error {
 	if decryptedDoc.ID != expectedDoc.ID {
 		return unexpectedValueError(expectedDoc.ID, decryptedDoc.ID)
 	}
@@ -342,7 +343,7 @@ func verifyStructuredDocsAreEqual(decryptedDoc, expectedDoc *operation.Structure
 	return nil
 }
 
-func getContentFieldValues(expectedDoc, decryptedDoc *operation.StructuredDocument) (string, string, error) {
+func getContentFieldValues(expectedDoc, decryptedDoc *models.StructuredDocument) (string, string, error) {
 	expectedMessageFieldInContent, found := expectedDoc.Content[contentMessageFieldName]
 	if !found {
 		return "", "", fieldNotFoundError(contentMessageFieldName, documentTypeExpectedStructuredDoc)
@@ -366,7 +367,7 @@ func getContentFieldValues(expectedDoc, decryptedDoc *operation.StructuredDocume
 	return expectedMessageFieldInContentString, decryptedMessageFieldInContentString, nil
 }
 
-func getMetaFieldValues(expectedDoc, decryptedDoc *operation.StructuredDocument) (string, string, error) {
+func getMetaFieldValues(expectedDoc, decryptedDoc *models.StructuredDocument) (string, string, error) {
 	expectedCreatedFieldInMeta, found := expectedDoc.Meta[metaCreatedFieldName]
 	if !found {
 		return "", "", fieldNotFoundError(metaCreatedFieldName, documentTypeExpectedStructuredDoc)

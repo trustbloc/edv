@@ -16,9 +16,10 @@ import (
 	"net/http"
 	"net/url"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
+	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 
-	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
+	log "github.com/sirupsen/logrus"
 )
 
 // Client is used to interact with an EDV server.
@@ -50,19 +51,19 @@ func New(edvServerURL string, opts ...Option) *Client {
 
 // CreateDataVault sends the EDV server a request to create a new data vault.
 // The location of the newly created data vault is returned.
-func (c *Client) CreateDataVault(config *operation.DataVaultConfiguration) (string, error) {
-	return c.sendCreateRequest(config, "/data-vaults", "a duplicate data vault exists")
+func (c *Client) CreateDataVault(config *models.DataVaultConfiguration) (string, error) {
+	return c.sendCreateRequest(config, "/encrypted-data-vaults", "a duplicate data vault exists")
 }
 
 // CreateDocument sends the EDV server a request to store the specified document.
 // The location of the newly created document is returned.
-func (c *Client) CreateDocument(vaultID string, document *operation.EncryptedDocument) (string, error) {
+func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocument) (string, error) {
 	return c.sendCreateRequest(document, fmt.Sprintf("/encrypted-data-vaults/%s/docs", url.PathEscape(vaultID)), "")
 }
 
 // ReadDocument sends the EDV server a request to retrieve the specified document.
 // The requested document is returned.
-func (c *Client) ReadDocument(vaultID, docID string) (*operation.EncryptedDocument, error) {
+func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument, error) {
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
 	resp, err := c.httpClient.Get(fmt.Sprintf("%s/encrypted-data-vaults/%s/docs/%s", //nolint: bodyclose
@@ -80,7 +81,7 @@ func (c *Client) ReadDocument(vaultID, docID string) (*operation.EncryptedDocume
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		document := operation.EncryptedDocument{}
+		document := models.EncryptedDocument{}
 
 		err = json.Unmarshal(respBytes, &document)
 		if err != nil {
@@ -148,7 +149,8 @@ func getError(resp *http.Response) error {
 func getStatusNotFoundErr(respBytes []byte) error {
 	respString := string(respBytes)
 
-	serverEndpointReached := respString == operation.VaultNotFoundErrMsg || respString == operation.DocumentNotFoundErrMsg
+	serverEndpointReached :=
+		respString == edverrors.ErrVaultNotFound.Error() || respString == edverrors.ErrDocumentNotFound.Error()
 	if serverEndpointReached {
 		return fmt.Errorf(fmt.Sprintf("failed to retrieve document: %s", respBytes))
 	}
