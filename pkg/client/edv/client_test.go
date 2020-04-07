@@ -20,10 +20,12 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
+	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
 	"github.com/trustbloc/edv/pkg/restapi/edv"
+	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
+	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
 )
 
@@ -104,7 +106,7 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	invalidConfig := operation.DataVaultConfiguration{}
+	invalidConfig := models.DataVaultConfiguration{}
 	location, err := client.CreateDataVault(&invalidConfig)
 	require.Empty(t, location)
 	require.NotNil(t, err)
@@ -209,8 +211,8 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.Empty(t, location)
-	require.Equal(t, fmt.Sprintf("the EDV server returned the following error: %s", operation.VaultNotFoundErrMsg),
-		err.Error())
+	require.Equal(t, fmt.Sprintf("the EDV server returned the following error: %s",
+		edverrors.ErrVaultNotFound.Error()), err.Error())
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -221,7 +223,7 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	location, err := client.CreateDocument(testVaultID, &operation.EncryptedDocument{})
+	location, err := client.CreateDocument(testVaultID, &models.EncryptedDocument{})
 	require.Empty(t, location)
 
 	// For some reason on the Azure CI "E0F" is returned and locally "connection refused" is returned.
@@ -324,7 +326,8 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	document, err := client.ReadDocument("wrongvault", testDocumentID)
 	require.Nil(t, document)
-	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s", operation.VaultNotFoundErrMsg), err.Error())
+	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s",
+		edverrors.ErrVaultNotFound.Error()), err.Error())
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -345,7 +348,7 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
-	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s", operation.DocumentNotFoundErrMsg), err.Error())
+	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s", edverrors.ErrDocumentNotFound.Error()), err.Error())
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -411,14 +414,14 @@ func TestSendPostJSON_Unmarshallable(t *testing.T) {
 	require.Equal(t, "failed to marshal object: json: unsupported type: chan int", err.Error())
 }
 
-func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) operation.DataVaultConfiguration {
-	testDataVaultConfiguration := operation.DataVaultConfiguration{
+func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) models.DataVaultConfiguration {
+	testDataVaultConfiguration := models.DataVaultConfiguration{
 		Sequence:   0,
 		Controller: "",
 		Invoker:    "",
 		Delegator:  "",
-		KEK:        operation.IDTypePair{},
-		HMAC:       operation.IDTypePair{},
+		KEK:        models.IDTypePair{},
+		HMAC:       models.IDTypePair{},
 	}
 
 	if includeSlashInVaultID {
@@ -430,8 +433,8 @@ func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) operation.Da
 	return testDataVaultConfiguration
 }
 
-func getTestValidEncryptedDocument() *operation.EncryptedDocument {
-	return &operation.EncryptedDocument{
+func getTestValidEncryptedDocument() *models.EncryptedDocument {
+	return &models.EncryptedDocument{
 		ID:       testDocumentID,
 		Sequence: 0,
 		JWE:      []byte(testEncryptedDocJWE),
@@ -440,7 +443,7 @@ func getTestValidEncryptedDocument() *operation.EncryptedDocument {
 
 // Returns a reference to the server so the caller can stop it.
 func startEDVServer(t *testing.T, srvAddr string) *http.Server {
-	edvService, err := edv.New(memstore.NewProvider(), "")
+	edvService, err := edv.New(memedvprovider.NewProvider(), "")
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()

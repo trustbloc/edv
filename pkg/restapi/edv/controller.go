@@ -7,13 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package edv
 
 import (
-	"github.com/trustbloc/edge-core/pkg/storage"
-
+	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
 )
 
 // New returns new controller instance.
-func New(provider storage.Provider, dbPrefix string) (*Controller, error) {
+func New(provider edvprovider.EDVProvider, dbPrefix string) (*Controller, error) {
 	var allHandlers []operation.Handler
 
 	edvService := operation.New(provider, dbPrefix)

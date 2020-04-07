@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	couchdbstore "github.com/trustbloc/edge-core/pkg/storage/couchdb"
-	"github.com/trustbloc/edge-core/pkg/storage/memstore"
+	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
+	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -62,6 +62,13 @@ func TestStartEDVWithBlankHost(t *testing.T) {
 	require.Equal(t, errMissingHostURL, err)
 }
 
+func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
+	parameters := &edvParameters{hostURL: "NotBlank", databaseType: "NotAValidType"}
+
+	err := startEDV(parameters)
+	require.Equal(t, errInvalidDatabaseType, err)
+}
+
 func TestStartCmdValidArgs(t *testing.T) {
 	startCmd := GetStartCmd(&mockServer{})
 
@@ -90,35 +97,35 @@ func TestCreateProvider(t *testing.T) {
 	t.Run("Successfully create memory storage provider", func(t *testing.T) {
 		parameters := edvParameters{databaseType: databaseTypeMemOption}
 
-		provider, err := createProvider(&parameters)
+		provider, err := createEDVProvider(&parameters)
 		require.NoError(t, err)
-		require.IsType(t, &memstore.Provider{}, provider)
+		require.IsType(t, &memedvprovider.MemEDVProvider{}, provider)
 	})
 	t.Run("Successfully create CouchDB storage provider", func(t *testing.T) {
 		parameters := edvParameters{databaseType: databaseTypeCouchDBOption, databaseURL: "something"}
 
-		provider, err := createProvider(&parameters)
+		provider, err := createEDVProvider(&parameters)
 		require.NoError(t, err)
-		require.IsType(t, &couchdbstore.Provider{}, provider)
+		require.IsType(t, &couchdbedvprovider.CouchDBEDVProvider{}, provider)
 	})
 	t.Run("Error - invalid database type", func(t *testing.T) {
 		parameters := edvParameters{databaseType: "NotARealDatabaseType"}
 
-		provider, err := createProvider(&parameters)
+		provider, err := createEDVProvider(&parameters)
 		require.Nil(t, provider)
 		require.Equal(t, errInvalidDatabaseType, err)
 	})
 	t.Run("Error - CouchDB url is blank", func(t *testing.T) {
 		parameters := edvParameters{databaseType: databaseTypeCouchDBOption, databaseURL: ""}
 
-		provider, err := createProvider(&parameters)
+		provider, err := createEDVProvider(&parameters)
 		require.Nil(t, provider)
-		require.Equal(t, errMissingDatabaseURL, err)
+		require.Equal(t, couchdbedvprovider.ErrMissingDatabaseURL, err)
 	})
 	t.Run("Error - CouchDB url is invalid", func(t *testing.T) {
 		parameters := edvParameters{databaseType: databaseTypeCouchDBOption, databaseURL: "%"}
 
-		provider, err := createProvider(&parameters)
+		provider, err := createEDVProvider(&parameters)
 		require.Nil(t, provider)
 		require.Equal(t, `parse http://%: invalid URL escape "%"`, err.Error())
 	})

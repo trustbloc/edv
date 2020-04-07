@@ -14,10 +14,10 @@ import (
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/trustbloc/edge-core/pkg/storage"
-	couchdbstore "github.com/trustbloc/edge-core/pkg/storage/couchdb"
-	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
+	"github.com/trustbloc/edv/pkg/edvprovider"
+	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
+	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/edv"
 	cmdutils "github.com/trustbloc/edv/pkg/utils/cmd"
 )
@@ -57,7 +57,6 @@ const (
 var errMissingHostURL = fmt.Errorf("host URL not provided")
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
 	" run start --help to see the available options")
-var errMissingDatabaseURL = fmt.Errorf("couchDB database URL not set")
 
 type edvParameters struct {
 	srv            server
@@ -138,7 +137,7 @@ func startEDV(parameters *edvParameters) error {
 		return errMissingHostURL
 	}
 
-	provider, err := createProvider(parameters)
+	provider, err := createEDVProvider(parameters)
 	if err != nil {
 		return err
 	}
@@ -162,26 +161,24 @@ func startEDV(parameters *edvParameters) error {
 	return err
 }
 
-func createProvider(parameters *edvParameters) (storage.Provider, error) {
-	var provider storage.Provider
+func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, error) {
+	var edvProv edvprovider.EDVProvider
 
 	switch {
 	case strings.EqualFold(parameters.databaseType, databaseTypeMemOption):
-		provider = memstore.NewProvider()
-	case strings.EqualFold(parameters.databaseType, databaseTypeCouchDBOption):
-		couchDBProvider, err := couchdbstore.NewProvider(parameters.databaseURL)
-		if err != nil {
-			if err.Error() == "hostURL for new CouchDB provider can't be blank" {
-				return nil, errMissingDatabaseURL
-			}
+		edvProv = memedvprovider.NewProvider()
 
+		log.Warn("encrypted indexing and querying is disabled since they are not supported by memstore")
+	case strings.EqualFold(parameters.databaseType, databaseTypeCouchDBOption):
+		couchDBEDVProv, err := couchdbedvprovider.NewProvider(parameters.databaseURL)
+		if err != nil {
 			return nil, err
 		}
 
-		provider = couchDBProvider
+		edvProv = couchDBEDVProv
 	default:
-		return nil, errInvalidDatabaseType
+		return edvProv, errInvalidDatabaseType
 	}
 
-	return provider, nil
+	return edvProv, nil
 }

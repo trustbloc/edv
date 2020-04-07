@@ -17,43 +17,22 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
+	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
+	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
+	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 )
 
 const (
-	vaultIDPathVariable = "vaultID"
-	docIDPathVariable   = "docID"
+	edvCommonEndpointPathRoot = "/encrypted-data-vaults"
+	vaultIDPathVariable       = "vaultID"
+	docIDPathVariable         = "docID"
 
-	createVaultEndpoint    = "/data-vaults"
-	createDocumentEndpoint = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs"
-	readDocumentEndpoint   = "/encrypted-data-vaults/{" + vaultIDPathVariable + "}/docs/{" + docIDPathVariable + "}"
-
-	// VaultNotFoundErrMsg is the message returned by the EDV server when a vault can't be found.
-	VaultNotFoundErrMsg = "specified vault does not exist"
-	// DocumentNotFoundErrMsg is the message returned by the EDV server when a document can't be found
-	// within the given vault.
-	DocumentNotFoundErrMsg = "specified document does not exist"
-	// DuplicateVaultErrMsg is the message returned by the EDV server when an attempt is made to create a vault with
-	// the same ID as an already existing vault.
-	DuplicateVaultErrMsg = "vault already exists"
-	// DuplicateDocumentErrMsg is the message returned by the EDV server when an attempt is made to create a document with
-	// the same ID as an already existing document inside the vault.
-	DuplicateDocumentErrMsg = "a document with the given ID already exists"
-	// NotBase58EncodedErrMsg is the message returned by the EDV server when an attempt is made
-	// to create a document with an ID that is not a base58-encoded value (which is required by the EDV spec).
-	NotBase58EncodedErrMsg = "document ID must be a base58-encoded value"
-	// Not128BitValueErrMsg is the message returned by the EDV server when an attempt is made
-	// to create a document with an ID that is base58-encoded, but the original value was not 128 bits long
-	// (which is required by the EDV spec).
-	Not128BitValueErrMsg = "document ID is base58-encoded, but original value before encoding was not 128 bits long"
+	createVaultEndpoint    = edvCommonEndpointPathRoot
+	queryVaultEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/queries"
+	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/docs"
+	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/docs/{" + docIDPathVariable + "}"
 )
-
-var errVaultNotFound = fmt.Errorf("%s", VaultNotFoundErrMsg)
-var errDocumentNotFound = fmt.Errorf("%s", DocumentNotFoundErrMsg)
-var errDuplicateVault = fmt.Errorf("%s", DuplicateVaultErrMsg)
-var errDuplicateDocument = fmt.Errorf("%s", DuplicateDocumentErrMsg)
-var errNotBase58Encoded = fmt.Errorf("%s", NotBase58EncodedErrMsg)
-var errNot128BitValue = fmt.Errorf("%s", Not128BitValueErrMsg)
 
 // Handler http handler for each controller API endpoint
 type Handler interface {
@@ -64,7 +43,7 @@ type Handler interface {
 
 // New returns a new EDV operations instance.
 // If dbPrefix is blank, then no prefixing will be done to the vault IDs.
-func New(provider storage.Provider, dbPrefix string) *Operation {
+func New(provider edvprovider.EDVProvider, dbPrefix string) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: provider,
@@ -83,12 +62,12 @@ type Operation struct {
 
 // VaultCollection represents EDV storage.
 type VaultCollection struct {
-	provider storage.Provider
+	provider edvprovider.EDVProvider
 	dbPrefix string
 }
 
 func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Request) {
-	config := DataVaultConfiguration{}
+	config := models.DataVaultConfiguration{}
 
 	err := json.NewDecoder(req.Body).Decode(&config)
 
@@ -115,7 +94,7 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 
 	err = c.vaultCollection.createDataVault(config.ReferenceID)
 	if err != nil {
-		if err == errDuplicateVault {
+		if err == edverrors.ErrDuplicateVault {
 			rw.WriteHeader(http.StatusConflict)
 		} else {
 			rw.WriteHeader(http.StatusBadRequest)
@@ -135,8 +114,45 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 	rw.WriteHeader(http.StatusCreated)
 }
 
+func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request) {
+	incomingQuery := models.Query{}
+
+	err := json.NewDecoder(req.Body).Decode(&incomingQuery)
+	if err != nil {
+		rw.WriteHeader(http.StatusBadRequest)
+
+		_, err = rw.Write([]byte(err.Error()))
+		if err != nil {
+			log.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
+		}
+
+		return
+	}
+
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	matchingDocumentIDs, err := c.vaultCollection.queryVault(vaultID, &incomingQuery)
+	if err != nil {
+		rw.WriteHeader(http.StatusBadRequest)
+
+		_, err = rw.Write([]byte(err.Error()))
+		if err != nil {
+			log.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
+		}
+
+		return
+	}
+
+	fullDocumentURLs := convertToFullDocumentURLs(matchingDocumentIDs, vaultID, req)
+
+	sendQueryResponse(rw, fullDocumentURLs)
+}
+
 func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Request) {
-	incomingDocument := EncryptedDocument{}
+	incomingDocument := models.EncryptedDocument{}
 
 	err := json.NewDecoder(req.Body).Decode(&incomingDocument)
 	if err != nil {
@@ -186,7 +202,7 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 
 	documentBytes, err := c.vaultCollection.readDocument(vaultID, docID)
 	if err != nil {
-		if err == errDocumentNotFound || err == errVaultNotFound {
+		if err == edverrors.ErrDocumentNotFound || err == edverrors.ErrVaultNotFound {
 			rw.WriteHeader(http.StatusNotFound)
 		} else {
 			rw.WriteHeader(http.StatusBadRequest)
@@ -209,17 +225,31 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 func (vc *VaultCollection) createDataVault(vaultID string) error {
 	err := vc.provider.CreateStore(vc.getFullStoreName(vaultID))
 	if err == storage.ErrDuplicateStore {
-		return errDuplicateVault
+		return edverrors.ErrDuplicateVault
 	}
 
-	return err
+	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
+	if err != nil {
+		return err
+	}
+
+	err = store.CreateEDVIndex()
+	if err != nil {
+		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }
 
-func (vc *VaultCollection) createDocument(vaultID string, document EncryptedDocument) error {
+func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {
 	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
-			return errVaultNotFound
+			return edverrors.ErrVaultNotFound
 		}
 
 		return err
@@ -234,17 +264,49 @@ func (vc *VaultCollection) createDocument(vaultID string, document EncryptedDocu
 	// If there is, we send back an error.
 	_, err = store.Get(document.ID)
 	if err == nil {
-		return errDuplicateDocument
-	} else if err != storage.ErrValueNotFound {
+		return edverrors.ErrDuplicateDocument
+	}
+
+	if err != storage.ErrValueNotFound {
 		return err
 	}
 
-	documentBytes, err := json.Marshal(document)
+	return store.Put(document)
+}
+
+func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
+	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
 	if err != nil {
-		return err
+		if err == storage.ErrStoreNotFound {
+			return nil, edverrors.ErrVaultNotFound
+		}
+
+		return nil, err
 	}
 
-	return store.Put(document.ID, documentBytes)
+	documentBytes, err := store.Get(docID)
+	if err != nil {
+		if err == storage.ErrValueNotFound {
+			return nil, edverrors.ErrDocumentNotFound
+		}
+
+		return nil, err
+	}
+
+	return documentBytes, err
+}
+
+func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]string, error) {
+	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
+	if err != nil {
+		if err == storage.ErrStoreNotFound {
+			return nil, edverrors.ErrVaultNotFound
+		}
+
+		return nil, err
+	}
+
+	return store.Query(query)
 }
 
 // This function can't tell if the value before being encoded was precisely 128 bits long.
@@ -254,34 +316,42 @@ func (vc *VaultCollection) createDocument(vaultID string, document EncryptedDocu
 func checkIfBase58Encoded128BitValue(id string) error {
 	decodedBytes := base58.Decode(id)
 	if len(decodedBytes) == 0 {
-		return errNotBase58Encoded
+		return edverrors.ErrNotBase58Encoded
 	}
 
 	if len(decodedBytes) != 16 {
-		return errNot128BitValue
+		return edverrors.ErrNot128BitValue
 	}
 
 	return nil
 }
 
-func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
-	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
-	if err != nil {
-		if err == storage.ErrStoreNotFound {
-			return nil, errVaultNotFound
+func sendQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string) {
+	if matchingDocumentIDs == nil {
+		_, err := rw.Write([]byte("no matching documents found"))
+		if err != nil {
+			log.Errorf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg, err.Error())
 		}
 
-		return nil, err
+		return
 	}
 
-	documentBytes, err := store.Get(docID)
-	if err == storage.ErrValueNotFound {
-		return nil, errDocumentNotFound
-	} else if err != nil {
-		return nil, err
+	matchingDocumentIDsBytes, err := json.Marshal(matchingDocumentIDs)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+
+		_, err = rw.Write([]byte(err.Error()))
+		if err != nil {
+			log.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
+		}
+
+		return
 	}
 
-	return documentBytes, err
+	_, err = rw.Write(matchingDocumentIDsBytes)
+	if err != nil {
+		log.Errorf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg, err.Error())
+	}
 }
 
 // registerHandler register handlers to be exposed from this service as REST API endpoints
@@ -289,6 +359,7 @@ func (c *Operation) registerHandler() {
 	// Add more protocol endpoints here to expose them as controller API endpoints
 	c.handlers = []Handler{
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
+		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 	}
@@ -326,4 +397,15 @@ func (vc *VaultCollection) getFullStoreName(id string) string {
 	}
 
 	return storeName
+}
+
+func convertToFullDocumentURLs(documentIDs []string, vaultID string, req *http.Request) []string {
+	fullDocumentURLs := make([]string, len(documentIDs))
+
+	for i, matchingDocumentID := range documentIDs {
+		fullDocumentURLs[i] = req.Host + "/encrypted-data-vaults/" +
+			url.PathEscape(vaultID) + "/docs/" + url.PathEscape(matchingDocumentID)
+	}
+
+	return fullDocumentURLs
 }
