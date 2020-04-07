@@ -9,9 +9,9 @@ package context
 import (
 	// TODO: Don't reference Didcomm here: https://github.com/trustbloc/edv/issues/41
 
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
-
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer/legacy/authcrypt"
+
+	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 )
 
 // BDDContext is a global context shared between different test suites in bddtests
