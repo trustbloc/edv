@@ -22,10 +22,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type marshalFunc func(interface{}) ([]byte, error)
+
 // Client is used to interact with an EDV server.
 type Client struct {
 	edvServerURL string
 	httpClient   *http.Client
+	marshal      marshalFunc
 }
 
 // Option configures the edv client
@@ -40,7 +43,7 @@ func WithTLSConfig(tlsConfig *tls.Config) Option {
 
 // New returns a new instance of an EDV client.
 func New(edvServerURL string, opts ...Option) *Client {
-	c := &Client{edvServerURL: edvServerURL, httpClient: &http.Client{}}
+	c := &Client{edvServerURL: edvServerURL, httpClient: &http.Client{}, marshal: json.Marshal}
 
 	for _, opt := range opts {
 		opt(c)
@@ -97,9 +100,47 @@ func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument,
 	}
 }
 
+// QueryVault queries the given vault and returns the URLs of all documents that match the given query.
+func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, error) {
+	jsonToSend, err := c.marshal(query)
+	if err != nil {
+		return nil, err
+	}
+
+	// The linter falsely claims that the body is not being closed
+	// https://github.com/golangci/golangci-lint/issues/637
+	resp, err := c.httpClient.Post(fmt.Sprintf("%s/encrypted-data-vaults/%s/queries", //nolint: bodyclose
+		c.edvServerURL, url.PathEscape(vaultID)), "application/json", bytes.NewBuffer(jsonToSend))
+	if err != nil {
+		return nil, fmt.Errorf("failed to send POST message: %w", err)
+	}
+
+	defer closeReadCloser(resp.Body)
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response message while retrieving document: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var docURLs []string
+
+		err = json.Unmarshal(respBytes, &docURLs)
+		if err != nil {
+			return nil, err
+		}
+
+		return docURLs, nil
+	default:
+		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+			resp.StatusCode, respBytes)
+	}
+}
+
 func (c *Client) sendCreateRequest(objectToMarshal interface{},
 	endpoint, statusConflictErrText string) (string, error) {
-	jsonToSend, err := json.Marshal(objectToMarshal)
+	jsonToSend, err := c.marshal(objectToMarshal)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal object: %w", err)
 	}

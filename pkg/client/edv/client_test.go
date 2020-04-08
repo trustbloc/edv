@@ -10,9 +10,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +43,12 @@ const (
 		`GhnaC1EZnNjOW5Cb3BYVHA1OEhNZiJ9fV19","iv":"e8mXGCAamvwYcdf2","ciphertext":"dLKWmjFyL-G1uqF588Ya0g10QModI-q0f` +
 		`7vw_v3_jhzskuNqX7Yx4aSD7x2jhUdat82kHS4qLYw8BuUGvGimI_sCQ9m3On` +
 		`QTHSjZnpg7VWRqAULBC3MSTtBa1DtZjZL4C0Y=","tag":"W4yJzyuGYzuZtZMRv2bDUg=="}`
+
+	queryVaultEndpointPath = "/encrypted-data-vaults/{vaultIDPathVariable}/queries"
+	testQueryVaultResponse = `["docID1","docID2"]`
 )
+
+var errFailingMarshal = errors.New("failingMarshal always fails")
 
 type failingReadCloser struct{}
 
@@ -146,12 +153,9 @@ func TestClient_CreateDataVault_ServerUnreachable(t *testing.T) {
 	location, err := client.CreateDataVault(&validConfig)
 	require.Empty(t, location)
 
-	// For some reason on the Azure CI a different error is returned. So we check for both.
-	// Azure CI returns the "E0F" version, and locally "connection refused" is returned.
+	// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
 	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
-	if !testPassed {
-		t.FailNow()
-	}
+	require.True(t, testPassed)
 }
 
 func TestClient_CreateDocument(t *testing.T) {
@@ -226,11 +230,9 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 	location, err := client.CreateDocument(testVaultID, &models.EncryptedDocument{})
 	require.Empty(t, location)
 
-	// For some reason on the Azure CI "E0F" is returned and locally "connection refused" is returned.
+	// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
 	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
-	if !testPassed {
-		t.FailNow()
-	}
+	require.True(t, testPassed)
 }
 
 func TestClient_ReadDocument(t *testing.T) {
@@ -383,6 +385,86 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClient_QueryVault(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		mockQueryVaultHTTPHandler :=
+			support.NewHTTPHandler(queryVaultEndpointPath, http.MethodPost,
+				mockSuccessQueryVaultHandler)
+
+		srv := startMockEDVServer(srvAddr, mockQueryVaultHTTPHandler)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr)
+
+		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		require.NoError(t, err)
+		require.Equal(t, "docID1", ids[0])
+		require.Equal(t, "docID2", ids[1])
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: server unreachable", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		client := New("http://" + srvAddr)
+
+		ids, err := client.QueryVault("testVaultID", &models.Query{})
+
+		// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
+		testPassed := (strings.Contains(err.Error(), "EOF") ||
+			strings.Contains(err.Error(), "connection refused")) && len(ids) == 0
+		require.True(t, testPassed)
+	})
+	t.Run("Failure: unable to unmarshal response into string array", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		mockQueryVaultHTTPHandler :=
+			support.NewHTTPHandler(queryVaultEndpointPath, http.MethodPost,
+				mockFailQueryVaultHandler)
+
+		srv := startMockEDVServer(srvAddr, mockQueryVaultHTTPHandler)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr)
+
+		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
+		require.Empty(t, ids)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: vault doesn't exist", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr)
+
+		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		require.EqualError(t, err, "the EDV server returned status code "+strconv.Itoa(http.StatusBadRequest)+
+			" along with the following message: "+edverrors.ErrVaultNotFound.Error())
+		require.Empty(t, ids)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: error while marshalling query", func(t *testing.T) {
+		client := Client{marshal: failingMarshal}
+
+		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		require.Equal(t, errFailingMarshal, err)
+		require.Empty(t, ids)
+	})
+}
+
 func TestGetErrorReadFail(t *testing.T) {
 	badResp := http.Response{
 		Body: failingReadCloser{},
@@ -490,6 +572,26 @@ func mockReadDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Fatal("failed to write in mock read document handler")
 	}
+}
+
+// Just writes an arbitrary valid response.
+func mockSuccessQueryVaultHandler(rw http.ResponseWriter, req *http.Request) {
+	_, err := rw.Write([]byte(testQueryVaultResponse))
+	if err != nil {
+		log.Fatal("failed to write in mock success query vault handler")
+	}
+}
+
+// Just writes some invalid JSON to the response.
+func mockFailQueryVaultHandler(rw http.ResponseWriter, req *http.Request) {
+	_, err := rw.Write([]byte("this is invalid JSON and will cause json.Unmarshal to fail"))
+	if err != nil {
+		log.Fatal("failed to write in mock fail query vault handler")
+	}
+}
+
+func failingMarshal(_ interface{}) ([]byte, error) {
+	return nil, errFailingMarshal
 }
 
 func waitForServerToStart(t *testing.T, srvAddr string) {

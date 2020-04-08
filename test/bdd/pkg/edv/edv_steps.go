@@ -8,10 +8,11 @@ package edv
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
-
+	"github.com/DATA-DOG/godog"
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer/legacy/authcrypt"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/legacykms"
@@ -19,9 +20,8 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/storage/mem"
 
 	"github.com/trustbloc/edv/pkg/client/edv"
+	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
-
-	"github.com/DATA-DOG/godog"
 )
 
 const (
@@ -61,6 +61,9 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 		e.retrieveDocument)
 	s.Step(`^Client decrypts the Encrypted Document it received`+
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
+	s.Step(`^Client queries the vault with id "([^"]*)" to find the previously created document `+
+		`with an encrypted index named "([^"]*)" with associated value "([^"]*)"$`,
+		e.queryVault)
 }
 
 type provider struct {
@@ -140,18 +143,12 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 		return err
 	}
 
-	// No recipients in this case, so we pass in the sender key as the recipient key as well
-	encryptedStructuredDoc, err := packer.Pack(marshalledStructuredDoc,
-		base58.Decode(senderKey), [][]byte{base58.Decode(senderKey)})
+	encryptedDocToStore, err := e.buildEncryptedDoc(packer, marshalledStructuredDoc, senderKey)
 	if err != nil {
 		return err
 	}
 
-	e.bddContext.EncryptedDocToStore = &models.EncryptedDocument{
-		ID:       e.bddContext.StructuredDocToBeEncrypted.ID,
-		Sequence: 0,
-		JWE:      encryptedStructuredDoc,
-	}
+	e.bddContext.EncryptedDocToStore = encryptedDocToStore
 
 	e.bddContext.Packer = packer
 
@@ -210,6 +207,71 @@ func (e *Steps) decryptDocument() error {
 	}
 
 	return nil
+}
+
+func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) error {
+	client := edv.New(e.bddContext.EDVHostURL)
+
+	query := models.Query{
+		Name:  queryIndexName,
+		Value: queryIndexValue,
+	}
+
+	docURLs, err := client.QueryVault(vaultID, &query)
+	if err != nil {
+		return err
+	}
+
+	numDocumentsFound := len(docURLs)
+	expectedDocumentsFound := 1
+
+	if numDocumentsFound != expectedDocumentsFound {
+		return errors.New("expected query to find " + strconv.Itoa(expectedDocumentsFound) +
+			" document(s), but " + strconv.Itoa(numDocumentsFound) + " were found instead")
+	}
+
+	expectedDocURL := "localhost:8080/encrypted-data-vaults/testvault/docs/VJYHHJx4C8J9Fsgz7rZqSp"
+
+	if docURLs[0] != expectedDocURL {
+		return unexpectedValueError(expectedDocURL, docURLs[0])
+	}
+
+	return nil
+}
+
+func (e *Steps) buildEncryptedDoc(packer *authcrypt.Packer, marshalledStructuredDoc []byte,
+	senderKey string) (*models.EncryptedDocument, error) {
+	// No recipients in this case, so we pass in the sender key as the recipient key as well
+	encryptedStructuredDoc, err := packer.Pack(marshalledStructuredDoc,
+		base58.Decode(senderKey), [][]byte{base58.Decode(senderKey)})
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Update this to demonstrate a full example of how to create an indexed attribute using HMAC-SHA256.
+	// https://github.com/trustbloc/edv/issues/53
+	indexedAttribute := models.IndexedAttribute{
+		Name:   "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+		Value:  "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+		Unique: false,
+	}
+
+	indexedAttributeCollection := models.IndexedAttributeCollection{
+		Sequence:          0,
+		HMAC:              models.IDTypePair{},
+		IndexedAttributes: []models.IndexedAttribute{indexedAttribute},
+	}
+
+	indexedAttributeCollections := []models.IndexedAttributeCollection{indexedAttributeCollection}
+
+	encryptedDocToStore := &models.EncryptedDocument{
+		ID:                          e.bddContext.StructuredDocToBeEncrypted.ID,
+		Sequence:                    0,
+		JWE:                         encryptedStructuredDoc,
+		IndexedAttributeCollections: indexedAttributeCollections,
+	}
+
+	return encryptedDocToStore, nil
 }
 
 func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *models.EncryptedDocument) error {
