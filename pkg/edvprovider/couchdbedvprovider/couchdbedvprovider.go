@@ -50,12 +50,12 @@ func NewProvider(databaseURL string) (*CouchDBEDVProvider, error) {
 }
 
 // CreateStore creates a new store with the given name.
-func (c CouchDBEDVProvider) CreateStore(name string) error {
+func (c *CouchDBEDVProvider) CreateStore(name string) error {
 	return c.coreProvider.CreateStore(name)
 }
 
 // OpenStore opens an existing store and returns it.
-func (c CouchDBEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error) {
+func (c *CouchDBEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error) {
 	coreStore, err := c.coreProvider.OpenStore(name)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,12 @@ type CouchDBEDVStore struct {
 
 // Put stores the given document.
 // A mapping document is also created and stored in order to allow for encrypted indices to work.
-func (c CouchDBEDVStore) Put(document models.EncryptedDocument) error {
+func (c *CouchDBEDVStore) Put(document models.EncryptedDocument) error {
+	err := c.validateNewDoc(document)
+	if err != nil {
+		return err
+	}
+
 	documentBytes, err := json.Marshal(document)
 	if err != nil {
 		return err
@@ -94,8 +99,154 @@ func (c CouchDBEDVStore) Put(document models.EncryptedDocument) error {
 	return c.coreStore.Put(document.ID, documentBytes)
 }
 
-// createMappingDocument creates a document with a mapping of the encrypted index to the document that has it.abcdefgh
-func (c CouchDBEDVStore) createMappingDocument(indexedAttributeName, encryptedDocID string) error {
+// Get fetches the document associated with the given key.
+func (c *CouchDBEDVStore) Get(k string) ([]byte, error) {
+	return c.coreStore.Get(k)
+}
+
+// CreateEDVIndex creates the index which will allow for encrypted indices to work.
+func (c *CouchDBEDVStore) CreateEDVIndex() error {
+	createIndexRequest := storage.CreateIndexRequest{
+		IndexStorageLocation: "EDV_EncryptedIndexesDesignDoc",
+		IndexName:            "EDV_IndexName",
+		WhatToIndex:          `{"fields": ["` + mapDocumentIndexedField + `"]}`,
+	}
+
+	return c.coreStore.CreateIndex(createIndexRequest)
+}
+
+// Query does an EDV encrypted index query.
+// We first get the "mapping document" and then use the ID we get from that to lookup the associated encrypted document.
+// Then we check that encrypted document to see if the value matches what was specified in the query.
+func (c *CouchDBEDVStore) Query(query *models.Query) ([]string, error) {
+	idsOfDocsWithMatchingQueryIndexName, err := c.findDocsMatchingQueryIndexName(query.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
+}
+
+// validateNewDoc tries to ensure that index name+pairs declared unique are maintained as such. Note that
+// this cannot be guaranteed due to the nature of concurrent requests and CouchDB's eventual consistency model.
+func (c *CouchDBEDVStore) validateNewDoc(newDoc models.EncryptedDocument) error {
+	for _, newAttributeCollection := range newDoc.IndexedAttributeCollections {
+		err := c.validateNewAttributeCollection(newAttributeCollection)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *CouchDBEDVStore) validateNewAttributeCollection(
+	newAttributeCollection models.IndexedAttributeCollection) error {
+	for _, newAttribute := range newAttributeCollection.IndexedAttributes {
+		err := c.validateNewAttribute(newAttribute)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *CouchDBEDVStore) validateNewAttribute(newAttribute models.IndexedAttribute) error {
+	query := models.Query{
+		Name:  newAttribute.Name,
+		Value: newAttribute.Value,
+	}
+
+	existingDocIDs, err := c.Query(&query)
+	if err != nil {
+		return err
+	}
+
+	err = c.validateNewAttributeAgainstDocs(existingDocIDs, newAttribute)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *CouchDBEDVStore) validateNewAttributeAgainstDocs(docIDs []string, newAttribute models.IndexedAttribute) error {
+	for _, docID := range docIDs {
+		err := c.validateNewAttributeAgainstDoc(newAttribute, docID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *CouchDBEDVStore) validateNewAttributeAgainstDoc(newAttribute models.IndexedAttribute, docID string) error {
+	docBytes, err := c.coreStore.Get(docID)
+	if err != nil {
+		if err == storage.ErrValueNotFound {
+			return edverrors.ErrDocumentNotFound
+		}
+
+		return err
+	}
+
+	encryptedDoc := models.EncryptedDocument{}
+
+	err = json.Unmarshal(docBytes, &encryptedDoc)
+	if err != nil {
+		return err
+	}
+
+	err = validateNewAttributeAgainstAttributeCollections(newAttribute, encryptedDoc.IndexedAttributeCollections)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateNewAttributeAgainstAttributeCollections(newAttribute models.IndexedAttribute,
+	attributeCollections []models.IndexedAttributeCollection) error {
+	for _, attributeCollection := range attributeCollections {
+		err := validateNewAttributeAgainstAttributeCollection(newAttribute, attributeCollection)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateNewAttributeAgainstAttributeCollection(newAttribute models.IndexedAttribute,
+	attributeCollection models.IndexedAttributeCollection) error {
+	for _, attribute := range attributeCollection.IndexedAttributes {
+		err := validateNewAttributeAgainstAttribute(newAttribute, attribute)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateNewAttributeAgainstAttribute(newAttribute, attribute models.IndexedAttribute) error {
+	if newAttribute.Name == attribute.Name && newAttribute.Value == attribute.Value {
+		if attribute.Unique {
+			return edvprovider.ErrIndexNameAndValueAlreadyDeclaredUnique
+		}
+
+		if newAttribute.Unique {
+			return edvprovider.ErrIndexNameAndValueCannotBeUnique
+		}
+	}
+
+	return nil
+}
+
+// createMappingDocument creates a document with a mapping of the encrypted index to the document that has it.
+func (c *CouchDBEDVStore) createMappingDocument(indexedAttributeName, encryptedDocID string) error {
 	mapDocument := couchDBIndexMappingDocument{
 		IndexName:              indexedAttributeName,
 		MatchingEncryptedDocID: encryptedDocID,
@@ -109,35 +260,7 @@ func (c CouchDBEDVStore) createMappingDocument(indexedAttributeName, encryptedDo
 	return c.coreStore.Put(encryptedDocID+"_mapping_"+uuid.New().String(), documentBytes)
 }
 
-// Get fetches the document associated with the given key.
-func (c CouchDBEDVStore) Get(k string) ([]byte, error) {
-	return c.coreStore.Get(k)
-}
-
-// CreateEDVIndex creates the index which will allow for encrypted indices to work.
-func (c CouchDBEDVStore) CreateEDVIndex() error {
-	createIndexRequest := storage.CreateIndexRequest{
-		IndexStorageLocation: "EDV_EncryptedIndexesDesignDoc",
-		IndexName:            "EDV_IndexName",
-		WhatToIndex:          `{"fields": ["` + mapDocumentIndexedField + `"]}`,
-	}
-
-	return c.coreStore.CreateIndex(createIndexRequest)
-}
-
-// Query does an EDV encrypted index query.
-// We first get the "mapping document" and then use the ID we get from that to lookup the associated encrypted document.
-// Then we check that encrypted document to see if the value matches what was specified in the query.
-func (c CouchDBEDVStore) Query(query *models.Query) ([]string, error) {
-	idsOfDocsWithMatchingQueryIndexName, err := c.findDocsMatchingQueryIndexName(query.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
-}
-
-func (c CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (map[string]struct{}, error) {
+func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (map[string]struct{}, error) {
 	itr, err := c.coreStore.Query(`{
 		   "selector": {
 		       "` + mapDocumentIndexedField + `": "` + queryIndexName + `"
@@ -185,7 +308,7 @@ func (c CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (
 }
 
 // Given a set of documents, returns the document IDs that satisfy the query.
-func (c CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *models.Query) ([]string, error) {
+func (c *CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *models.Query) ([]string, error) {
 	matchingDocIDs := make([]string, 0)
 
 	for docID := range docIDs {

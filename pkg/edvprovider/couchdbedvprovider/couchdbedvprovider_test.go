@@ -7,15 +7,16 @@ SPDX-License-Identifier: Apache-2.0
 package couchdbedvprovider
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
-
-	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
 
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/storage"
 	"github.com/trustbloc/edge-core/pkg/storage/mockstore"
 
+	"github.com/trustbloc/edv/pkg/edvprovider"
+	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
 	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 )
 
@@ -161,30 +162,95 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 }
 
 func TestCouchDBEDVStore_Put(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
+	t.Run("Success - no new encrypted indices", func(t *testing.T) {
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
 		store := CouchDBEDVStore{coreStore: &mockCoreStore}
 
 		err := store.Put(models.EncryptedDocument{ID: "someID"})
 		require.NoError(t, err)
 	})
+	t.Run("Store documents with encrypted indices", func(t *testing.T) {
+		uniqueIndexedAttribute := models.IndexedAttribute{
+			Name:   "indexName1",
+			Value:  "indexValue1",
+			Unique: true,
+		}
+
+		nonUniqueIndexedAttribute := models.IndexedAttribute{
+			Name:   "indexName1",
+			Value:  "indexValue1",
+			Unique: false,
+		}
+		t.Run("Success - new encrypted index doesn't conflict with existing ones", func(t *testing.T) {
+			err := storeDocumentsWithEncryptedIndices(t, nonUniqueIndexedAttribute, nonUniqueIndexedAttribute)
+			require.NoError(t, err)
+		})
+		t.Run("Failure - new encrypted index conflicts with an existing "+
+			"index name+value pair already declared unique", func(t *testing.T) {
+			err := storeDocumentsWithEncryptedIndices(t, uniqueIndexedAttribute, nonUniqueIndexedAttribute)
+			require.Equal(t, edvprovider.ErrIndexNameAndValueAlreadyDeclaredUnique, err)
+		})
+		t.Run("Failure - new encrypted index+value pair is declared unique "+
+			"but can't be due to an existing index+value pair", func(t *testing.T) {
+			err := storeDocumentsWithEncryptedIndices(t, nonUniqueIndexedAttribute, uniqueIndexedAttribute)
+			require.Equal(t, edvprovider.ErrIndexNameAndValueCannotBeUnique, err)
+		})
+	})
+
 	t.Run("Fail: error while creating mapping document", func(t *testing.T) {
 		errTest := errors.New("testError")
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrPut: errTest}
 		store := CouchDBEDVStore{coreStore: &mockCoreStore}
 
-		indexedAttributeCollection1 := models.IndexedAttributeCollection{
-			Sequence:          0,
-			HMAC:              models.IDTypePair{},
-			IndexedAttributes: make([]models.IndexedAttribute, 1),
-		}
-
 		testDoc := models.EncryptedDocument{ID: "someID",
-			IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection1}}
+			IndexedAttributeCollections: nil}
 
 		err := store.Put(testDoc)
 		require.Equal(t, errTest, err)
 	})
+}
+
+func storeDocumentsWithEncryptedIndices(t *testing.T,
+	firstDocumentIndexedAttribute, secondDocumentIndexedAttribute models.IndexedAttribute) error {
+	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+		ResultsIteratorToReturn: &mockIterator{}}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+	indexedAttributeCollection1 := models.IndexedAttributeCollection{
+		Sequence:          0,
+		HMAC:              models.IDTypePair{},
+		IndexedAttributes: []models.IndexedAttribute{firstDocumentIndexedAttribute},
+	}
+
+	testDoc1 := models.EncryptedDocument{ID: "someID",
+		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection1}}
+
+	err := store.Put(testDoc1)
+	require.NoError(t, err)
+
+	mappingDoc := couchDBIndexMappingDocument{
+		IndexName:              "indexName1",
+		MatchingEncryptedDocID: "someID",
+	}
+
+	marshalledMappingDoc, err := json.Marshal(mappingDoc)
+	require.NoError(t, err)
+
+	mockCoreStore.ResultsIteratorToReturn = &mockIterator{
+		maxTimesNextCanBeCalled: 1,
+		valueReturn:             marshalledMappingDoc,
+	}
+
+	indexedAttributeCollection2 := models.IndexedAttributeCollection{
+		Sequence:          0,
+		HMAC:              models.IDTypePair{},
+		IndexedAttributes: []models.IndexedAttribute{secondDocumentIndexedAttribute},
+	}
+
+	testDoc2 := models.EncryptedDocument{ID: "someID",
+		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection2}}
+
+	return store.Put(testDoc2)
 }
 
 func TestCouchDBEDVStore_createMappingDocument(t *testing.T) {
@@ -218,6 +284,7 @@ type mockIterator struct {
 	errNext                 error
 	errValue                error
 	errRelease              error
+	keyReturn               string
 	valueReturn             []byte
 }
 
@@ -235,7 +302,7 @@ func (m *mockIterator) Release() error {
 }
 
 func (m *mockIterator) Key() (string, error) {
-	return "testKey", nil
+	return m.keyReturn, nil
 }
 
 func (m *mockIterator) Value() ([]byte, error) {
