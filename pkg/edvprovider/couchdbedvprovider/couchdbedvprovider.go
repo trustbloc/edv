@@ -36,8 +36,8 @@ type CouchDBEDVProvider struct {
 }
 
 // NewProvider instantiates Provider
-func NewProvider(databaseURL string) (*CouchDBEDVProvider, error) {
-	couchDBProvider, err := couchdbstore.NewProvider(databaseURL)
+func NewProvider(databaseURL, dbPrefix string) (*CouchDBEDVProvider, error) {
+	couchDBProvider, err := couchdbstore.NewProvider(databaseURL, couchdbstore.WithDBPrefix(dbPrefix))
 	if err != nil {
 		if err.Error() == "hostURL for new CouchDB provider can't be blank" {
 			return nil, ErrMissingDatabaseURL

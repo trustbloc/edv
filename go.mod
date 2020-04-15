@@ -13,7 +13,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/cobra v0.0.6
 	github.com/stretchr/testify v1.4.0
-	github.com/trustbloc/edge-core v0.1.3-0.20200330175736-cbdfefc86bb4
+	github.com/trustbloc/edge-core v0.1.3-0.20200414220734-842cc197e692
 	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 )

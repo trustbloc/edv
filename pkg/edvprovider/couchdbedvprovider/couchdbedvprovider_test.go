@@ -112,24 +112,24 @@ const (
 
 func TestNewProvider(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		prov, err := NewProvider("someURL")
+		prov, err := NewProvider("someURL", "")
 		require.NoError(t, err)
 		require.NotNil(t, prov)
 	})
 	t.Run("Failure: blank URL", func(t *testing.T) {
-		prov, err := NewProvider("")
+		prov, err := NewProvider("", "")
 		require.Equal(t, ErrMissingDatabaseURL, err)
 		require.Nil(t, prov)
 	})
 	t.Run("Failure: invalid URL", func(t *testing.T) {
-		prov, err := NewProvider("%")
+		prov, err := NewProvider("%", "")
 		require.EqualError(t, err, `parse http://%: invalid URL escape "%"`)
 		require.Nil(t, prov)
 	})
 }
 
 func TestCouchDBEDVProvider_CreateStore(t *testing.T) {
-	prov, err := NewProvider("someURL")
+	prov, err := NewProvider("someURL", "")
 	require.NoError(t, err)
 	require.NotNil(t, prov)
 
@@ -151,7 +151,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 		require.NotNil(t, store)
 	})
 	t.Run("Failure: unable to open store due to lookup failure", func(t *testing.T) {
-		prov, err := NewProvider("someURL")
+		prov, err := NewProvider("someURL", "")
 		require.NoError(t, err)
 		require.NotNil(t, prov)
 
