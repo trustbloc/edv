@@ -142,7 +142,7 @@ func startEDV(parameters *edvParameters) error {
 		return err
 	}
 
-	edvService, err := edv.New(provider, parameters.databasePrefix)
+	edvService, err := edv.New(provider)
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 
 		log.Warn("encrypted indexing and querying is disabled since they are not supported by memstore")
 	case strings.EqualFold(parameters.databaseType, databaseTypeCouchDBOption):
-		couchDBEDVProv, err := couchdbedvprovider.NewProvider(parameters.databaseURL)
+		couchDBEDVProv, err := couchdbedvprovider.NewProvider(parameters.databaseURL, parameters.databasePrefix)
 		if err != nil {
 			return nil, err
 		}

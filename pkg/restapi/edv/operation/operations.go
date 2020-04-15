@@ -43,11 +43,10 @@ type Handler interface {
 
 // New returns a new EDV operations instance.
 // If dbPrefix is blank, then no prefixing will be done to the vault IDs.
-func New(provider edvprovider.EDVProvider, dbPrefix string) *Operation {
+func New(provider edvprovider.EDVProvider) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: provider,
-			dbPrefix: dbPrefix,
 		}}
 	svc.registerHandler()
 
@@ -63,7 +62,6 @@ type Operation struct {
 // VaultCollection represents EDV storage.
 type VaultCollection struct {
 	provider edvprovider.EDVProvider
-	dbPrefix string
 }
 
 func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Request) {
@@ -223,12 +221,12 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 }
 
 func (vc *VaultCollection) createDataVault(vaultID string) error {
-	err := vc.provider.CreateStore(vc.getFullStoreName(vaultID))
+	err := vc.provider.CreateStore(vaultID)
 	if err == storage.ErrDuplicateStore {
 		return edverrors.ErrDuplicateVault
 	}
 
-	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
+	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
 		return err
 	}
@@ -246,7 +244,7 @@ func (vc *VaultCollection) createDataVault(vaultID string) error {
 }
 
 func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {
-	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
+	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
 			return edverrors.ErrVaultNotFound
@@ -275,7 +273,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
-	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
+	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
 			return nil, edverrors.ErrVaultNotFound
@@ -297,7 +295,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 }
 
 func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]string, error) {
-	store, err := vc.provider.OpenStore(vc.getFullStoreName(vaultID))
+	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
 		if err == storage.ErrStoreNotFound {
 			return nil, edverrors.ErrVaultNotFound
@@ -386,17 +384,6 @@ func unescapePathVar(pathVar string, vars map[string]string, rw http.ResponseWri
 	}
 
 	return unescapedPathVar, true
-}
-
-func (vc *VaultCollection) getFullStoreName(id string) string {
-	var storeName string
-	if vc.dbPrefix == "" {
-		storeName = id
-	} else {
-		storeName = vc.dbPrefix + "_" + id
-	}
-
-	return storeName
 }
 
 func convertToFullDocumentURLs(documentIDs []string, vaultID string, req *http.Request) []string {
