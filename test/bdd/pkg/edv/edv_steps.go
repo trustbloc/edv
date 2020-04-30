@@ -7,17 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 package edv
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/DATA-DOG/godog"
-	"github.com/btcsuite/btcutil/base58"
-	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer/legacy/authcrypt"
-	"github.com/hyperledger/aries-framework-go/pkg/kms/legacykms"
-	"github.com/hyperledger/aries-framework-go/pkg/storage"
-	"github.com/hyperledger/aries-framework-go/pkg/storage/mem"
+	"github.com/google/tink/go/keyset"
+	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes"
+	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes/subtle"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 
 	"github.com/trustbloc/edv/pkg/client/edv"
 	"github.com/trustbloc/edv/pkg/restapi/edv/models"
@@ -66,19 +66,6 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 		e.queryVault)
 }
 
-type provider struct {
-	storeProvider storage.Provider
-	crypto        legacykms.KeyManager
-}
-
-func (p provider) LegacyKMS() legacykms.KeyManager {
-	return p.crypto
-}
-
-func (p provider) StorageProvider() storage.Provider {
-	return p.storeProvider
-}
-
 func (e *Steps) createDataVault(vaultID, expectedVaultLocation string) error {
 	client := edv.New(e.bddContext.EDVHostURL)
 
@@ -113,44 +100,49 @@ func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
 }
 
 func (e *Steps) clientEncryptsTheStructuredDocument() error {
-	memProvider := mem.NewProvider()
-	p := provider{storeProvider: memProvider}
-
-	_, err := p.StorageProvider().OpenStore("bdd-test-storage")
-	if err != nil {
-		return err
-	}
-
-	testingKMS, err := legacykms.New(p)
-	if err != nil {
-		return err
-	}
-
-	cryptProvider := provider{
-		storeProvider: nil,
-		crypto:        testingKMS,
-	}
-
-	packer := authcrypt.New(cryptProvider)
-
 	marshalledStructuredDoc, err := json.Marshal(e.bddContext.StructuredDocToBeEncrypted)
 	if err != nil {
 		return err
 	}
 
-	_, senderKey, err := testingKMS.CreateKeySet()
+	keyHandle, err := keyset.NewHandle(ecdhes.ECDHES256KWAES256GCMKeyTemplate())
 	if err != nil {
 		return err
 	}
 
-	encryptedDocToStore, err := e.buildEncryptedDoc(packer, marshalledStructuredDoc, senderKey)
+	pubKH, err := keyHandle.Public()
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	pubKeyWriter := ecdhes.NewWriter(buf)
+
+	err = pubKH.WriteWithNoSecrets(pubKeyWriter)
+	if err != nil {
+		return err
+	}
+
+	ecPubKey := new(subtle.ECPublicKey)
+
+	err = json.Unmarshal(buf.Bytes(), ecPubKey)
+	if err != nil {
+		return err
+	}
+
+	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, []subtle.ECPublicKey{*ecPubKey})
+	if err != nil {
+		return err
+	}
+
+	encryptedDocToStore, err := e.buildEncryptedDoc(jweEncrypter, marshalledStructuredDoc)
 	if err != nil {
 		return err
 	}
 
 	e.bddContext.EncryptedDocToStore = encryptedDocToStore
 
-	e.bddContext.Packer = packer
+	e.bddContext.JWEDecrypter = jose.NewJWEDecrypt(keyHandle)
 
 	return nil
 }
@@ -189,14 +181,19 @@ func (e *Steps) retrieveDocument(docID, vaultID string) error {
 }
 
 func (e *Steps) decryptDocument() error {
-	decryptedEnvelope, err := e.bddContext.Packer.Unpack(e.bddContext.ReceivedEncryptedDoc.JWE)
+	encryptedJWE, err := jose.Deserialize(string(e.bddContext.ReceivedEncryptedDoc.JWE))
+	if err != nil {
+		return err
+	}
+
+	decryptedDocBytes, err := e.bddContext.JWEDecrypter.Decrypt(encryptedJWE)
 	if err != nil {
 		return err
 	}
 
 	decryptedDoc := models.StructuredDocument{}
 
-	err = json.Unmarshal(decryptedEnvelope.Message, &decryptedDoc)
+	err = json.Unmarshal(decryptedDocBytes, &decryptedDoc)
 	if err != nil {
 		return err
 	}
@@ -239,11 +236,14 @@ func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) erro
 	return nil
 }
 
-func (e *Steps) buildEncryptedDoc(packer *authcrypt.Packer, marshalledStructuredDoc []byte,
-	senderKey string) (*models.EncryptedDocument, error) {
-	// No recipients in this case, so we pass in the sender key as the recipient key as well
-	encryptedStructuredDoc, err := packer.Pack(marshalledStructuredDoc,
-		base58.Decode(senderKey), [][]byte{base58.Decode(senderKey)})
+func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
+	marshalledStructuredDoc []byte) (*models.EncryptedDocument, error) {
+	jwe, err := jweEncrypter.Encrypt(marshalledStructuredDoc, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	encryptedStructuredDoc, err := jwe.Serialize(json.Marshal)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (e *Steps) buildEncryptedDoc(packer *authcrypt.Packer, marshalledStructured
 	encryptedDocToStore := &models.EncryptedDocument{
 		ID:                          e.bddContext.StructuredDocToBeEncrypted.ID,
 		Sequence:                    0,
-		JWE:                         encryptedStructuredDoc,
+		JWE:                         []byte(encryptedStructuredDoc),
 		IndexedAttributeCollections: indexedAttributeCollections,
 	}
 
@@ -295,7 +295,7 @@ func verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument *models.Encrypt
 	// CouchDB likes to switch around the order of the fields in the JSON.
 	// This means that we can't do a direct string comparison of the JWE (json.rawmessage) fields
 	// in the EncryptedDocument structs. Instead we need to check each field manually.
-	var expectedJWEFields map[string]string
+	var expectedJWEFields map[string]json.RawMessage
 
 	err := json.Unmarshal(expectedDocument.JWE, &expectedJWEFields)
 	if err != nil {
@@ -308,7 +308,7 @@ func verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument *models.Encrypt
 		return err
 	}
 
-	var retrievedJWEFields map[string]string
+	var retrievedJWEFields map[string]json.RawMessage
 
 	err = json.Unmarshal(retrievedDocument.JWE, &retrievedJWEFields)
 	if err != nil {
@@ -333,7 +333,8 @@ func verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument *models.Encrypt
 	return nil
 }
 
-func getJWEFieldValues(jweFields map[string]string, jweDocType string) (string, string, string, string, error) {
+func getJWEFieldValues(jweFields map[string]json.RawMessage,
+	jweDocType string) (string, string, string, string, error) {
 	protectedFieldValue, found := jweFields[jweProtectedFieldName]
 	if !found {
 		return "", "", "", "", fieldNotFoundError(jweProtectedFieldName, jweDocType)
@@ -354,7 +355,7 @@ func getJWEFieldValues(jweFields map[string]string, jweDocType string) (string, 
 		return "", "", "", "", fieldNotFoundError(jweTagFieldName, jweDocType)
 	}
 
-	return protectedFieldValue, ivFieldValue, ciphertextFieldValue, tagFieldValue, nil
+	return string(protectedFieldValue), string(ivFieldValue), string(ciphertextFieldValue), string(tagFieldValue), nil
 }
 
 func verifyFieldsAreEqual(retrievedProtectedFieldValue, expectedProtectedFieldValue, retrievedIVFieldValue,

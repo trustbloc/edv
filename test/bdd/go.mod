@@ -12,6 +12,7 @@ require (
 	github.com/DATA-DOG/godog v0.7.13
 	github.com/btcsuite/btcutil v1.0.1
 	github.com/fsouza/go-dockerclient v1.6.0
-	github.com/hyperledger/aries-framework-go v0.1.2
+	github.com/google/tink/go v0.0.0-20200403150819-3a14bf4b3380
+	github.com/hyperledger/aries-framework-go v0.1.3-0.20200429182723-7fc555ef6cb0
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 )
