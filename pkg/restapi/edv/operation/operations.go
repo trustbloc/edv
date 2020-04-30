@@ -30,8 +30,9 @@ const (
 
 	createVaultEndpoint    = edvCommonEndpointPathRoot
 	queryVaultEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/queries"
-	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/docs"
-	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/docs/{" + docIDPathVariable + "}"
+	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
+	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
+		docIDPathVariable + "}"
 )
 
 // Handler http handler for each controller API endpoint
@@ -171,7 +172,11 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
 	if err != nil {
-		rw.WriteHeader(http.StatusBadRequest)
+		if err == edverrors.ErrDuplicateDocument {
+			rw.WriteHeader(http.StatusConflict)
+		} else {
+			rw.WriteHeader(http.StatusBadRequest)
+		}
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
@@ -183,7 +188,7 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 	}
 
 	rw.Header().Set("Location", req.Host+"/encrypted-data-vaults/"+
-		url.PathEscape(vaultID)+"/docs/"+url.PathEscape(incomingDocument.ID))
+		url.PathEscape(vaultID)+"/documents/"+url.PathEscape(incomingDocument.ID))
 	rw.WriteHeader(http.StatusCreated)
 }
 
@@ -391,7 +396,7 @@ func convertToFullDocumentURLs(documentIDs []string, vaultID string, req *http.R
 
 	for i, matchingDocumentID := range documentIDs {
 		fullDocumentURLs[i] = req.Host + "/encrypted-data-vaults/" +
-			url.PathEscape(vaultID) + "/docs/" + url.PathEscape(matchingDocumentID)
+			url.PathEscape(vaultID) + "/documents/" + url.PathEscape(matchingDocumentID)
 	}
 
 	return fullDocumentURLs

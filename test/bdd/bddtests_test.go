@@ -20,6 +20,7 @@ import (
 	"github.com/trustbloc/edv/test/bdd/dockerutil"
 	bddctx "github.com/trustbloc/edv/test/bdd/pkg/context"
 	"github.com/trustbloc/edv/test/bdd/pkg/edv"
+	"github.com/trustbloc/edv/test/bdd/pkg/interop"
 )
 
 func TestMain(m *testing.M) {
@@ -116,10 +117,19 @@ func generateUUID() string {
 }
 
 func FeatureContext(s *godog.Suite) {
-	bddContext, err := bddctx.NewBDDContext("http://localhost:8080")
+	trustBlocEDVHostURL := "localhost:8080/encrypted-data-vaults"
+
+	bddContext, err := bddctx.NewBDDContext("http://" + trustBlocEDVHostURL)
 	if err != nil {
 		panic(fmt.Sprintf("Error returned from NewBDDContext: %s", err))
 	}
 
+	bddInteropContext, err := bddctx.NewBDDInteropContext(trustBlocEDVHostURL,
+		"https://did-edv.web.app/edvs")
+	if err != nil {
+		panic(fmt.Sprintf("Error returned from NewBDDInteropContext: %s", err))
+	}
+
 	edv.NewSteps(bddContext).RegisterSteps(s)
+	interop.NewSteps(bddInteropContext).RegisterSteps(s)
 }

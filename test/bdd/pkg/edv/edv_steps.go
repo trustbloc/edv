@@ -21,6 +21,7 @@ import (
 
 	"github.com/trustbloc/edv/pkg/client/edv"
 	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
 )
 
@@ -77,7 +78,7 @@ func (e *Steps) createDataVault(vaultID, expectedVaultLocation string) error {
 	}
 
 	if vaultLocation != expectedVaultLocation {
-		return unexpectedValueError(expectedVaultLocation, vaultLocation)
+		return common.UnexpectedValueError(expectedVaultLocation, vaultLocation)
 	}
 
 	return nil
@@ -156,7 +157,7 @@ func (e *Steps) storeDocumentInVault(vaultID, expectedDocLocation string) error 
 	}
 
 	if docLocation != expectedDocLocation {
-		return unexpectedValueError(expectedDocLocation, docLocation)
+		return common.UnexpectedValueError(expectedDocLocation, docLocation)
 	}
 
 	return nil
@@ -227,10 +228,10 @@ func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) erro
 			" document(s), but " + strconv.Itoa(numDocumentsFound) + " were found instead")
 	}
 
-	expectedDocURL := "localhost:8080/encrypted-data-vaults/testvault/docs/VJYHHJx4C8J9Fsgz7rZqSp"
+	expectedDocURL := "localhost:8080/encrypted-data-vaults/testvault/documents/VJYHHJx4C8J9Fsgz7rZqSp"
 
 	if docURLs[0] != expectedDocURL {
-		return unexpectedValueError(expectedDocURL, docURLs[0])
+		return common.UnexpectedValueError(expectedDocURL, docURLs[0])
 	}
 
 	return nil
@@ -276,11 +277,11 @@ func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
 
 func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *models.EncryptedDocument) error {
 	if retrievedDocument.ID != expectedDocument.ID {
-		return unexpectedValueError(expectedDocument.ID, retrievedDocument.ID)
+		return common.UnexpectedValueError(expectedDocument.ID, retrievedDocument.ID)
 	}
 
 	if retrievedDocument.Sequence != expectedDocument.Sequence {
-		return unexpectedValueError(string(expectedDocument.Sequence), string(retrievedDocument.Sequence))
+		return common.UnexpectedValueError(string(expectedDocument.Sequence), string(retrievedDocument.Sequence))
 	}
 
 	err := verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument)
@@ -362,19 +363,19 @@ func verifyFieldsAreEqual(retrievedProtectedFieldValue, expectedProtectedFieldVa
 	expectedIVFieldValue, retrievedCiphertextFieldValue, expectedCiphertextFieldValue, retrievedTagFieldValue,
 	expectedTagFieldValue string) error {
 	if retrievedProtectedFieldValue != expectedProtectedFieldValue {
-		return unexpectedValueError(expectedProtectedFieldValue, retrievedProtectedFieldValue)
+		return common.UnexpectedValueError(expectedProtectedFieldValue, retrievedProtectedFieldValue)
 	}
 
 	if retrievedIVFieldValue != expectedIVFieldValue {
-		return unexpectedValueError(expectedIVFieldValue, retrievedIVFieldValue)
+		return common.UnexpectedValueError(expectedIVFieldValue, retrievedIVFieldValue)
 	}
 
 	if retrievedCiphertextFieldValue != expectedCiphertextFieldValue {
-		return unexpectedValueError(expectedCiphertextFieldValue, retrievedCiphertextFieldValue)
+		return common.UnexpectedValueError(expectedCiphertextFieldValue, retrievedCiphertextFieldValue)
 	}
 
 	if retrievedTagFieldValue != expectedTagFieldValue {
-		return unexpectedValueError(expectedTagFieldValue, retrievedTagFieldValue)
+		return common.UnexpectedValueError(expectedTagFieldValue, retrievedTagFieldValue)
 	}
 
 	return nil
@@ -382,7 +383,7 @@ func verifyFieldsAreEqual(retrievedProtectedFieldValue, expectedProtectedFieldVa
 
 func verifyStructuredDocsAreEqual(decryptedDoc, expectedDoc *models.StructuredDocument) error {
 	if decryptedDoc.ID != expectedDoc.ID {
-		return unexpectedValueError(expectedDoc.ID, decryptedDoc.ID)
+		return common.UnexpectedValueError(expectedDoc.ID, decryptedDoc.ID)
 	}
 
 	expectedCreatedValue, decryptedCreatedValue, err := getMetaFieldValues(expectedDoc, decryptedDoc)
@@ -396,11 +397,11 @@ func verifyStructuredDocsAreEqual(decryptedDoc, expectedDoc *models.StructuredDo
 	}
 
 	if decryptedCreatedValue != expectedCreatedValue {
-		return unexpectedValueError(expectedCreatedValue, decryptedCreatedValue)
+		return common.UnexpectedValueError(expectedCreatedValue, decryptedCreatedValue)
 	}
 
 	if decryptedMessageValue != expectedMessageValue {
-		return unexpectedValueError(expectedMessageValue, decryptedMessageValue)
+		return common.UnexpectedValueError(expectedMessageValue, decryptedMessageValue)
 	}
 
 	return nil
@@ -452,10 +453,6 @@ func getMetaFieldValues(expectedDoc, decryptedDoc *models.StructuredDocument) (s
 	}
 
 	return expectedCreatedFieldInMetaString, decryptedCreatedFieldInMetaString, nil
-}
-
-func unexpectedValueError(expected, actual string) error {
-	return fmt.Errorf("expected %s but got %s instead", expected, actual)
 }
 
 func fieldNotFoundError(fieldName, documentType string) error {

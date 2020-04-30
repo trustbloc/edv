@@ -324,8 +324,8 @@ func TestQueryVaultHandler(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, `["/encrypted-data-vaults/urn:uuid:abc5a436-21f9-4b4c-857d-1f5569b2600d/docs/`+
-			`docID1","/encrypted-data-vaults/urn:uuid:abc5a436-21f9-4b4c-857d-1f5569b2600d/docs/docID2"]`,
+		require.Equal(t, `["/encrypted-data-vaults/urn:uuid:abc5a436-21f9-4b4c-857d-1f5569b2600d/documents/`+
+			`docID1","/encrypted-data-vaults/urn:uuid:abc5a436-21f9-4b4c-857d-1f5569b2600d/documents/docID2"]`,
 			rr.Body.String())
 		require.Equal(t, http.StatusOK, rr.Code)
 	})
@@ -585,7 +585,7 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
-	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, http.StatusConflict, rr.Code)
 	require.Contains(t, rr.Body.String(), edverrors.ErrDuplicateDocument.Error())
 }
 
@@ -924,7 +924,7 @@ func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation) {
 
 	require.Empty(t, rr.Body.String())
 	require.Equal(t, http.StatusCreated, rr.Code)
-	require.Equal(t, "/encrypted-data-vaults/"+testVaultID+"/"+"docs/"+testDocID, rr.Header().Get("Location"))
+	require.Equal(t, "/encrypted-data-vaults/"+testVaultID+"/"+"documents/"+testDocID, rr.Header().Get("Location"))
 }
 
 func getHandler(t *testing.T, op *Operation, lookup string) Handler {
