@@ -38,11 +38,11 @@ func TestController_GetOperations(t *testing.T) {
 	require.Equal(t, http.MethodPost, ops[1].Method())
 	require.NotNil(t, ops[1].Handle())
 
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/docs", ops[2].Path())
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents", ops[2].Path())
 	require.Equal(t, http.MethodPost, ops[2].Method())
 	require.NotNil(t, ops[2].Handle())
 
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/docs/{docID}", ops[3].Path())
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[3].Path())
 	require.Equal(t, http.MethodGet, ops[3].Method())
 	require.NotNil(t, ops[3].Handle())
 }

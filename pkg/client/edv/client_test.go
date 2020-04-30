@@ -75,7 +75,7 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	location, err := client.CreateDataVault(&validConfig)
@@ -93,7 +93,7 @@ func TestClient_CreateDataVault_VaultIDContainsSlash(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(true)
 	location, err := client.CreateDataVault(&validConfig)
@@ -111,7 +111,7 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	invalidConfig := models.DataVaultConfiguration{}
 	location, err := client.CreateDataVault(&invalidConfig)
@@ -130,7 +130,7 @@ func TestClient_CreateDataVault_DuplicateVault(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -138,7 +138,7 @@ func TestClient_CreateDataVault_DuplicateVault(t *testing.T) {
 
 	location, err := client.CreateDataVault(&validConfig)
 	require.Empty(t, location)
-	require.Equal(t, "a duplicate data vault exists", err.Error())
+	require.Equal(t, "a duplicate data vault exists (status code 409 received)", err.Error())
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 
@@ -174,7 +174,7 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
-	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault/docs/"+testDocumentID, location)
+	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault/documents/"+testDocumentID, location)
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestClient_CreateDocument_VaultIDContainsSlash(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(true)
 
@@ -197,7 +197,7 @@ func TestClient_CreateDocument_VaultIDContainsSlash(t *testing.T) {
 	location, err := client.CreateDocument(testVaultIDWithSlashes, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 	require.Equal(t,
-		srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault/docs/"+testDocumentID,
+		srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault/documents/"+testDocumentID,
 		location)
 
 	err = srv.Shutdown(context.Background())
@@ -211,7 +211,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.Empty(t, location)
@@ -242,7 +242,7 @@ func TestClient_ReadDocument(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -266,14 +266,14 @@ func TestClient_ReadDocument_UnmarshalFail(t *testing.T) {
 	srvAddr := randomURL()
 
 	mockReadDocumentHTTPHandler :=
-		support.NewHTTPHandler("/encrypted-data-vaults/{vaultIDPathVariable}/docs/{docID}", http.MethodGet,
+		support.NewHTTPHandler("/encrypted-data-vaults/{vaultIDPathVariable}/documents/{docID}", http.MethodGet,
 			mockReadDocumentHandler)
 
 	srv := startMockEDVServer(srvAddr, mockReadDocumentHTTPHandler)
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
@@ -290,7 +290,7 @@ func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(true)
 	_, err := client.CreateDataVault(&validConfig)
@@ -317,7 +317,7 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -342,7 +342,7 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 
 	waitForServerToStart(t, srvAddr)
 
-	client := New("http://" + srvAddr)
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration(false)
 	_, err := client.CreateDataVault(&validConfig)
@@ -397,7 +397,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		waitForServerToStart(t, srvAddr)
 
-		client := New("http://" + srvAddr)
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		ids, err := client.QueryVault("testVaultID", &models.Query{})
 		require.NoError(t, err)
@@ -410,7 +410,7 @@ func TestClient_QueryVault(t *testing.T) {
 	t.Run("Failure: server unreachable", func(t *testing.T) {
 		srvAddr := randomURL()
 
-		client := New("http://" + srvAddr)
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		ids, err := client.QueryVault("testVaultID", &models.Query{})
 
@@ -430,7 +430,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		waitForServerToStart(t, srvAddr)
 
-		client := New("http://" + srvAddr)
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		ids, err := client.QueryVault("testVaultID", &models.Query{})
 		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
@@ -446,7 +446,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		waitForServerToStart(t, srvAddr)
 
-		client := New("http://" + srvAddr)
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		ids, err := client.QueryVault("testVaultID", &models.Query{})
 		require.EqualError(t, err, "the EDV server returned status code "+strconv.Itoa(http.StatusBadRequest)+

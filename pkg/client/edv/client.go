@@ -55,13 +55,15 @@ func New(edvServerURL string, opts ...Option) *Client {
 // CreateDataVault sends the EDV server a request to create a new data vault.
 // The location of the newly created data vault is returned.
 func (c *Client) CreateDataVault(config *models.DataVaultConfiguration) (string, error) {
-	return c.sendCreateRequest(config, "/encrypted-data-vaults", "a duplicate data vault exists")
+	return c.sendCreateRequest(config, "",
+		"a duplicate data vault exists (status code 409 received)")
 }
 
 // CreateDocument sends the EDV server a request to store the specified document.
 // The location of the newly created document is returned.
 func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocument) (string, error) {
-	return c.sendCreateRequest(document, fmt.Sprintf("/encrypted-data-vaults/%s/docs", url.PathEscape(vaultID)), "")
+	return c.sendCreateRequest(document, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)),
+		"a document with that id already exists (status code 409 received)")
 }
 
 // ReadDocument sends the EDV server a request to retrieve the specified document.
@@ -69,7 +71,7 @@ func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocume
 func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument, error) {
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
-	resp, err := c.httpClient.Get(fmt.Sprintf("%s/encrypted-data-vaults/%s/docs/%s", //nolint: bodyclose
+	resp, err := c.httpClient.Get(fmt.Sprintf("%s/%s/documents/%s", //nolint: bodyclose
 		c.edvServerURL, url.PathEscape(vaultID), url.PathEscape(docID)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send GET message: %w", err)
@@ -109,7 +111,7 @@ func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, erro
 
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
-	resp, err := c.httpClient.Post(fmt.Sprintf("%s/encrypted-data-vaults/%s/queries", //nolint: bodyclose
+	resp, err := c.httpClient.Post(fmt.Sprintf("%s/%s/queries", //nolint: bodyclose
 		c.edvServerURL, url.PathEscape(vaultID)), "application/json", bytes.NewBuffer(jsonToSend))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send POST message: %w", err)
