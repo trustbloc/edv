@@ -7,18 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 package context
 
 import (
-	// TODO: Don't reference Didcomm here: https://github.com/trustbloc/edv/issues/41
-
-	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer/legacy/authcrypt"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 
 	"github.com/trustbloc/edv/pkg/restapi/edv/models"
 )
 
 // BDDContext is a global context shared between different test suites in bddtests
 type BDDContext struct {
-	EDVHostURL string
-	// TODO: Replace with JWE document instead of legacy/authcrypt: https://github.com/trustbloc/edv/issues/41
-	Packer                     *authcrypt.Packer
+	EDVHostURL                 string
+	JWEDecrypter               *jose.JWEDecrypt
 	StructuredDocToBeEncrypted *models.StructuredDocument
 	EncryptedDocToStore        *models.EncryptedDocument
 	ReceivedEncryptedDoc       *models.EncryptedDocument
