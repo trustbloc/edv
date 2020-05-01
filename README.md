@@ -8,15 +8,15 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/trustbloc/edv)](https://goreportcard.com/report/github.com/trustbloc/edv)
 
 # edv
-An implementation of the [Encrypted Data Vault 0.1 (26 January 2020) specification](https://digitalbazaar.github.io/encrypted-data-vaults/). This implementation is at a very early stage; be sure to read the [limitations](#limitations) section which outlines which parts of the specification have yet to be implemented.
+An implementation of the [Encrypted Data Vault 0.1 (26 January 2020) specification](https://digitalbazaar.github.io/encrypted-data-vaults/). This implementation is a work in progress; be sure to read the [limitations](#limitations) section which outlines which parts of the specification have yet to be implemented.
 
 ## Limitations
 The following has not yet been implemented:
-* Encryption
 * Update and delete document endpoints
+* Service endpoint discovery
+* An authorization mechanism
+* Index querying with the `has` keyword
 * Streams
-* Indexes
-* Service Discovery
 
 ## Testing
 - [Build + BDD tests](docs/test/build.md)
