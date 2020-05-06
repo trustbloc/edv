@@ -32,8 +32,9 @@ const (
 	databaseTypeFlagName      = "database-type"
 	databaseTypeEnvKey        = "EDV_DATABASE_TYPE"
 	databaseTypeFlagShorthand = "t"
-	databaseTypeFlagUsage     = "The type of database to use internally in the EDV. Supported options: mem, couchdb." +
-		" Alternatively, this can be set with the following environment variable: " + databaseTypeEnvKey
+	databaseTypeFlagUsage     = "The type of database to use internally in the EDV. Supported options: mem, couchdb. " +
+		"Note that mem doesn't support encrypted index querying. Alternatively, this can be set with the following " +
+		"environment variable: " + databaseTypeEnvKey
 
 	databaseTypeMemOption     = "mem"
 	databaseTypeCouchDBOption = "couchdb"
