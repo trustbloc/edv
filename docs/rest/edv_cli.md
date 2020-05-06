@@ -15,7 +15,7 @@ Parameters can be set by command line arguments or environment variables:
 ```
 Flags:
   -p, --database-prefix string   An optional prefix to be used when creating and retrieving underlying databases. This followed by an underscore will be prepended to any incoming vault IDs received in REST calls before creating or accessing underlying databases. Alternatively, this can be set with the following environment variable: EDV_DATABASE_PREFIX
-  -t, --database-type string     The type of database to use internally in the EDV. Supported options: mem, couchdb. Alternatively, this can be set with the following environment variable: EDV_DATABASE_TYPE *
+  -t, --database-type string     The type of database to use internally in the EDV. Supported options: mem, couchdb. Note that mem doesn't support encrypted index querying. Alternatively, this can be set with the following environment variable: EDV_DATABASE_TYPE *
   -l, --database-url string      The URL of the database. Not needed if using memstore. For CouchDB, include the username:password@ text if required. Alternatively, this can be set with the following environment variable: EDV_DATABASE_URL
   -u, --host-url string          URL to run the edv instance on. Format: HostName:Port. Alternatively, this can be set with the following environment variable: EDV_HOST_URL *
 
