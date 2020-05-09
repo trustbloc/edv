@@ -35,7 +35,7 @@ jobs:
 
   - job: BDDTest
     pool:
-      vmImage: ubuntu-16.04
+      vmImage: ubuntu-18.04
     timeoutInMinutes: 30
     steps:
       - template: azp-dependencies.yml
@@ -62,8 +62,8 @@ jobs:
           source ci/version_var.sh
           echo $DOCKER_PASSWORD | docker login docker.pkg.github.com --username $DOCKER_USER --password-stdin
           make edv-rest-docker
-          docker tag docker.pkg.github.com/trustbloc/edv/edv-rest:latest docker.pkg.github.com/trustbloc/edv/edv-rest:$EDV_REST_TAG
-          docker push docker.pkg.github.com/trustbloc/edv/edv-rest:$EDV_REST_TAG
+          docker tag docker.pkg.github.com/trustbloc/edv/edv-rest:latest ${EDV_REST_PKG}:$EDV_REST_TAG
+          docker push ${EDV_REST_PKG}:$EDV_REST_TAG
         env:
           DOCKER_USER: $(DOCKER_USER)
           DOCKER_PASSWORD: $(DOCKER_PASSWORD)
