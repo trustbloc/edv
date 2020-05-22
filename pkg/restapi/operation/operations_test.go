@@ -10,22 +10,19 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/pkg/restapi/edverrors"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const (
@@ -95,7 +92,7 @@ func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) 
 	createVaultHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "EOF")
+	require.Equal(t, "Invalid data vault configuration received: unexpected end of JSON input", rr.Body.String())
 }
 
 func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t *testing.T) {
@@ -114,7 +111,7 @@ func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Equal(t, "referenceId can't be blank", string(resp))
+	require.Equal(t, "Invalid data vault configuration: referenceId can't be blank", string(resp))
 }
 
 func TestCreateDataVaultHandler_ValidDataVaultConfigurationJSON(t *testing.T) {
@@ -123,111 +120,6 @@ func TestCreateDataVaultHandler_ValidDataVaultConfigurationJSON(t *testing.T) {
 
 		createDataVaultExpectSuccess(t, op)
 	})
-}
-
-type failingResponseWriter struct {
-}
-
-func (f failingResponseWriter) Header() http.Header {
-	return nil
-}
-
-func (f failingResponseWriter) Write([]byte) (int, error) {
-	return 0, fmt.Errorf("failingResponseWriter always fails")
-}
-
-func (f failingResponseWriter) WriteHeader(statusCode int) {
-}
-
-type failingReadCloser struct{}
-
-func (m failingReadCloser) Read(p []byte) (n int, err error) {
-	return 0, fmt.Errorf("failingReadCloser always fails")
-}
-
-func (m failingReadCloser) Close() error {
-	return nil
-}
-
-type alwaysReturnBarebonesDataVaultConfigurationReadCloser struct{}
-
-func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Read(p []byte) (n int, err error) {
-	dataVaultConfigBytes := []byte(`{
-  "referenceId": "` + testVaultID + `"
-}`)
-
-	_ = copy(p, dataVaultConfigBytes)
-
-	return 68, io.EOF
-}
-
-func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Close() error {
-	return nil
-}
-
-type alwaysReturnBarebonesEncryptedDocumentReadCloser struct{}
-
-func (a alwaysReturnBarebonesEncryptedDocumentReadCloser) Read(p []byte) (n int, err error) {
-	documentBytes := []byte(`{
-  "id": "` + testDocID + `"
-}`)
-
-	_ = copy(p, documentBytes)
-
-	return 59, io.EOF
-}
-
-func (a alwaysReturnBarebonesEncryptedDocumentReadCloser) Close() error {
-	return nil
-}
-
-type mockContext struct {
-	valueToReturnWhenValueMethodCalled interface{}
-}
-
-func (m mockContext) Deadline() (deadline time.Time, ok bool) {
-	panic("implement me")
-}
-
-func (m mockContext) Done() <-chan struct{} {
-	panic("implement me")
-}
-
-func (m mockContext) Err() error {
-	panic("implement me")
-}
-
-func (m mockContext) Value(key interface{}) interface{} {
-	return m.valueToReturnWhenValueMethodCalled
-}
-
-func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	op := New(memedvprovider.NewProvider())
-
-	op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
-
-	require.Contains(t, logContents.String(), "Failed to write response for data vault creation failure"+
-		" due to the provided data vault configuration: failingResponseWriter always fails")
-}
-
-func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingCreateDataVaultError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	op.createDataVaultHandler(failingResponseWriter{},
-		&http.Request{Body: alwaysReturnBarebonesDataVaultConfigurationReadCloser{}})
-
-	require.Contains(t, logContents.String(), "Failed to write response for data vault creation failure:"+
-		" failingResponseWriter always fails")
 }
 
 func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
@@ -347,7 +239,8 @@ func TestQueryVaultHandler(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, memedvprovider.ErrQueryingNotSupported.Error(), rr.Body.String())
+		require.Equal(t, "Failure while querying vault: "+
+			memedvprovider.ErrQueryingNotSupported.Error(), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Error: vault not found", func(t *testing.T) {
@@ -369,7 +262,8 @@ func TestQueryVaultHandler(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, edverrors.ErrVaultNotFound.Error(), rr.Body.String())
+		require.Equal(t, "Failure while querying vault: "+
+			edverrors.ErrVaultNotFound.Error(), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Error: fail to open store", func(t *testing.T) {
@@ -391,30 +285,8 @@ func TestQueryVaultHandler(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, testErr.Error(), rr.Body.String())
+		require.Equal(t, "Failure while querying vault: "+testErr.Error(), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-	t.Run("Error when writing response after an error happens while querying vault", func(t *testing.T) {
-		op := New(memedvprovider.NewProvider())
-
-		createDataVaultExpectSuccess(t, op)
-
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
-		require.NoError(t, err)
-
-		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = testVaultID
-
-		req = mux.SetURLVars(req, urlVars)
-
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
-		queryVaultEndpointHandler.Handle().ServeHTTP(failingResponseWriter{}, req)
-
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg,
-			"failingResponseWriter always fails"))
 	})
 	t.Run("Unable to decode query JSON", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -427,19 +299,8 @@ func TestQueryVaultHandler(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, "EOF", rr.Body.String())
+		require.Equal(t, "Invalid query received: unexpected end of JSON input", rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-	t.Run("Fail to write response when unable to decode JSON", func(t *testing.T) {
-		op := New(memedvprovider.NewProvider())
-
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
-		op.queryVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
-
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg,
-			"failingResponseWriter always fails"))
 	})
 	t.Run("Fail to unescape path var", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -467,28 +328,10 @@ func TestSendQueryResponse(t *testing.T) {
 	t.Run("No matching documents", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 
-		sendQueryResponse(rr, nil)
+		sendQueryResponse(rr, nil, "", nil)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, "no matching documents found", rr.Body.String())
-	})
-	t.Run("Fail to write response when no matching documents found", func(t *testing.T) {
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
-		sendQueryResponse(failingResponseWriter{}, nil)
-
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg,
-			"failingResponseWriter always fails"))
-	})
-	t.Run("Fail to write response when matching documents found", func(t *testing.T) {
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
-		sendQueryResponse(failingResponseWriter{}, []string{"docID1", "docID2"})
-
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg,
-			"failingResponseWriter always fails"))
 	})
 }
 
@@ -515,7 +358,7 @@ func TestCreateDocumentHandler_InvalidEncryptedDocumentJSON(t *testing.T) {
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Contains(t, rr.Body.String(), "EOF")
+	require.Equal(t, "Invalid encrypted document received: unexpected end of JSON input", rr.Body.String())
 }
 
 func TestCreateDocumentHandler_DocIDIsNotBase58Encoded(t *testing.T) {
@@ -630,54 +473,6 @@ func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
 	require.Equal(t, "", rr.Header().Get("Location"))
 	require.Equal(t, fmt.Sprintf(`unable to escape %s path variable: invalid URL escape "%%"`, vaultIDPathVariable),
 		rr.Body.String())
-}
-
-func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	op.createDocumentHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
-
-	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
-		" failingResponseWriter always fails")
-}
-
-func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaultIDError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	request := http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}}
-
-	op.createDocumentHandler(failingResponseWriter{},
-		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
-
-	require.Contains(t, logContents.String(),
-		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
-			vaultIDPathVariable))
-}
-
-func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingCreateDocumentError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	op.createDocumentHandler(failingResponseWriter{},
-		&http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}})
-
-	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
-		" failingResponseWriter always fails")
 }
 
 func TestReadDocumentHandler_DocumentExists(t *testing.T) {
@@ -814,85 +609,6 @@ func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) 
 		rr.Body.String())
 }
 
-func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaultIDError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	storeEncryptedDocumentExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	request := http.Request{}
-
-	op.readDocumentHandler(failingResponseWriter{},
-		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
-
-	require.Contains(t, logContents.String(),
-		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
-			vaultIDPathVariable))
-}
-
-func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeDocIDError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	storeEncryptedDocumentExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	request := http.Request{}
-
-	op.readDocumentHandler(failingResponseWriter{},
-		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithDocIDThatCannotBeEscaped()}))
-
-	require.Contains(t, logContents.String(),
-		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
-			docIDPathVariable))
-}
-
-func TestReadDocumentHandler_ResponseWriterFailsWhileWritingReadDocumentError(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	storeEncryptedDocumentExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	op.readDocumentHandler(failingResponseWriter{}, &http.Request{})
-
-	require.Contains(t, logContents.String(), "Failed to write response for document retrieval failure:"+
-		" failingResponseWriter always fails")
-}
-
-func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t *testing.T) {
-	op := New(memedvprovider.NewProvider())
-
-	createDataVaultExpectSuccess(t, op)
-
-	storeEncryptedDocumentExpectSuccess(t, op)
-
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
-	request := http.Request{}
-
-	op.readDocumentHandler(failingResponseWriter{},
-		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithValidVaultIDAndDocID()}))
-
-	require.Contains(t, logContents.String(), "Failed to write response for document retrieval success:"+
-		" failingResponseWriter always fails")
-}
-
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
 	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
 	require.NoError(t, err)
@@ -948,23 +664,4 @@ func handlerLookup(t *testing.T, op *Operation, lookup string) Handler {
 	require.Fail(t, "unable to find handler")
 
 	return nil
-}
-
-func getMapWithValidVaultIDAndDocID() map[string]string {
-	return map[string]string{
-		"vaultID": testVaultID,
-		"docID":   testDocID,
-	}
-}
-
-func getMapWithVaultIDThatCannotBeEscaped() map[string]string {
-	return map[string]string{
-		"vaultID": "%",
-	}
-}
-
-func getMapWithDocIDThatCannotBeEscaped() map[string]string {
-	return map[string]string{
-		"docID": "%",
-	}
 }

@@ -10,11 +10,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
-	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
-
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+
+	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
+	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 )
 
 type mockServer struct{}
@@ -70,14 +70,27 @@ func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
 }
 
 func TestStartCmdValidArgs(t *testing.T) {
-	startCmd := GetStartCmd(&mockServer{})
+	t.Run("database type: mem", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
 
-	args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
-	startCmd.SetArgs(args)
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
+		startCmd.SetArgs(args)
 
-	err := startCmd.Execute()
+		err := startCmd.Execute()
 
-	require.Nil(t, err)
+		require.Nil(t, err)
+	})
+	t.Run("database type: couchdb", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		args := []string{"--" + hostURLFlagName, "localhost:8080",
+			"--" + databaseTypeFlagName, "couchdb", "--" + databaseURLFlagName, "localhost:8080"}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+
+		require.Nil(t, err)
+	})
 }
 
 func TestStartCmdValidArgsEnvVar(t *testing.T) {

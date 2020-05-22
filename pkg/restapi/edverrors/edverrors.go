@@ -22,12 +22,10 @@ const (
 	// to create a document with an ID that is base58-encoded, but the original value was not 128 bits long
 	// (which is required by the EDV spec).
 	ErrNot128BitValue = edvError("document ID is base58-encoded, but original value before encoding was not 128 bits long")
-	// QueryVaultFailureToWriteFailureResponseErrMsg is used when an unexpected failure happens while the response is
-	// being written after a failure occurs while querying a vault.
-	QueryVaultFailureToWriteFailureResponseErrMsg = "Failed to write response for vault query failure: %s"
-	// QueryVaultFailureToWriteSuccessResponseErrMsg is used when an unexpected failure happens while the response is
-	// being written after successfully querying a vault.
-	QueryVaultFailureToWriteSuccessResponseErrMsg = "Failed to write response for vault query success: %s"
+
+	// BlankReferenceIDErrMsg is the message returned by the EDV server when an attempt is made to create a vault
+	// with a blank reference ID.
+	BlankReferenceIDErrMsg = "referenceId can't be blank"
 )
 
 type edvError string

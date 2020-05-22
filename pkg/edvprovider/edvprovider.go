@@ -9,7 +9,7 @@ package edvprovider
 import (
 	"errors"
 
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 // ErrIndexingNotSupported is returned when an attempt is made to create an index in a provider that doesn't support it.

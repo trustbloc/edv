@@ -14,10 +14,12 @@ import (
 	"github.com/DATA-DOG/godog"
 	"github.com/google/uuid"
 
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
 )
+
+const statusCode409Msg = "status code 409"
 
 // Steps is steps for EDV BDD tests
 type Steps struct {
@@ -78,7 +80,7 @@ func (e *Steps) createDataVaultAgain() error {
 	_, errTrustBlocCreateVault :=
 		e.bddInteropContext.TrustBlocEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 
-	if !strings.Contains(errTrustBlocCreateVault.Error(), "409") {
+	if !strings.Contains(errTrustBlocCreateVault.Error(), statusCode409Msg) {
 		return errors.New("expected TrustBloc duplicate vault creation attempt to result in a 409 error, " +
 			"but got " + errTrustBlocCreateVault.Error() + " instead")
 	}
@@ -86,15 +88,9 @@ func (e *Steps) createDataVaultAgain() error {
 	_, errTransmuteCreateVault :=
 		e.bddInteropContext.TransmuteEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 
-	if !strings.Contains(errTransmuteCreateVault.Error(), "409") {
+	if !strings.Contains(errTransmuteCreateVault.Error(), statusCode409Msg) {
 		return errors.New("expected Transmute duplicate vault creation attempt to result in a 409 error, " +
 			"but got " + errTransmuteCreateVault.Error() + " instead")
-	}
-
-	if errTrustBlocCreateVault.Error() != errTransmuteCreateVault.Error() {
-		return errors.New("expected the EDV client to return the same error for both TrustBloc and Transmute " +
-			"duplicate vault creation attempts. the TrustBloc error was " + errTrustBlocCreateVault.Error() +
-			" and the Transmute error was " + errTransmuteCreateVault.Error())
 	}
 
 	return nil

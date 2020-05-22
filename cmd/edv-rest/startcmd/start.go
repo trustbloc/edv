@@ -12,13 +12,13 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv"
+	"github.com/trustbloc/edv/pkg/restapi"
 	cmdutils "github.com/trustbloc/edv/pkg/utils/cmd"
 )
 
@@ -54,6 +54,8 @@ const (
 		" creating or accessing underlying databases." +
 		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
 )
+
+var logger = log.New("edv/cmd/edv-rest")
 
 var errMissingHostURL = fmt.Errorf("host URL not provided")
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
@@ -104,9 +106,15 @@ func createStartCmd(srv server) *cobra.Command {
 				return err
 			}
 
-			databaseURL, err := cmdutils.GetUserSetVar(cmd, databaseURLFlagName, databaseURLEnvKey, true)
-			if err != nil {
-				return err
+			var databaseURL string
+			if databaseType == databaseTypeMemOption {
+				databaseURL = "N/A"
+			} else {
+				var errGetUserSetVar error
+				databaseURL, errGetUserSetVar = cmdutils.GetUserSetVar(cmd, databaseURLFlagName, databaseURLEnvKey, true)
+				if errGetUserSetVar != nil {
+					return errGetUserSetVar
+				}
 			}
 
 			databasePrefix, err := cmdutils.GetUserSetVar(cmd, databasePrefixFlagName, databasePrefixEnvKey, true)
@@ -143,7 +151,7 @@ func startEDV(parameters *edvParameters) error {
 		return err
 	}
 
-	edvService, err := edv.New(provider)
+	edvService, err := restapi.New(provider)
 	if err != nil {
 		return err
 	}
@@ -156,7 +164,12 @@ func startEDV(parameters *edvParameters) error {
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
 	}
 
-	log.Infof("Starting edv rest server on host %s", parameters.hostURL)
+	logger.Infof(`Starting EDV REST server with the following parameters: 
+Host URL: %s
+Database type: %s
+Database URL: %s
+Database prefix: %s`, parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix)
+
 	err = parameters.srv.ListenAndServe(parameters.hostURL, router)
 
 	return err
@@ -169,7 +182,7 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 	case strings.EqualFold(parameters.databaseType, databaseTypeMemOption):
 		edvProv = memedvprovider.NewProvider()
 
-		log.Warn("encrypted indexing and querying is disabled since they are not supported by memstore")
+		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")
 	case strings.EqualFold(parameters.databaseType, databaseTypeCouchDBOption):
 		couchDBEDVProv, err := couchdbedvprovider.NewProvider(parameters.databaseURL, parameters.databasePrefix)
 		if err != nil {

@@ -4,7 +4,7 @@ Copyright SecureKey Technologies Inc. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package edv
+package client
 
 import (
 	"bytes"
@@ -16,11 +16,12 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edge-core/pkg/log"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
+
+var logger = log.New("edv/pkg")
 
 type marshalFunc func(interface{}) ([]byte, error)
 
@@ -55,24 +56,38 @@ func New(edvServerURL string, opts ...Option) *Client {
 // CreateDataVault sends the EDV server a request to create a new data vault.
 // The location of the newly created data vault is returned.
 func (c *Client) CreateDataVault(config *models.DataVaultConfiguration) (string, error) {
-	return c.sendCreateRequest(config, "",
-		"a duplicate data vault exists (status code 409 received)")
+	jsonToSend, err := c.marshal(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal data vault configuration: %w", err)
+	}
+
+	logger.Infof("Sending request to create a new data vault with the following data vault configuration: %s",
+		jsonToSend)
+
+	return c.sendPOSTCreateRequest(jsonToSend, "")
 }
 
 // CreateDocument sends the EDV server a request to store the specified document.
 // The location of the newly created document is returned.
 func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocument) (string, error) {
-	return c.sendCreateRequest(document, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)),
-		"a document with that id already exists (status code 409 received)")
+	jsonToSend, err := c.marshal(document)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal document: %w", err)
+	}
+
+	logger.Infof("Sending request to create the following document: %s", jsonToSend)
+
+	return c.sendPOSTCreateRequest(jsonToSend, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
 }
 
 // ReadDocument sends the EDV server a request to retrieve the specified document.
 // The requested document is returned.
 func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument, error) {
+	endpoint := fmt.Sprintf("%s/%s/documents/%s", c.edvServerURL, url.PathEscape(vaultID), url.PathEscape(docID))
+
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
-	resp, err := c.httpClient.Get(fmt.Sprintf("%s/%s/documents/%s", //nolint: bodyclose
-		c.edvServerURL, url.PathEscape(vaultID), url.PathEscape(docID)))
+	resp, err := c.httpClient.Get(endpoint) //nolint: bodyclose
 	if err != nil {
 		return nil, fmt.Errorf("failed to send GET message: %w", err)
 	}
@@ -84,6 +99,10 @@ func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument,
 		return nil, fmt.Errorf("failed to read response message while retrieving document: %w", err)
 	}
 
+	logger.Infof(`Sent GET request to %s.
+Response status code: %d
+Response body: %s`, endpoint, resp.StatusCode, respBytes)
+
 	switch resp.StatusCode {
 	case http.StatusOK:
 		document := models.EncryptedDocument{}
@@ -94,8 +113,6 @@ func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument,
 		}
 
 		return &document, nil
-	case http.StatusNotFound:
-		return nil, getStatusNotFoundErr(respBytes)
 	default:
 		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
 			resp.StatusCode, respBytes)
@@ -109,10 +126,12 @@ func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, erro
 		return nil, err
 	}
 
+	endpoint := fmt.Sprintf("%s/%s/queries", c.edvServerURL, url.PathEscape(vaultID))
+
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637
-	resp, err := c.httpClient.Post(fmt.Sprintf("%s/%s/queries", //nolint: bodyclose
-		c.edvServerURL, url.PathEscape(vaultID)), "application/json", bytes.NewBuffer(jsonToSend))
+	resp, err := c.httpClient.Post(endpoint, "application/json", //nolint: bodyclose
+		bytes.NewBuffer(jsonToSend))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send POST message: %w", err)
 	}
@@ -124,8 +143,13 @@ func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, erro
 		return nil, fmt.Errorf("failed to read response message while retrieving document: %w", err)
 	}
 
-	switch resp.StatusCode {
-	case http.StatusOK:
+	logger.Infof(`Sent POST request to %s.
+Request body: %s
+
+Response status code: %d
+Response body: %s`, endpoint, jsonToSend, resp.StatusCode, respBytes)
+
+	if resp.StatusCode == http.StatusOK {
 		var docURLs []string
 
 		err = json.Unmarshal(respBytes, &docURLs)
@@ -134,69 +158,45 @@ func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, erro
 		}
 
 		return docURLs, nil
-	default:
-		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
-			resp.StatusCode, respBytes)
 	}
+
+	return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+		resp.StatusCode, respBytes)
 }
 
-func (c *Client) sendCreateRequest(objectToMarshal interface{},
-	endpoint, statusConflictErrText string) (string, error) {
-	jsonToSend, err := c.marshal(objectToMarshal)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal object: %w", err)
-	}
+func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, endpoint string) (string, error) {
+	fullEndpoint := c.edvServerURL + endpoint
 
-	resp, err := c.httpClient.Post(c.edvServerURL+endpoint, "application/json", bytes.NewBuffer(jsonToSend))
+	resp, err := c.httpClient.Post(fullEndpoint, "application/json", //nolint: bodyclose
+		bytes.NewBuffer(jsonToSend))
 	if err != nil {
-		return "", fmt.Errorf("failed to send POST message: %w", err)
+		return "", fmt.Errorf("failed to send POST request: %w", err)
 	}
 
 	defer closeReadCloser(resp.Body)
 
-	switch resp.StatusCode {
-	case http.StatusBadRequest:
-		return "", getError(resp)
-	case http.StatusConflict:
-		return "", fmt.Errorf("%s", statusConflictErrText)
-	default:
-		if resp.StatusCode != http.StatusCreated {
-			respText, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return "", fmt.Errorf("unable to read response: %w", err)
-			}
-
-			return "", fmt.Errorf("%s", string(respText))
-		}
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return resp.Header.Get("Location"), nil
+	logger.Infof(`Sent POST request to %s.
+Request body: %s
+
+Response status code: %d
+Response body: %s`, fullEndpoint, jsonToSend, resp.StatusCode, respBytes)
+
+	if resp.StatusCode == http.StatusCreated {
+		return resp.Header.Get("Location"), nil
+	}
+
+	return "", fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+		resp.StatusCode, respBytes)
 }
 
 func closeReadCloser(respBody io.ReadCloser) {
 	err := respBody.Close()
 	if err != nil {
-		log.Errorf("Failed to close response body: %s", err.Error())
+		logger.Errorf("Failed to close response body: %s", err)
 	}
-}
-
-func getError(resp *http.Response) error {
-	respMsg, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response message: %w", err)
-	}
-
-	return fmt.Errorf("the EDV server returned the following error: %s", string(respMsg))
-}
-
-func getStatusNotFoundErr(respBytes []byte) error {
-	respString := string(respBytes)
-
-	serverEndpointReached :=
-		respString == edverrors.ErrVaultNotFound.Error() || respString == edverrors.ErrDocumentNotFound.Error()
-	if serverEndpointReached {
-		return fmt.Errorf(fmt.Sprintf("failed to retrieve document: %s", respBytes))
-	}
-
-	return fmt.Errorf("unable to reach the EDV server Read Credential endpoint")
 }
