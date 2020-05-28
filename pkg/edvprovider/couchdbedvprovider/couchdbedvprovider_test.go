@@ -134,7 +134,7 @@ func TestCouchDBEDVProvider_CreateStore(t *testing.T) {
 	require.NotNil(t, prov)
 
 	err = prov.CreateStore("testStore")
-	require.Contains(t, err.Error(), "Put http://someURL/testStore: dial tcp: lookup someURL:")
+	require.Contains(t, err.Error(), "no such host")
 }
 
 func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
@@ -157,7 +157,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 
 		store, err := prov.OpenStore("testStore")
 		require.Nil(t, store)
-		require.Contains(t, err.Error(), "http://someURL/testStore: dial tcp: lookup someURL:")
+		require.Contains(t, err.Error(), "no such host")
 	})
 }
 
