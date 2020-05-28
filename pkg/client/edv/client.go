@@ -16,11 +16,13 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/trustbloc/edge-core/pkg/log"
+
 	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
 	"github.com/trustbloc/edv/pkg/restapi/edv/models"
-
-	log "github.com/sirupsen/logrus"
 )
+
+var logger = log.New("edv-client")
 
 type marshalFunc func(interface{}) ([]byte, error)
 
@@ -176,7 +178,7 @@ func (c *Client) sendCreateRequest(objectToMarshal interface{},
 func closeReadCloser(respBody io.ReadCloser) {
 	err := respBody.Close()
 	if err != nil {
-		log.Errorf("Failed to close response body: %s", err.Error())
+		logger.Errorf("Failed to close response body: %s", err.Error())
 	}
 }
 

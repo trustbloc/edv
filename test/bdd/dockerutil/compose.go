@@ -11,14 +11,16 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os/exec"
 	"strings"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/trustbloc/edge-core/pkg/log"
 )
 
 const dockerComposeCommand = "docker-compose"
+
+var logger = log.New("edv/test/bdd")
 
 // Composition represents a docker-compose execution and management
 type Composition struct {
@@ -131,7 +133,7 @@ func (c *Composition) Decompose(dir string) (output string, err error) {
 
 	_, err = c.issueCommand([]string{"stop"}, dir)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatalf(err.Error())
 	}
 
 	outputBytes, err = c.issueCommand([]string{"rm", "-f"}, dir)
@@ -139,7 +141,7 @@ func (c *Composition) Decompose(dir string) (output string, err error) {
 	containerErr := c.DockerHelper.RemoveContainersWithNamePrefix(c.ProjectName)
 
 	if containerErr != nil {
-		log.Fatal(containerErr)
+		logger.Fatalf(containerErr.Error())
 	}
 
 	return string(outputBytes), err
