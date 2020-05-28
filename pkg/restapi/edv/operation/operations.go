@@ -14,7 +14,7 @@ import (
 
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
+	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -34,6 +34,8 @@ const (
 	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
 )
+
+var logger = log.New("restapi")
 
 // Handler http handler for each controller API endpoint
 type Handler interface {
@@ -84,7 +86,7 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 
 		_, err = rw.Write([]byte(errMsg))
 		if err != nil {
-			log.Errorf("Failed to write response for data vault creation failure due to the provided"+
+			logger.Errorf("Failed to write response for data vault creation failure due to the provided"+
 				" data vault configuration: %s", err.Error())
 		}
 
@@ -101,7 +103,7 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 
 		_, err = rw.Write([]byte(fmt.Sprintf("Data vault creation failed: %s", err)))
 		if err != nil {
-			log.Errorf("Failed to write response for data vault creation failure: %s", err.Error())
+			logger.Errorf("Failed to write response for data vault creation failure: %s", err.Error())
 		}
 
 		return
@@ -122,7 +124,7 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
+			logger.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
 		}
 
 		return
@@ -139,7 +141,7 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
+			logger.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
 		}
 
 		return
@@ -159,7 +161,7 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf("Failed to write response for document creation failure: %s", err.Error())
+			logger.Errorf("Failed to write response for document creation failure: %s", err.Error())
 		}
 
 		return
@@ -180,7 +182,7 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf(
+			logger.Errorf(
 				"Failed to write response for document creation failure: %s", err.Error())
 		}
 
@@ -213,7 +215,7 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf("Failed to write response for document retrieval failure: %s", err.Error())
+			logger.Errorf("Failed to write response for document retrieval failure: %s", err.Error())
 		}
 
 		return
@@ -221,7 +223,7 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 
 	_, err = rw.Write(documentBytes)
 	if err != nil {
-		log.Errorf("Failed to write response for document retrieval success: %s", err.Error())
+		logger.Errorf("Failed to write response for document retrieval success: %s", err.Error())
 	}
 }
 
@@ -333,7 +335,7 @@ func sendQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string) {
 	if matchingDocumentIDs == nil {
 		_, err := rw.Write([]byte("no matching documents found"))
 		if err != nil {
-			log.Errorf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg, err.Error())
+			logger.Errorf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg, err.Error())
 		}
 
 		return
@@ -345,7 +347,7 @@ func sendQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string) {
 
 		_, err = rw.Write([]byte(err.Error()))
 		if err != nil {
-			log.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
+			logger.Errorf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg, err.Error())
 		}
 
 		return
@@ -353,7 +355,7 @@ func sendQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string) {
 
 	_, err = rw.Write(matchingDocumentIDsBytes)
 	if err != nil {
-		log.Errorf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg, err.Error())
+		logger.Errorf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg, err.Error())
 	}
 }
 
@@ -382,7 +384,7 @@ func unescapePathVar(pathVar string, vars map[string]string, rw http.ResponseWri
 
 		_, err = rw.Write([]byte(fmt.Sprintf("unable to escape %s path variable: %s", pathVar, err.Error())))
 		if err != nil {
-			log.Errorf("Failed to write response for %s unescaping failure: %s", pathVar, err.Error())
+			logger.Errorf("Failed to write response for %s unescaping failure: %s", pathVar, err.Error())
 		}
 
 		return "", false

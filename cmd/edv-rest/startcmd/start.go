@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
@@ -54,6 +54,8 @@ const (
 		" creating or accessing underlying databases." +
 		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
 )
+
+var logger = log.New("edv-rest")
 
 var errMissingHostURL = fmt.Errorf("host URL not provided")
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
@@ -156,7 +158,7 @@ func startEDV(parameters *edvParameters) error {
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
 	}
 
-	log.Infof("Starting edv rest server on host %s", parameters.hostURL)
+	logger.Infof("Starting edv rest server on host %s", parameters.hostURL)
 	err = parameters.srv.ListenAndServe(parameters.hostURL, router)
 
 	return err
@@ -169,7 +171,7 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 	case strings.EqualFold(parameters.databaseType, databaseTypeMemOption):
 		edvProv = memedvprovider.NewProvider()
 
-		log.Warn("encrypted indexing and querying is disabled since they are not supported by memstore")
+		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")
 	case strings.EqualFold(parameters.databaseType, databaseTypeCouchDBOption):
 		couchDBEDVProv, err := couchdbedvprovider.NewProvider(parameters.databaseURL, parameters.databasePrefix)
 		if err != nil {

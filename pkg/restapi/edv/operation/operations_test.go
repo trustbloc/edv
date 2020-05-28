@@ -14,12 +14,14 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -81,6 +83,25 @@ const (
   "id": "2CHi6"
 }`
 )
+
+var testLoggerProvider = TestLoggerProvider{}
+
+type TestLoggerProvider struct {
+	logContents bytes.Buffer
+}
+
+func (t *TestLoggerProvider) GetLogger(module string) log.Logger {
+	logrusLogger := logrus.New()
+	logrusLogger.SetOutput(&t.logContents)
+
+	return logrusLogger
+}
+
+func TestMain(m *testing.M) {
+	log.Initialize(&testLoggerProvider)
+
+	os.Exit(m.Run())
+}
 
 func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) {
 	op := New(memedvprovider.NewProvider())
@@ -202,16 +223,13 @@ func (m mockContext) Value(key interface{}) interface{} {
 }
 
 func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	op := New(memedvprovider.NewProvider())
 
 	op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
-	require.Contains(t, logContents.String(), "Failed to write response for data vault creation failure"+
-		" due to the provided data vault configuration: failingResponseWriter always fails")
+	require.Contains(t, testLoggerProvider.logContents.String(),
+		"Failed to write response for data vault creation failure"+
+			" due to the provided data vault configuration: failingResponseWriter always fails")
 }
 
 func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingCreateDataVaultError(t *testing.T) {
@@ -219,15 +237,11 @@ func TestCreateDataVaultHandler_ResponseWriterFailsWhileWritingCreateDataVaultEr
 
 	createDataVaultExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	op.createDataVaultHandler(failingResponseWriter{},
 		&http.Request{Body: alwaysReturnBarebonesDataVaultConfigurationReadCloser{}})
 
-	require.Contains(t, logContents.String(), "Failed to write response for data vault creation failure:"+
-		" failingResponseWriter always fails")
+	require.Contains(t, testLoggerProvider.logContents.String(),
+		"Failed to write response for data vault creation failure: failingResponseWriter always fails")
 }
 
 func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
@@ -407,14 +421,12 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
 		queryVaultEndpointHandler.Handle().ServeHTTP(failingResponseWriter{}, req)
 
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg,
-			"failingResponseWriter always fails"))
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg,
+				"failingResponseWriter always fails"))
 	})
 	t.Run("Unable to decode query JSON", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -433,13 +445,11 @@ func TestQueryVaultHandler(t *testing.T) {
 	t.Run("Fail to write response when unable to decode JSON", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
 
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
 		op.queryVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg,
-			"failingResponseWriter always fails"))
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(edverrors.QueryVaultFailureToWriteFailureResponseErrMsg,
+				"failingResponseWriter always fails"))
 	})
 	t.Run("Fail to unescape path var", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -473,22 +483,18 @@ func TestSendQueryResponse(t *testing.T) {
 		require.Equal(t, "no matching documents found", rr.Body.String())
 	})
 	t.Run("Fail to write response when no matching documents found", func(t *testing.T) {
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
 		sendQueryResponse(failingResponseWriter{}, nil)
 
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg,
-			"failingResponseWriter always fails"))
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg,
+				"failingResponseWriter always fails"))
 	})
 	t.Run("Fail to write response when matching documents found", func(t *testing.T) {
-		var logContents bytes.Buffer
-		log.SetOutput(&logContents)
-
 		sendQueryResponse(failingResponseWriter{}, []string{"docID1", "docID2"})
 
-		require.Contains(t, logContents.String(), fmt.Sprintf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg,
-			"failingResponseWriter always fails"))
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(edverrors.QueryVaultFailureToWriteSuccessResponseErrMsg,
+				"failingResponseWriter always fails"))
 	})
 }
 
@@ -635,13 +641,9 @@ func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
 func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingDecodeError(t *testing.T) {
 	op := New(memedvprovider.NewProvider())
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	op.createDocumentHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
-	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
+	require.Contains(t, testLoggerProvider.logContents.String(), "Failed to write response for document creation failure:"+
 		" failingResponseWriter always fails")
 }
 
@@ -650,16 +652,12 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVa
 
 	createDataVaultExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	request := http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}}
 
 	op.createDocumentHandler(failingResponseWriter{},
 		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
 
-	require.Contains(t, logContents.String(),
+	require.Contains(t, testLoggerProvider.logContents.String(),
 		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
 			vaultIDPathVariable))
 }
@@ -669,14 +667,10 @@ func TestCreateDocumentHandler_ResponseWriterFailsWhileWritingCreateDocumentErro
 
 	createDataVaultExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	op.createDocumentHandler(failingResponseWriter{},
 		&http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}})
 
-	require.Contains(t, logContents.String(), "Failed to write response for document creation failure:"+
+	require.Contains(t, testLoggerProvider.logContents.String(), "Failed to write response for document creation failure:"+
 		" failingResponseWriter always fails")
 }
 
@@ -821,16 +815,12 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeVaul
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	request := http.Request{}
 
 	op.readDocumentHandler(failingResponseWriter{},
 		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
 
-	require.Contains(t, logContents.String(),
+	require.Contains(t, testLoggerProvider.logContents.String(),
 		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
 			vaultIDPathVariable))
 }
@@ -842,16 +832,12 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingUnableToUnescapeDocI
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	request := http.Request{}
 
 	op.readDocumentHandler(failingResponseWriter{},
 		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithDocIDThatCannotBeEscaped()}))
 
-	require.Contains(t, logContents.String(),
+	require.Contains(t, testLoggerProvider.logContents.String(),
 		fmt.Sprintf("Failed to write response for %s unescaping failure: failingResponseWriter always fails",
 			docIDPathVariable))
 }
@@ -863,14 +849,10 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingReadDocumentError(t 
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	op.readDocumentHandler(failingResponseWriter{}, &http.Request{})
 
-	require.Contains(t, logContents.String(), "Failed to write response for document retrieval failure:"+
-		" failingResponseWriter always fails")
+	require.Contains(t, testLoggerProvider.logContents.String(),
+		"Failed to write response for document retrieval failure: failingResponseWriter always fails")
 }
 
 func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t *testing.T) {
@@ -880,17 +862,13 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t 
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	request := http.Request{}
 
 	op.readDocumentHandler(failingResponseWriter{},
 		request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithValidVaultIDAndDocID()}))
 
-	require.Contains(t, logContents.String(), "Failed to write response for document retrieval success:"+
-		" failingResponseWriter always fails")
+	require.Contains(t, testLoggerProvider.logContents.String(),
+		"Failed to write response for document retrieval success: failingResponseWriter always fails")
 }
 
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) {

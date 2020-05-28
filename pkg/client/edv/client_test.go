@@ -14,14 +14,16 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
@@ -48,6 +50,8 @@ const (
 	testQueryVaultResponse = `["docID1","docID2"]`
 )
 
+var testLoggerProvider = TestLoggerProvider{}
+
 var errFailingMarshal = errors.New("failingMarshal always fails")
 
 type failingReadCloser struct{}
@@ -58,6 +62,23 @@ func (f failingReadCloser) Read(p []byte) (n int, err error) {
 
 func (f failingReadCloser) Close() error {
 	return fmt.Errorf("failingReadCloser always fails")
+}
+
+type TestLoggerProvider struct {
+	logContents bytes.Buffer
+}
+
+func (t *TestLoggerProvider) GetLogger(module string) log.Logger {
+	logrusLogger := logrus.New()
+	logrusLogger.SetOutput(&t.logContents)
+
+	return logrusLogger
+}
+
+func TestMain(m *testing.M) {
+	log.Initialize(&testLoggerProvider)
+
+	os.Exit(m.Run())
 }
 
 func TestClient_New(t *testing.T) {
@@ -474,16 +495,13 @@ func TestGetErrorReadFail(t *testing.T) {
 }
 
 func TestCloseBody_Fail(t *testing.T) {
-	var logContents bytes.Buffer
-
-	log.SetOutput(&logContents)
-
 	badResp := http.Response{
 		Body: failingReadCloser{},
 	}
 	closeReadCloser(badResp.Body)
 
-	require.Contains(t, logContents.String(), "Failed to close response body: failingReadCloser always fails")
+	require.Contains(t, testLoggerProvider.logContents.String(),
+		"Failed to close response body: failingReadCloser always fails")
 }
 
 func TestSendPostJSON_Unmarshallable(t *testing.T) {
@@ -540,7 +558,7 @@ func startEDVServer(t *testing.T, srvAddr string) *http.Server {
 	go func(srv *http.Server) {
 		err := srv.ListenAndServe()
 		if err.Error() != "http: Server closed" {
-			log.Fatal("server failure")
+			logger.Fatalf("server failure")
 		}
 	}(&srv)
 
@@ -559,7 +577,7 @@ func startMockEDVServer(srvAddr string, httpHandler operation.Handler) *http.Ser
 	go func(srv *http.Server) {
 		err := srv.ListenAndServe()
 		if err.Error() != "http: Server closed" {
-			log.Fatal("server failure")
+			logger.Fatalf("server failure")
 		}
 	}(&srv)
 
@@ -570,7 +588,7 @@ func startMockEDVServer(srvAddr string, httpHandler operation.Handler) *http.Ser
 func mockReadDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	_, err := rw.Write([]byte("this is invalid JSON and will cause json.Unmarshal to fail"))
 	if err != nil {
-		log.Fatal("failed to write in mock read document handler")
+		logger.Fatalf("failed to write in mock read document handler")
 	}
 }
 
@@ -578,7 +596,7 @@ func mockReadDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 func mockSuccessQueryVaultHandler(rw http.ResponseWriter, req *http.Request) {
 	_, err := rw.Write([]byte(testQueryVaultResponse))
 	if err != nil {
-		log.Fatal("failed to write in mock success query vault handler")
+		logger.Fatalf("failed to write in mock success query vault handler")
 	}
 }
 
@@ -586,7 +604,7 @@ func mockSuccessQueryVaultHandler(rw http.ResponseWriter, req *http.Request) {
 func mockFailQueryVaultHandler(rw http.ResponseWriter, req *http.Request) {
 	_, err := rw.Write([]byte("this is invalid JSON and will cause json.Unmarshal to fail"))
 	if err != nil {
-		log.Fatal("failed to write in mock fail query vault handler")
+		logger.Fatalf("failed to write in mock fail query vault handler")
 	}
 }
 
