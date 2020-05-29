@@ -41,7 +41,7 @@ const (
 
 	databaseURLFlagName      = "database-url"
 	databaseURLEnvKey        = "EDV_DATABASE_URL"
-	databaseURLFlagShorthand = "l"
+	databaseURLFlagShorthand = "r"
 	databaseURLFlagUsage     = "The URL of the database. Not needed if using memstore." +
 		" For CouchDB, include the username:password@ text if required." +
 		" Alternatively, this can be set with the following environment variable: " + databaseURLEnvKey
@@ -53,6 +53,19 @@ const (
 		" This followed by an underscore will be prepended to any incoming vault IDs received in REST calls before" +
 		" creating or accessing underlying databases." +
 		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
+
+	logLevelFlagName        = "log-level"
+	logLevelEnvKey          = "LOG_LEVEL"
+	logLevelFlagShorthand   = "l"
+	logLevelPrefixFlagUsage = "Logging level to set. Supported options: critical, error, warning, info, debug." +
+		`Defaults to "info" if not set. Setting to "debug" may adversely impact performance. Alternatively, this can be ` +
+		"set with the following environment variable: " + logLevelEnvKey
+
+	logLevelCritical = "critical"
+	logLevelError    = "error"
+	logLevelWarn     = "warn"
+	logLevelInfo     = "info"
+	logLevelDebug    = "debug"
 )
 
 var logger = log.New("edv-rest")
@@ -67,6 +80,7 @@ type edvParameters struct {
 	databaseType   string
 	databaseURL    string
 	databasePrefix string
+	logLevel       string
 }
 
 type server interface {
@@ -116,12 +130,18 @@ func createStartCmd(srv server) *cobra.Command {
 				return err
 			}
 
+			loggingLevel, err := cmdutils.GetUserSetVar(cmd, logLevelFlagName, logLevelEnvKey, true)
+			if err != nil {
+				return err
+			}
+
 			parameters := &edvParameters{
 				srv:            srv,
 				hostURL:        hostURL,
 				databaseType:   databaseType,
 				databaseURL:    databaseURL,
 				databasePrefix: databasePrefix,
+				logLevel:       loggingLevel,
 			}
 			return startEDV(parameters)
 		},
@@ -133,9 +153,12 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(databaseTypeFlagName, databaseTypeFlagShorthand, "", databaseTypeFlagUsage)
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
 	startCmd.Flags().StringP(databasePrefixFlagName, databasePrefixFlagShorthand, "", databasePrefixFlagUsage)
+	startCmd.Flags().StringP(logLevelFlagName, logLevelFlagShorthand, "", logLevelPrefixFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error {
+	setLogLevel(parameters.logLevel)
+
 	if parameters.hostURL == "" {
 		return errMissingHostURL
 	}
@@ -162,6 +185,31 @@ func startEDV(parameters *edvParameters) error {
 	err = parameters.srv.ListenAndServe(parameters.hostURL, router)
 
 	return err
+}
+
+func setLogLevel(userLogLevel string) {
+	var logLevelToUse = 3
+
+	switch strings.ToLower(userLogLevel) {
+	case "":
+		logger.Infof(`No log level set. Defaulting to "info".`)
+	case logLevelCritical:
+		logLevelToUse = 0
+	case logLevelError:
+		logLevelToUse = 1
+	case logLevelWarn:
+		logLevelToUse = 2
+	case logLevelInfo: // already set to 3
+	case logLevelDebug:
+		logger.Infof(`Log level set to "debug". Performance may be adversely impacted.`)
+
+		logLevelToUse = 4
+	default:
+		logger.Warnf(`"%s" is not a valid logging level.` +
+			`It must be one of the following: critical,error,warn,info,debug. Defaulting to "info".`)
+	}
+
+	log.SetLevel("", log.Level(logLevelToUse))
 }
 
 func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, error) {
