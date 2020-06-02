@@ -63,7 +63,7 @@ const (
 
 	logLevelCritical = "critical"
 	logLevelError    = "error"
-	logLevelWarn     = "warn"
+	logLevelWarn     = "warning"
 	logLevelInfo     = "info"
 	logLevelDebug    = "debug"
 )
@@ -188,28 +188,17 @@ func startEDV(parameters *edvParameters) error {
 }
 
 func setLogLevel(userLogLevel string) {
-	var logLevelToUse = 3
-
-	switch strings.ToLower(userLogLevel) {
-	case "":
-		logger.Infof(`No log level set. Defaulting to "info".`)
-	case logLevelCritical:
-		logLevelToUse = 0
-	case logLevelError:
-		logLevelToUse = 1
-	case logLevelWarn:
-		logLevelToUse = 2
-	case logLevelInfo: // already set to 3
-	case logLevelDebug:
-		logger.Infof(`Log level set to "debug". Performance may be adversely impacted.`)
-
-		logLevelToUse = 4
-	default:
+	logLevel, err := log.ParseLevel(userLogLevel)
+	if err != nil {
 		logger.Warnf(`"%s" is not a valid logging level.` +
-			`It must be one of the following: critical,error,warn,info,debug. Defaulting to "info".`)
+			`It must be one of the following: critical,error,warning,info,debug. Defaulting to "info".`)
+
+		logLevel = log.INFO
+	} else if logLevel == log.DEBUG {
+		logger.Infof(`Log level set to "debug". Performance may be adversely impacted.`)
 	}
 
-	log.SetLevel("", log.Level(logLevelToUse))
+	log.SetLevel("", logLevel)
 }
 
 func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, error) {

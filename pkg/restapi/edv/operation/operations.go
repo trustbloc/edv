@@ -11,10 +11,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/gorilla/mux"
-	"github.com/trustbloc/edge-core/pkg/log"
+	log "github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -33,6 +34,12 @@ const (
 	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
 	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
+	logSpecEndpoint = edvCommonEndpointPathRoot + "/logspec"
+
+	setLogLevelSuccessMsg = "Successfully set log level(s)."
+	invalidLogSpecMsg     = `Invalid log spec. It needs to be in the following format: ` +
+		`ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
+Valid log levels: critical,error,warn,info,debug`
 )
 
 var logger = log.New("restapi")
@@ -359,6 +366,79 @@ func sendQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string) {
 	}
 }
 
+type moduleLevelPair struct {
+	module   string
+	logLevel log.Level
+}
+
+// Note that this will not work properly if a module name contains an '=' character.
+func (c *Operation) logSpecHandler(rw http.ResponseWriter, req *http.Request) {
+	incomingLogSpec := models.LogSpec{}
+
+	err := json.NewDecoder(req.Body).Decode(&incomingLogSpec)
+	if err != nil {
+		writeInvalidLogSpec(rw)
+		return
+	}
+
+	logLevelByModule := strings.Split(incomingLogSpec.Spec, ":")
+
+	defaultLogLevel := log.Level(-1)
+
+	var moduleLevelPairs []moduleLevelPair
+
+	for _, logLevelByModulePart := range logLevelByModule {
+		if strings.Contains(logLevelByModulePart, "=") {
+			moduleAndLevelPair := strings.Split(logLevelByModulePart, "=")
+
+			logLevel, parseErr := log.ParseLevel(moduleAndLevelPair[1])
+			if parseErr != nil {
+				writeInvalidLogSpec(rw)
+				return
+			}
+
+			moduleLevelPairs = append(moduleLevelPairs,
+				moduleLevelPair{moduleAndLevelPair[0], logLevel})
+		} else {
+			if defaultLogLevel != -1 {
+				// The given log spec is formatted incorrectly; it contains multiple default values.
+				writeInvalidLogSpec(rw)
+				return
+			}
+			var parseErr error
+
+			defaultLogLevel, parseErr = log.ParseLevel(logLevelByModulePart)
+			if parseErr != nil {
+				writeInvalidLogSpec(rw)
+				return
+			}
+		}
+	}
+
+	if defaultLogLevel != -1 {
+		log.SetLevel("", defaultLogLevel)
+	}
+
+	for _, moduleLevelPair := range moduleLevelPairs {
+		log.SetLevel(moduleLevelPair.module, moduleLevelPair.logLevel)
+	}
+
+	_, err = rw.Write([]byte(setLogLevelSuccessMsg))
+	if err != nil {
+		logger.Errorf(setLogLevelSuccessMsg+" Failed to write response to sender: %s", err)
+	}
+}
+
+func writeInvalidLogSpec(rw http.ResponseWriter) {
+	rw.WriteHeader(http.StatusBadRequest)
+
+	_, err := rw.Write([]byte(invalidLogSpecMsg))
+	if err != nil {
+		logger.Errorf("Invalid log spec. Failed to write message to sender: %s",
+			err.Error())
+	}
+}
+
 // registerHandler register handlers to be exposed from this service as REST API endpoints
 func (c *Operation) registerHandler() {
 	// Add more protocol endpoints here to expose them as controller API endpoints
@@ -367,6 +447,7 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
+		support.NewHTTPHandler(logSpecEndpoint, http.MethodPut, c.logSpecHandler),
 	}
 }
 
