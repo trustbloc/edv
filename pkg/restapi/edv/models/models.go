@@ -60,3 +60,10 @@ type Query struct {
 	Name  string `json:"index"`
 	Value string `json:"equals"`
 }
+
+// LogSpec represents a request to change the logging level.
+// Format: ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
+// Example: restapi=debug:edvrest=info:info
+type LogSpec struct {
+	Spec string `json:"spec"`
+}

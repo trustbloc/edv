@@ -82,6 +82,8 @@ const (
 	testEncryptedDocumentWithIDThatWasNot128BitsBeforeBase58Encoding = `{
   "id": "2CHi6"
 }`
+
+	testLogSpec = `{"spec":"restapi=debug:edv-rest=critical:error"}`
 )
 
 var testLoggerProvider = TestLoggerProvider{}
@@ -869,6 +871,141 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t 
 
 	require.Contains(t, testLoggerProvider.logContents.String(),
 		"Failed to write response for document retrieval success: failingResponseWriter always fails")
+}
+
+func TestLogSpecHandler(t *testing.T) {
+	t.Run("Successfully set logging levels", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodPut, "", bytes.NewBuffer([]byte(testLogSpec)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Equal(t, setLogLevelSuccessMsg, rr.Body.String())
+
+		require.Equal(t, log.DEBUG, log.GetLevel("restapi"))
+		require.Equal(t, log.CRITICAL, log.GetLevel("edv-rest"))
+		require.Equal(t, log.ERROR, log.GetLevel(""))
+	})
+	t.Run("Empty request body", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodPut, "", bytes.NewBuffer(nil))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
+
+		// Log levels should remain at the default setting of "info"
+		require.Equal(t, log.INFO, log.GetLevel("restapi"))
+		require.Equal(t, log.INFO, log.GetLevel("edv-rest"))
+		require.Equal(t, log.INFO, log.GetLevel(""))
+	})
+	t.Run("Invalid log spec: blank string", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodPut, "", bytes.NewBuffer([]byte(`{"spec":""}`)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
+
+		// Log levels should remain at the default setting of "info"
+		require.Equal(t, log.INFO, log.GetLevel("restapi"))
+		require.Equal(t, log.INFO, log.GetLevel("edv-rest"))
+		require.Equal(t, log.INFO, log.GetLevel(""))
+	})
+	t.Run("Invalid log spec: default log level type is invalid", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodPut, "", bytes.NewBuffer([]byte(`{"spec":"InvalidLogLevel"}`)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
+
+		// Log levels should remain at the default setting of "info"
+		require.Equal(t, log.INFO, log.GetLevel("restapi"))
+		require.Equal(t, log.INFO, log.GetLevel("edv-rest"))
+		require.Equal(t, log.INFO, log.GetLevel(""))
+	})
+	t.Run("Invalid log spec: module log level type is invalid", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodPut, "",
+			bytes.NewBuffer([]byte(`{"spec":"Module1=InvalidLogLevel"}`)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
+
+		// Log levels should remain at the default setting of "info"
+		require.Equal(t, log.INFO, log.GetLevel("restapi"))
+		require.Equal(t, log.INFO, log.GetLevel("edv-rest"))
+		require.Equal(t, log.INFO, log.GetLevel(""))
+	})
+	t.Run("Invalid log spec: multiple default log levels", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodPut, "", bytes.NewBuffer([]byte(`{"spec":"debug:debug"}`)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
+
+		// Log levels should remain at the default setting of "info"
+		require.Equal(t, log.INFO, log.GetLevel("restapi"))
+		require.Equal(t, log.INFO, log.GetLevel("edv-rest"))
+		require.Equal(t, log.INFO, log.GetLevel(""))
+	})
+}
+
+func resetLoggingLevels() {
+	log.SetLevel("restapi", log.INFO)
+	log.SetLevel("edv-rest", log.INFO)
+	log.SetLevel("", log.INFO)
 }
 
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) {

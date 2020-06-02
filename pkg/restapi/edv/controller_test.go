@@ -28,7 +28,7 @@ func TestController_GetOperations(t *testing.T) {
 
 	ops := controller.GetOperations()
 
-	require.Equal(t, 4, len(ops))
+	require.Equal(t, 5, len(ops))
 
 	require.Equal(t, "/encrypted-data-vaults", ops[0].Path())
 	require.Equal(t, http.MethodPost, ops[0].Method())
