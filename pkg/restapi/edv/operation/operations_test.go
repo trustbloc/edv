@@ -108,7 +108,7 @@ func TestMain(m *testing.M) {
 func TestCreateDataVaultHandler_InvalidDataVaultConfigurationJSON(t *testing.T) {
 	op := New(memedvprovider.NewProvider())
 
-	createVaultHandler := getHandler(t, op, createVaultEndpoint)
+	createVaultHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
 
 	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte("")))
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestCreateDataVaultHandler_DataVaultConfigurationWithBlankReferenceIDJSON(t
 
 	rr := httptest.NewRecorder()
 
-	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint)
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	resp, err := ioutil.ReadAll(rr.Body)
@@ -256,7 +256,7 @@ func TestCreateDataVaultHandler_DuplicateDataVault(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint)
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusConflict, rr.Code)
@@ -314,7 +314,7 @@ func TestCreateDataVaultHandler_FailToCreateEDVIndex(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint)
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, "Data vault creation failed: "+errTest.Error(), rr.Body.String())
@@ -337,7 +337,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, `["/encrypted-data-vaults/urn:uuid:abc5a436-21f9-4b4c-857d-1f5569b2600d/documents/`+
@@ -360,7 +360,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, memedvprovider.ErrQueryingNotSupported.Error(), rr.Body.String())
@@ -382,7 +382,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, edverrors.ErrVaultNotFound.Error(), rr.Body.String())
@@ -404,7 +404,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, testErr.Error(), rr.Body.String())
@@ -423,7 +423,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(failingResponseWriter{}, req)
 
 		require.Contains(t, testLoggerProvider.logContents.String(),
@@ -438,7 +438,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, "EOF", rr.Body.String())
@@ -466,7 +466,7 @@ func TestQueryVaultHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, fmt.Sprintf(`unable to escape %s path variable: invalid URL escape "%%"`, vaultIDPathVariable),
@@ -513,7 +513,7 @@ func TestCreateDocumentHandler_ValidEncryptedDocumentJSON(t *testing.T) {
 func TestCreateDocumentHandler_InvalidEncryptedDocumentJSON(t *testing.T) {
 	op := New(memedvprovider.NewProvider())
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 
 	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("")))
 	require.NoError(t, err)
@@ -541,7 +541,7 @@ func TestCreateDocumentHandler_DocIDIsNotBase58Encoded(t *testing.T) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -565,7 +565,7 @@ func TestCreateDocumentHandler_DocIDWasNot128BitsBeforeEncodingAsBase58(t *testi
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -590,7 +590,7 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusConflict, rr.Code)
@@ -599,7 +599,7 @@ func TestCreateDocumentHandler_DuplicateDocuments(t *testing.T) {
 
 func TestCreateDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	op := New(memedvprovider.NewProvider())
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 
 	req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocument)))
 	require.NoError(t, err)
@@ -630,7 +630,7 @@ func TestCreateDocumentHandler_UnableToEscape(t *testing.T) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -689,7 +689,7 @@ func readDocumentExpectSuccess(t *testing.T) {
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
@@ -711,7 +711,7 @@ func readDocumentExpectSuccess(t *testing.T) {
 
 func TestReadDocumentHandler_VaultDoesNotExist(t *testing.T) {
 	op := New(memedvprovider.NewProvider())
-	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
@@ -735,7 +735,7 @@ func TestReadDocumentHandler_DocumentDoesNotExist(t *testing.T) {
 
 	createDataVaultExpectSuccess(t, op)
 
-	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
@@ -761,7 +761,7 @@ func TestReadDocumentHandler_UnableToEscapeVaultIDPathVariable(t *testing.T) {
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
@@ -789,7 +789,7 @@ func TestReadDocumentHandler_UnableToEscapeDocumentIDPathVariable(t *testing.T) 
 
 	storeEncryptedDocumentExpectSuccess(t, op)
 
-	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint)
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
@@ -873,7 +873,7 @@ func TestReadDocumentHandler_ResponseWriterFailsWhileWritingRetrievedDocument(t 
 		"Failed to write response for document retrieval success: failingResponseWriter always fails")
 }
 
-func TestLogSpecHandler(t *testing.T) {
+func TestLogSpecPutHandler(t *testing.T) {
 	t.Run("Successfully set logging levels", func(t *testing.T) {
 		resetLoggingLevels()
 
@@ -884,8 +884,8 @@ func TestLogSpecHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+		logSpecPutEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodPut)
+		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, setLogLevelSuccessMsg, rr.Body.String())
@@ -904,8 +904,8 @@ func TestLogSpecHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+		logSpecPutEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodPut)
+		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
@@ -925,8 +925,8 @@ func TestLogSpecHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+		logSpecPutEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodPut)
+		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
@@ -946,8 +946,8 @@ func TestLogSpecHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+		logSpecPutEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodPut)
+		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
@@ -968,8 +968,8 @@ func TestLogSpecHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+		logSpecPutEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodPut)
+		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
@@ -989,8 +989,8 @@ func TestLogSpecHandler(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, logSpecEndpoint)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+		logSpecPutEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodPut)
+		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Equal(t, invalidLogSpecMsg, rr.Body.String())
@@ -999,6 +999,94 @@ func TestLogSpecHandler(t *testing.T) {
 		require.Equal(t, log.INFO, log.GetLevel("restapi"))
 		require.Equal(t, log.INFO, log.GetLevel("edv-rest"))
 		require.Equal(t, log.INFO, log.GetLevel(""))
+	})
+}
+
+type mockStringBuilder struct {
+	numWrites          int
+	numWritesBeforeErr int
+}
+
+func (m *mockStringBuilder) Write(p []byte) (int, error) {
+	if m.numWrites == m.numWritesBeforeErr {
+		return 0, errors.New("mockStringBuilder write failure")
+	}
+
+	m.numWrites++
+
+	return 0, nil
+}
+
+func (m *mockStringBuilder) String() string {
+	panic("implement me")
+}
+
+func (m *mockStringBuilder) Reset() {}
+
+func TestLogSpecGetHandler(t *testing.T) {
+	t.Run("Successfully get logging levels", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		req, err := http.NewRequest(http.MethodGet, "", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		logSpecGetEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodGet)
+		logSpecGetEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		// The two expected strings below are equivalent. Depending on the order of the entries
+		//  in the underlying log levels map, either is a possible (and valid) result.
+		gotExpectedLevels := rr.Body.String() == "restapi=INFO:edv-rest=INFO:INFO" ||
+			rr.Body.String() == "edv-rest=INFO:restapi=INFO:INFO"
+		require.True(t, gotExpectedLevels)
+	})
+	t.Run("Fail to write module name and level to stringBuilder", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		op.getLogSpecResponse = &mockStringBuilder{}
+
+		req, err := http.NewRequest(http.MethodGet, "", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		logSpecGetEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodGet)
+		logSpecGetEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+	t.Run("Fail to write default log level to stringBuilder", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		op.getLogSpecResponse = &mockStringBuilder{numWritesBeforeErr: 2}
+
+		req, err := http.NewRequest(http.MethodGet, "", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		logSpecGetEndpointHandler := getHandler(t, op, logSpecEndpoint, http.MethodGet)
+		logSpecGetEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+	t.Run("Fail to write response to sender", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		op.logSpecGetHandler(failingResponseWriter{}, nil)
+
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			"Successfully got log spec, but failed to write response to sender: failingResponseWriter always fails")
 	})
 }
 
@@ -1014,7 +1102,7 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation) {
 
 	rr := httptest.NewRecorder()
 
-	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint)
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
@@ -1033,7 +1121,7 @@ func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation) {
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
 
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1042,20 +1130,20 @@ func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation) {
 	require.Equal(t, "/encrypted-data-vaults/"+testVaultID+"/"+"documents/"+testDocID, rr.Header().Get("Location"))
 }
 
-func getHandler(t *testing.T, op *Operation, lookup string) Handler {
-	return getHandlerWithError(t, op, lookup)
+func getHandler(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+	return getHandlerWithError(t, op, pathToLookup, methodToLookup)
 }
 
-func getHandlerWithError(t *testing.T, op *Operation, lookup string) Handler {
-	return handlerLookup(t, op, lookup)
+func getHandlerWithError(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+	return handlerLookup(t, op, pathToLookup, methodToLookup)
 }
 
-func handlerLookup(t *testing.T, op *Operation, lookup string) Handler {
+func handlerLookup(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
 	handlers := op.GetRESTHandlers()
 	require.NotEmpty(t, handlers)
 
 	for _, h := range handlers {
-		if h.Path() == lookup {
+		if h.Path() == pathToLookup && h.Method() == methodToLookup {
 			return h
 		}
 	}
