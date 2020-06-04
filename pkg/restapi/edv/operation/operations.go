@@ -40,6 +40,7 @@ const (
 	invalidLogSpecMsg     = `Invalid log spec. It needs to be in the following format: ` +
 		`ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
 Valid log levels: critical,error,warn,info,debug`
+	getLogLevelPrepareErrMsg = "Failure while preparing log level response: %s"
 )
 
 var logger = log.New("restapi")
@@ -51,13 +52,20 @@ type Handler interface {
 	Handle() http.HandlerFunc
 }
 
+type stringBuilder interface {
+	Write(p []byte) (int, error)
+	String() string
+	Reset()
+}
+
 // New returns a new EDV operations instance.
 // If dbPrefix is blank, then no prefixing will be done to the vault IDs.
 func New(provider edvprovider.EDVProvider) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: provider,
-		}}
+		},
+		getLogSpecResponse: &strings.Builder{}}
 	svc.registerHandler()
 
 	return svc
@@ -65,8 +73,9 @@ func New(provider edvprovider.EDVProvider) *Operation {
 
 // Operation defines handlers for EDV service
 type Operation struct {
-	handlers        []Handler
-	vaultCollection VaultCollection
+	handlers           []Handler
+	vaultCollection    VaultCollection
+	getLogSpecResponse stringBuilder
 }
 
 // VaultCollection represents EDV storage.
@@ -372,7 +381,7 @@ type moduleLevelPair struct {
 }
 
 // Note that this will not work properly if a module name contains an '=' character.
-func (c *Operation) logSpecHandler(rw http.ResponseWriter, req *http.Request) {
+func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request) {
 	incomingLogSpec := models.LogSpec{}
 
 	err := json.NewDecoder(req.Body).Decode(&incomingLogSpec)
@@ -429,6 +438,41 @@ func (c *Operation) logSpecHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (c *Operation) logSpecGetHandler(rw http.ResponseWriter, _ *http.Request) {
+	logLevels := log.GetAllLevels()
+
+	var defaultDebugLevel string
+
+	c.getLogSpecResponse.Reset()
+
+	for module, level := range logLevels {
+		if module == "" {
+			defaultDebugLevel = log.ParseString(level)
+		} else {
+			_, err := c.getLogSpecResponse.Write([]byte(module + `=` + log.ParseString(level) + ":"))
+			if err != nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				logger.Errorf(getLogLevelPrepareErrMsg, err)
+
+				return
+			}
+		}
+	}
+
+	_, err := c.getLogSpecResponse.Write([]byte(defaultDebugLevel))
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		logger.Errorf(getLogLevelPrepareErrMsg, err)
+
+		return
+	}
+
+	_, err = rw.Write([]byte(c.getLogSpecResponse.String()))
+	if err != nil {
+		logger.Errorf("Successfully got log spec, but failed to write response to sender: %s", err)
+	}
+}
+
 func writeInvalidLogSpec(rw http.ResponseWriter) {
 	rw.WriteHeader(http.StatusBadRequest)
 
@@ -447,7 +491,8 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
-		support.NewHTTPHandler(logSpecEndpoint, http.MethodPut, c.logSpecHandler),
+		support.NewHTTPHandler(logSpecEndpoint, http.MethodPut, c.logSpecPutHandler),
+		support.NewHTTPHandler(logSpecEndpoint, http.MethodGet, c.logSpecGetHandler),
 	}
 }
 
