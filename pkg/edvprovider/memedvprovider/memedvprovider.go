@@ -14,7 +14,7 @@ import (
 	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 // ErrQueryingNotSupported is used when an attempt is made to query a vault backed by a memstore.

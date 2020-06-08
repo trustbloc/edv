@@ -11,8 +11,8 @@ import (
 
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 
-	"github.com/trustbloc/edv/pkg/client/edv"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	edvclient "github.com/trustbloc/edv/pkg/client"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const sampleEncryptedDoc = `{
@@ -81,9 +81,9 @@ func NewBDDContext(edvHostURL string) (*BDDContext, error) {
 // BDDInteropContext is a global context shared between different interop test suites in bddtests
 type BDDInteropContext struct {
 	TrustBlocEDVHostURL        string
-	TrustBlocEDVClient         *edv.Client
+	TrustBlocEDVClient         *edvclient.Client
 	TransmuteEDVHostURL        string
-	TransmuteEDVClient         *edv.Client
+	TransmuteEDVClient         *edvclient.Client
 	DataVaultConfig            *models.DataVaultConfiguration
 	TransmuteDataVaultLocation string
 	TransmuteDataVaultID       string
@@ -101,9 +101,9 @@ func NewBDDInteropContext(edvHostURL, transmuteEDVHostURL string) (*BDDInteropCo
 
 	return &BDDInteropContext{
 		TrustBlocEDVHostURL: edvHostURL,
-		TrustBlocEDVClient:  edv.New("http://" + edvHostURL),
+		TrustBlocEDVClient:  edvclient.New("http://" + edvHostURL),
 		TransmuteEDVHostURL: transmuteEDVHostURL,
-		TransmuteEDVClient:  edv.New(transmuteEDVHostURL),
+		TransmuteEDVClient:  edvclient.New(transmuteEDVHostURL),
 		SampleDocToStore:    &sampleDocToStore,
 	}, nil
 }

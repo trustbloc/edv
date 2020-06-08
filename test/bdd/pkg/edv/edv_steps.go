@@ -19,8 +19,8 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes/subtle"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 
-	"github.com/trustbloc/edv/pkg/client/edv"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	edvclient "github.com/trustbloc/edv/pkg/client"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
 )
@@ -68,7 +68,7 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 }
 
 func (e *Steps) createDataVault(vaultID, expectedVaultLocation string) error {
-	client := edv.New(e.bddContext.EDVHostURL)
+	client := edvclient.New(e.bddContext.EDVHostURL)
 
 	config := models.DataVaultConfiguration{ReferenceID: vaultID}
 
@@ -149,7 +149,7 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 }
 
 func (e *Steps) storeDocumentInVault(vaultID, expectedDocLocation string) error {
-	client := edv.New(e.bddContext.EDVHostURL)
+	client := edvclient.New(e.bddContext.EDVHostURL)
 
 	docLocation, err := client.CreateDocument(vaultID, e.bddContext.EncryptedDocToStore)
 	if err != nil {
@@ -164,7 +164,7 @@ func (e *Steps) storeDocumentInVault(vaultID, expectedDocLocation string) error 
 }
 
 func (e *Steps) retrieveDocument(docID, vaultID string) error {
-	client := edv.New(e.bddContext.EDVHostURL)
+	client := edvclient.New(e.bddContext.EDVHostURL)
 
 	retrievedDocument, err := client.ReadDocument(vaultID, docID)
 	if err != nil {
@@ -208,7 +208,7 @@ func (e *Steps) decryptDocument() error {
 }
 
 func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) error {
-	client := edv.New(e.bddContext.EDVHostURL)
+	client := edvclient.New(e.bddContext.EDVHostURL)
 
 	query := models.Query{
 		Name:  queryIndexName,

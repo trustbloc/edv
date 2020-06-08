@@ -4,11 +4,11 @@ Copyright SecureKey Technologies Inc. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package edv
+package restapi
 
 import (
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
+	"github.com/trustbloc/edv/pkg/restapi/operation"
 )
 
 // New returns new controller instance.

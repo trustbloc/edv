@@ -18,7 +18,7 @@ import (
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv"
+	"github.com/trustbloc/edv/pkg/restapi"
 	cmdutils "github.com/trustbloc/edv/pkg/utils/cmd"
 )
 
@@ -168,7 +168,7 @@ func startEDV(parameters *edvParameters) error {
 		return err
 	}
 
-	edvService, err := edv.New(provider)
+	edvService, err := restapi.New(provider)
 	if err != nil {
 		return err
 	}
@@ -190,8 +190,8 @@ func startEDV(parameters *edvParameters) error {
 func setLogLevel(userLogLevel string) {
 	logLevel, err := log.ParseLevel(userLogLevel)
 	if err != nil {
-		logger.Warnf(`"%s" is not a valid logging level.` +
-			`It must be one of the following: critical,error,warning,info,debug. Defaulting to "info".`)
+		logger.Warnf(`%s is not a valid logging level.` +
+			`It must be one of the following: critical,error,warning,info,debug. Defaulting to info.`)
 
 		logLevel = log.INFO
 	} else if logLevel == log.DEBUG {
