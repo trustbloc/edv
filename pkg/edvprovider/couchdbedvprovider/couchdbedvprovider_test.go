@@ -9,6 +9,7 @@ package couchdbedvprovider
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,8 +17,8 @@ import (
 	"github.com/trustbloc/edge-core/pkg/storage/mockstore"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const (
@@ -134,6 +135,9 @@ func TestCouchDBEDVProvider_CreateStore(t *testing.T) {
 	require.NotNil(t, prov)
 
 	err = prov.CreateStore("testStore")
+	require.Error(t, err)
+	strings.Contains(err.Error(), "")
+	println(err.Error())
 	require.Contains(t, err.Error(), "no such host")
 }
 
@@ -460,7 +464,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		}
 
 		docIDs, err := store.Query(&query)
-		require.Equal(t, edverrors.ErrDocumentNotFound, err)
+		require.Equal(t, messages.ErrDocumentNotFound, err)
 		require.Empty(t, docIDs)
 	})
 	t.Run("Failure: other error in coreStore while filtering docs by query", func(t *testing.T) {

@@ -4,33 +4,28 @@ Copyright SecureKey Technologies Inc. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package edv
+package client
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
-	"github.com/trustbloc/edv/pkg/restapi/edv"
-	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
-	"github.com/trustbloc/edv/pkg/restapi/edv/operation"
+	"github.com/trustbloc/edv/pkg/restapi"
+	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
+	"github.com/trustbloc/edv/pkg/restapi/operation"
 )
 
 const (
@@ -50,36 +45,7 @@ const (
 	testQueryVaultResponse = `["docID1","docID2"]`
 )
 
-var testLoggerProvider = TestLoggerProvider{}
-
 var errFailingMarshal = errors.New("failingMarshal always fails")
-
-type failingReadCloser struct{}
-
-func (f failingReadCloser) Read(p []byte) (n int, err error) {
-	return 0, fmt.Errorf("failingReadCloser always fails")
-}
-
-func (f failingReadCloser) Close() error {
-	return fmt.Errorf("failingReadCloser always fails")
-}
-
-type TestLoggerProvider struct {
-	logContents bytes.Buffer
-}
-
-func (t *TestLoggerProvider) GetLogger(module string) log.Logger {
-	logrusLogger := logrus.New()
-	logrusLogger.SetOutput(&t.logContents)
-
-	return logrusLogger
-}
-
-func TestMain(m *testing.M) {
-	log.Initialize(&testLoggerProvider)
-
-	os.Exit(m.Run())
-}
 
 func TestClient_New(t *testing.T) {
 	client := New("", WithTLSConfig(&tls.Config{ServerName: "name"}))
@@ -135,10 +101,11 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	invalidConfig := models.DataVaultConfiguration{}
+
 	location, err := client.CreateDataVault(&invalidConfig)
 	require.Empty(t, location)
-	require.NotNil(t, err)
-	require.Equal(t, "the EDV server returned the following error: referenceId can't be blank", err.Error())
+	require.Contains(t, err.Error(), messages.BlankReferenceID)
+	require.Contains(t, err.Error(), "status code 400")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -159,7 +126,9 @@ func TestClient_CreateDataVault_DuplicateVault(t *testing.T) {
 
 	location, err := client.CreateDataVault(&validConfig)
 	require.Empty(t, location)
-	require.Equal(t, "a duplicate data vault exists (status code 409 received)", err.Error())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), messages.ErrDuplicateVault)
+	require.Contains(t, err.Error(), "status code 409")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -236,8 +205,9 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
 	require.Empty(t, location)
-	require.Equal(t, fmt.Sprintf("the EDV server returned the following error: %s",
-		edverrors.ErrVaultNotFound.Error()), err.Error())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
+	require.Contains(t, err.Error(), "status code 400")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -349,8 +319,8 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	document, err := client.ReadDocument("wrongvault", testDocumentID)
 	require.Nil(t, document)
-	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s",
-		edverrors.ErrVaultNotFound.Error()), err.Error())
+	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
+	require.Contains(t, err.Error(), "status code 404")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -371,7 +341,7 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
-	require.Equal(t, fmt.Sprintf("failed to retrieve document: %s", edverrors.ErrDocumentNotFound.Error()), err.Error())
+	require.Contains(t, err.Error(), messages.ErrDocumentNotFound.Error())
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -400,7 +370,7 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 
 	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
-	require.Equal(t, "unable to reach the EDV server Read Credential endpoint", err.Error())
+	require.Contains(t, err.Error(), "404 page not found")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -470,8 +440,9 @@ func TestClient_QueryVault(t *testing.T) {
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		ids, err := client.QueryVault("testVaultID", &models.Query{})
-		require.EqualError(t, err, "the EDV server returned status code "+strconv.Itoa(http.StatusBadRequest)+
-			" along with the following message: "+edverrors.ErrVaultNotFound.Error())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
+		require.Contains(t, err.Error(), "status code 400")
 		require.Empty(t, ids)
 
 		err = srv.Shutdown(context.Background())
@@ -484,34 +455,6 @@ func TestClient_QueryVault(t *testing.T) {
 		require.Equal(t, errFailingMarshal, err)
 		require.Empty(t, ids)
 	})
-}
-
-func TestGetErrorReadFail(t *testing.T) {
-	badResp := http.Response{
-		Body: failingReadCloser{},
-	}
-	err := getError(&badResp)
-	require.Equal(t, "failed to read response message: failingReadCloser always fails", err.Error())
-}
-
-func TestCloseBody_Fail(t *testing.T) {
-	badResp := http.Response{
-		Body: failingReadCloser{},
-	}
-	closeReadCloser(badResp.Body)
-
-	require.Contains(t, testLoggerProvider.logContents.String(),
-		"Failed to close response body: failingReadCloser always fails")
-}
-
-func TestSendPostJSON_Unmarshallable(t *testing.T) {
-	unmarshallableMap := make(map[string]interface{})
-	unmarshallableMap[""] = make(chan int)
-
-	client := New("")
-	_, err := client.sendCreateRequest(unmarshallableMap, "", "")
-
-	require.Equal(t, "failed to marshal object: json: unsupported type: chan int", err.Error())
 }
 
 func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) models.DataVaultConfiguration {
@@ -543,7 +486,7 @@ func getTestValidEncryptedDocument() *models.EncryptedDocument {
 
 // Returns a reference to the server so the caller can stop it.
 func startEDVServer(t *testing.T, srvAddr string) *http.Server {
-	edvService, err := edv.New(memedvprovider.NewProvider())
+	edvService, err := restapi.New(memedvprovider.NewProvider())
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()

@@ -15,8 +15,8 @@ import (
 	couchdbstore "github.com/trustbloc/edge-core/pkg/storage/couchdb"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/edv/edverrors"
-	"github.com/trustbloc/edv/pkg/restapi/edv/models"
+	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const mapDocumentIndexedField = "IndexName"
@@ -186,7 +186,7 @@ func (c *CouchDBEDVStore) validateNewAttributeAgainstDoc(newAttribute models.Ind
 	docBytes, err := c.coreStore.Get(docID)
 	if err != nil {
 		if err == storage.ErrValueNotFound {
-			return edverrors.ErrDocumentNotFound
+			return messages.ErrDocumentNotFound
 		}
 
 		return err
@@ -261,12 +261,10 @@ func (c *CouchDBEDVStore) createMappingDocument(indexedAttributeName, encryptedD
 }
 
 func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (map[string]struct{}, error) {
-	itr, err := c.coreStore.Query(`{
-		   "selector": {
-		       "` + mapDocumentIndexedField + `": "` + queryIndexName + `"
-		   },
-			"use_index": ["EDV_EncryptedIndexesDesignDoc", "EDV_IndexName"]
-		}`)
+	query := `{"selector":{"` + mapDocumentIndexedField + `":"` + queryIndexName +
+		`"},"use_index": ["EDV_EncryptedIndexesDesignDoc", "EDV_IndexName"]}`
+
+	itr, err := c.coreStore.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +313,7 @@ func (c *CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *m
 		documentBytes, err := c.coreStore.Get(docID)
 		if err != nil {
 			if err == storage.ErrValueNotFound {
-				return nil, edverrors.ErrDocumentNotFound
+				return nil, messages.ErrDocumentNotFound
 			}
 
 			return nil, err
