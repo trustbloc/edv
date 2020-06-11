@@ -13,7 +13,7 @@ import (
 	"github.com/trustbloc/edv/cmd/edv-rest/startcmd"
 )
 
-var logger = log.New("edv-rest")
+var logger = log.New("EDV-REST")
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -26,6 +26,6 @@ func main() {
 	rootCmd.AddCommand(startcmd.GetStartCmd(&startcmd.HTTPServer{}))
 
 	if err := rootCmd.Execute(); err != nil {
-		logger.Fatalf("Failed to run edv: %s", err.Error())
+		logger.Fatalf("Failed to run edv: %s", err)
 	}
 }

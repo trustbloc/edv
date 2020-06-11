@@ -11,9 +11,10 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/trustbloc/edv/pkg/restapi/messages"
-
 	"github.com/btcsuite/btcutil/base58"
+	"github.com/trustbloc/edge-core/pkg/log"
+
+	"github.com/trustbloc/edv/pkg/restapi/messages"
 )
 
 // This function can't tell if the value before being encoded was precisely 128 bits long.
@@ -60,4 +61,8 @@ func convertToFullDocumentURLs(documentIDs []string, vaultID string, req *http.R
 	}
 
 	return fullDocumentURLs
+}
+
+func debugLogLevelEnabled() bool {
+	return log.GetLevel(logModuleName) >= log.DEBUG
 }

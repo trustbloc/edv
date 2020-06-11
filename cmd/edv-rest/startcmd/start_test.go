@@ -71,14 +71,27 @@ func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
 }
 
 func TestStartCmdValidArgs(t *testing.T) {
-	startCmd := GetStartCmd(&mockServer{})
+	t.Run("database type: mem", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
 
-	args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
-	startCmd.SetArgs(args)
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
+		startCmd.SetArgs(args)
 
-	err := startCmd.Execute()
+		err := startCmd.Execute()
 
-	require.Nil(t, err)
+		require.NoError(t, err)
+	})
+	t.Run("database type: couchdb", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		args := []string{"--" + hostURLFlagName, "localhost:8080",
+			"--" + databaseTypeFlagName, "couchdb", "--" + databaseURLFlagName, "localhost:8080"}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+
+		require.NoError(t, err)
+	})
 }
 
 func TestStartCmdLogLevels(t *testing.T) {

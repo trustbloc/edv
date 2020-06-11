@@ -8,12 +8,14 @@ package operation
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
 
 	"github.com/gorilla/mux"
-	log "github.com/trustbloc/edge-core/pkg/log"
+	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -23,6 +25,8 @@ import (
 )
 
 const (
+	logModuleName = "restapi"
+
 	edvCommonEndpointPathRoot = "/encrypted-data-vaults"
 	vaultIDPathVariable       = "vaultID"
 	docIDPathVariable         = "docID"
@@ -35,7 +39,7 @@ const (
 	logSpecEndpoint = edvCommonEndpointPathRoot + "/logspec"
 )
 
-var logger = log.New("restapi")
+var logger = log.New(logModuleName)
 
 // Operation defines handler logic for the EDV service.
 type Operation struct {
@@ -104,30 +108,47 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 		return
 	}
 
+	logger.Infof(`Received request to create a new data vault.
+Request body: %s`, string(requestBody))
+
 	var config models.DataVaultConfiguration
 
 	err = json.Unmarshal(requestBody, &config)
 	if err != nil {
-		writeCreateDataVaultUnmarshalFailure(rw, err)
+		writeCreateDataVaultUnmarshalFailure(rw, err, requestBody)
 		return
 	}
 
-	c.createDataVault(rw, &config, req.Host)
+	var configBytesForLog []byte
+
+	if debugLogLevelEnabled() {
+		var err error
+		configBytesForLog, err = json.Marshal(config)
+
+		if err != nil {
+			logger.Debugf(messages.DebugLogEventWithReceivedData,
+				fmt.Sprintf(messages.MarshalVaultConfigForLogFailure, err),
+				requestBody)
+		}
+	}
+
+	c.createDataVault(rw, &config, req.Host, configBytesForLog)
 }
 
-func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataVaultConfiguration, hostURL string) {
+func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataVaultConfiguration, hostURL string,
+	configBytesForLog []byte) {
 	if config.ReferenceID == "" {
-		writeBlankReferenceIDErrMsg(rw)
+		writeBlankReferenceIDErrMsg(rw, configBytesForLog)
 		return
 	}
 
 	err := c.vaultCollection.createDataVault(config.ReferenceID)
 	if err != nil {
-		writeCreateDataVaultFailure(rw, err)
+		writeCreateDataVaultFailure(rw, err, configBytesForLog)
 		return
 	}
 
-	writeCreateDataVaultSuccess(rw, config.ReferenceID, hostURL)
+	writeCreateDataVaultSuccess(rw, config.ReferenceID, hostURL, configBytesForLog)
 }
 
 func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request) {
@@ -138,27 +159,42 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.QueryFailReadRequestBody, err, vaultID)
+		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.QueryFailReadRequestBody, err, vaultID, nil)
 		return
 	}
+
+	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.QueryReceiveRequest, vaultID), requestBody)
 
 	var incomingQuery models.Query
 
 	err = json.Unmarshal(requestBody, &incomingQuery)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID)
+		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID, requestBody)
 		return
+	}
+
+	var queryBytesForLog []byte
+
+	if debugLogLevelEnabled() {
+		var errMarshal error
+		queryBytesForLog, errMarshal = json.Marshal(incomingQuery)
+
+		if errMarshal != nil {
+			logger.Errorf(messages.DebugLogEventWithReceivedData,
+				fmt.Sprintf(messages.MarshalQueryForLogFailure, errMarshal),
+				requestBody)
+		}
 	}
 
 	matchingDocumentIDs, err := c.vaultCollection.queryVault(vaultID, &incomingQuery)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID)
+		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID, queryBytesForLog)
 		return
 	}
 
 	fullDocumentURLs := convertToFullDocumentURLs(matchingDocumentIDs, vaultID, req)
 
-	writeQueryResponse(rw, fullDocumentURLs, vaultID)
+	writeQueryResponse(rw, fullDocumentURLs, vaultID, queryBytesForLog)
 }
 
 func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Request) {
@@ -170,25 +206,15 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.CreateDocumentFailReadRequestBody,
-			err, vaultID)
+			err, vaultID, nil)
 		return
 	}
 
-	var incomingDocument models.EncryptedDocument
+	logger.Debugf(messages.DebugLogEventWithReceivedData,
+		fmt.Sprintf(messages.CreateDocumentReceiveRequest, vaultID),
+		requestBody)
 
-	err = json.Unmarshal(requestBody, &incomingDocument)
-	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.InvalidDocument, err, vaultID)
-		return
-	}
-
-	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
-	if err != nil {
-		writeCreateDocumentFailure(rw, err, vaultID)
-		return
-	}
-
-	writeCreateDocumentSuccess(rw, req.Host, vaultID, incomingDocument.ID)
+	c.createDocument(rw, requestBody, req.Host, vaultID)
 }
 
 func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Request) {
@@ -201,6 +227,8 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 	if !success {
 		return
 	}
+
+	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.ReadDocumentReceiveRequest, docID, vaultID))
 
 	documentBytes, err := c.vaultCollection.readDocument(vaultID, docID)
 	if err != nil {
@@ -215,9 +243,15 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request) {
 	incomingLogSpec := models.LogSpec{}
 
-	err := json.NewDecoder(req.Body).Decode(&incomingLogSpec)
+	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		writeInvalidLogSpec(rw)
+		writePutLogSpecRequestReadFailure(rw, err)
+		return
+	}
+
+	err = json.Unmarshal(requestBody, &incomingLogSpec)
+	if err != nil {
+		writeInvalidLogSpec(rw, err, requestBody)
 		return
 	}
 
@@ -231,9 +265,9 @@ func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request)
 		if strings.Contains(logLevelByModulePart, "=") {
 			moduleAndLevelPair := strings.Split(logLevelByModulePart, "=")
 
-			logLevel, parseErr := log.ParseLevel(moduleAndLevelPair[1])
-			if parseErr != nil {
-				writeInvalidLogSpec(rw)
+			logLevel, errParse := log.ParseLevel(moduleAndLevelPair[1])
+			if errParse != nil {
+				writeInvalidLogSpec(rw, errParse, requestBody)
 				return
 			}
 
@@ -242,14 +276,14 @@ func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request)
 		} else {
 			if defaultLogLevel != -1 {
 				// The given log spec is formatted incorrectly; it contains multiple default values.
-				writeInvalidLogSpec(rw)
+				writeInvalidLogSpec(rw, errors.New(messages.MultipleDefaultValues), requestBody)
 				return
 			}
-			var parseErr error
+			var errParse error
 
-			defaultLogLevel, parseErr = log.ParseLevel(logLevelByModulePart)
-			if parseErr != nil {
-				writeInvalidLogSpec(rw)
+			defaultLogLevel, errParse = log.ParseLevel(logLevelByModulePart)
+			if errParse != nil {
+				writeInvalidLogSpec(rw, errParse, requestBody)
 				return
 			}
 		}
@@ -263,10 +297,7 @@ func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request)
 		log.SetLevel(moduleLevelPair.module, moduleLevelPair.logLevel)
 	}
 
-	_, err = rw.Write([]byte(messages.SetLogSpecSuccess))
-	if err != nil {
-		logger.Errorf(messages.SetLogSpecSuccess+messages.FailWriteResponse, err)
-	}
+	writePutLogSpecSuccess(rw, requestBody)
 }
 
 func (c *Operation) logSpecGetHandler(rw http.ResponseWriter, _ *http.Request) {
@@ -325,6 +356,37 @@ func (vc *VaultCollection) createDataVault(vaultID string) error {
 	}
 
 	return nil
+}
+
+func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, hostURL, vaultID string) {
+	var incomingDocument models.EncryptedDocument
+
+	err := json.Unmarshal(requestBody, &incomingDocument)
+	if err != nil {
+		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.InvalidDocument, err, vaultID, requestBody)
+		return
+	}
+
+	var docBytesForLog []byte
+
+	if debugLogLevelEnabled() {
+		var errMarshal error
+		docBytesForLog, errMarshal = json.Marshal(incomingDocument)
+
+		if errMarshal != nil {
+			logger.Errorf(messages.DebugLogEventWithReceivedData,
+				fmt.Sprintf(messages.MarshalDocumentForLogFailure, errMarshal),
+				requestBody)
+		}
+	}
+
+	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
+	if err != nil {
+		writeCreateDocumentFailure(rw, err, vaultID, docBytesForLog)
+		return
+	}
+
+	writeCreateDocumentSuccess(rw, hostURL, vaultID, incomingDocument.ID, docBytesForLog)
 }
 
 func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {

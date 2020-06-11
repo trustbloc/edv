@@ -24,13 +24,19 @@ const (
 	ErrNot128BitValue = edvError("document ID is base58-encoded, but original value before encoding was not 128 bits long")
 
 	// FailWriteResponse is logged when a ResponseWriter fails to write.
-	FailWriteResponse = ` Failed to write response back to sender: %s.`
+	FailWriteResponse = " Failed to write response back to sender: %s."
 
-	// CreateVaultFailReadResponseBody is used when the incoming request body can't be read..
+	// DebugLogEvent is used for logging debugging events.
+	DebugLogEvent = `
+Event: %s`
+	// DebugLogEventWithReceivedData is used for logging debugging events with received data.
+	DebugLogEventWithReceivedData = DebugLogEvent + `
+Received data: %s`
+
+	// CreateVaultFailReadRequestBody is used when the incoming request body can't be read..
 	// This should not happen during normal operation.
-	CreateVaultFailReadResponseBody = "Received request to create a new data vault, " +
+	CreateVaultFailReadRequestBody = "Received request to create a new data vault, " +
 		"but failed to read the request body: %s."
-
 	// InvalidVaultConfig is used when a received data vault configuration is invalid.
 	InvalidVaultConfig = "Received invalid data vault configuration: %s."
 	// BlankReferenceID is the message returned by the EDV server when an attempt is made to create a vault
@@ -38,11 +44,15 @@ const (
 	BlankReferenceID = "referenceId can't be blank"
 	// VaultCreationFailure is used when an error prevents a new data vault from being created.
 	VaultCreationFailure = "Failed to create a new data vault: %s."
+	// MarshalVaultConfigForLogFailure is used when the log level is set to debug and a data vault configuration
+	// fails to marshal back into bytes for logging purposes.
+	MarshalVaultConfigForLogFailure = "Failed to marshal vault config back into bytes for logging purposes: %s."
 
+	// QueryReceiveRequest is used for logging new queries.
+	QueryReceiveRequest = "Received request to query data vault %s."
 	// QueryFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.
-	QueryFailReadRequestBody = `Received request to query data vault %s,` +
-		" but failed to read the request body: %s."
+	QueryFailReadRequestBody = QueryReceiveRequest + " Failed to read the request body: %s."
 	// InvalidQuery is used when an invalid query is received.
 	InvalidQuery = `Received invalid query for data vault %s: %s.`
 	// QueryFailure is used when an error occurs while querying a vault.
@@ -54,34 +64,57 @@ const (
 	// FailToMarshalDocIDs is used when the document IDs returned from a query can't be marshalled.
 	// This should not happen during normal operation.
 	FailToMarshalDocIDs = QuerySuccess + " Failed to marshal the matching document IDs into bytes: %s."
+	// MarshalQueryForLogFailure is used when the log level is set to debug and a query
+	// fails to marshal back into bytes for logging purposes.
+	MarshalQueryForLogFailure = "Failed to marshal query back into bytes for logging purposes: %s."
 
+	// CreateDocumentReceiveRequest is used for logging create document requests.
+	CreateDocumentReceiveRequest = "Received request to create a new document in data vault %s."
 	// CreateDocumentFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.
-	CreateDocumentFailReadRequestBody = `Received request to create a new document in data vault %s, ` +
-		`but failed to read request body: %s`
+	CreateDocumentFailReadRequestBody = CreateDocumentReceiveRequest +
+		` Failed to read request body: %s.`
 	// InvalidDocument is used when an invalid document is received.
 	InvalidDocument = `Received a request to create a document in vault %s, ` +
 		"but the document is invalid: %s."
 	// CreateDocumentFailure is used when an error occurs while creating a new document.
 	CreateDocumentFailure = `Failure while creating document in vault %s: %s.`
+	// CreateDocumentSuccess is used when a document is successfully created.
+	CreateDocumentSuccess = "Successfully created a new document document in vault %s at %s."
+	// MarshalDocumentForLogFailure is used when the log level is set to debug and a document
+	// fails to marshal back into bytes for logging purposes.
+	MarshalDocumentForLogFailure = "Failed to marshal document back into bytes for logging purposes: %s."
 
+	// ReadDocumentReceiveRequest is used for logging read document requests.
+	ReadDocumentReceiveRequest = "Received request to read document %s from data vault %s."
 	// ReadDocumentFailure is used when an error occurs while reading a document.
-	ReadDocumentFailure = `Failed to read document %s in vault %s: %s`
+	ReadDocumentFailure = `Failed to read document %s in vault %s: %s.`
 	// ReadDocumentSuccess is used when a request document is successfully read.
 	ReadDocumentSuccess = "Successfully retrieved document %s in vault %s."
+	// ReadDocumentSuccessWithRetrievedDoc is used when a request document is successfully read.
+	// Includes the retrieved document contents.
+	ReadDocumentSuccessWithRetrievedDoc = "Successfully retrieved document %s in vault %s. Retrieved doc: %s"
 
+	// PutLogSpecFailReadRequestBody is used when the incoming request body can't be read.
+	// This should not happen during normal operation.
+	PutLogSpecFailReadRequestBody = "Received request to change the log spec, " +
+		"but failed to read the request body: %s."
 	// InvalidLogSpec is used when a request is made to change the current log specification
 	// but it is in an invalid format.
 	InvalidLogSpec = `Invalid log spec. It needs to be in the following format: ` +
 		`ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
-Valid log levels: critical,error,warn,info,debug`
+Valid log levels: critical,error,warn,info,debug
+Error: %s`
 	// SetLogSpecSuccess is used when the current log specification is successfully changed.
 	SetLogSpecSuccess = "Successfully set log level(s)."
+	// MultipleDefaultValues is used when an incoming log spec defines multiple default values, which is invalid.
+	MultipleDefaultValues = "multiple default values found"
+
 	// GetLogSpecSuccess is used when the current log specification is successfully retrieved.
 	GetLogSpecSuccess = "Successfully got log level(s)."
 	// GetLogSpecPrepareErrMsg is used when an error occurs while preparing the
 	// list of current log levels for the sender. This should not happen during normal operation.
-	GetLogSpecPrepareErrMsg = "Failure while preparing log level response: %s"
+	GetLogSpecPrepareErrMsg = "Failure while preparing log level response: %s."
 
 	// UnescapeFailure is used when an error occurs while unescaping a path variable
 	UnescapeFailure = "Unable to unescape %s path variable: %s."

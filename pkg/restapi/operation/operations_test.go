@@ -97,6 +97,7 @@ type TestLoggerProvider struct {
 func (t *TestLoggerProvider) GetLogger(string) log.Logger {
 	logrusLogger := logrus.New()
 	logrusLogger.SetOutput(&t.logContents)
+	logrusLogger.SetLevel(logrus.DebugLevel)
 
 	return logrusLogger
 }
@@ -242,6 +243,8 @@ func (m *mockStringBuilder) Reset() {}
 func TestMain(m *testing.M) {
 	log.Initialize(&testLoggerProvider)
 
+	log.SetLevel(logModuleName, log.DEBUG)
+
 	os.Exit(m.Run())
 }
 
@@ -283,7 +286,17 @@ func TestCreateDataVault(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, "referenceId can't be blank", string(resp))
+		require.Equal(t, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankReferenceID), string(resp))
+	})
+	t.Run("Response writer fails while writing blank reference ID error", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+
+		op.createDataVault(&failingResponseWriter{}, &models.DataVaultConfiguration{}, "",
+			nil)
+
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse,
+				messages.BlankReferenceID, errFailingResponseWriter))
 	})
 	t.Run("Response writer fails while writing request read error", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -291,7 +304,7 @@ func TestCreateDataVault(t *testing.T) {
 		op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
 		require.Contains(t, testLoggerProvider.logContents.String(),
-			fmt.Sprintf(messages.CreateVaultFailReadResponseBody+messages.FailWriteResponse,
+			fmt.Sprintf(messages.CreateVaultFailReadRequestBody+messages.FailWriteResponse,
 				errFailingReadCloser, errFailingResponseWriter))
 	})
 	t.Run("Response writer fails while writing create data vault error", func(t *testing.T) {
@@ -323,6 +336,18 @@ func TestCreateDataVault(t *testing.T) {
 		require.Equal(t, http.StatusConflict, rr.Code)
 		require.Equal(t, fmt.Sprintf(messages.VaultCreationFailure, messages.ErrDuplicateVault.Error()),
 			rr.Body.String())
+	})
+	t.Run("Response writer fails while writing duplicate data vault error", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+
+		createDataVaultExpectSuccess(t, op)
+
+		op.createDataVault(&failingResponseWriter{},
+			&models.DataVaultConfiguration{ReferenceID: testVaultID}, "", nil)
+
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(messages.VaultCreationFailure+messages.FailWriteResponse,
+				messages.ErrDuplicateVault, errFailingResponseWriter))
 	})
 	t.Run("Fail to create EDV index", func(t *testing.T) {
 		errTest := errors.New("create EDV index error")
@@ -511,19 +536,19 @@ func TestQueryVault(t *testing.T) {
 	t.Run("No matching documents", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 
-		writeQueryResponse(rr, nil, testVaultID)
+		writeQueryResponse(rr, nil, testVaultID, nil)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, fmt.Sprintf(messages.QueryNoMatchingDocs, testVaultID), rr.Body.String())
 	})
 	t.Run("Fail to write response when no matching documents found", func(t *testing.T) {
-		writeQueryResponse(failingResponseWriter{}, nil, testVaultID)
+		writeQueryResponse(failingResponseWriter{}, nil, testVaultID, nil)
 
 		require.Contains(t, testLoggerProvider.logContents.String(),
 			fmt.Sprintf(messages.QueryNoMatchingDocs+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
 	})
 	t.Run("Fail to write response when matching documents are found", func(t *testing.T) {
-		writeQueryResponse(failingResponseWriter{}, []string{"docID1", "docID2"}, testVaultID)
+		writeQueryResponse(failingResponseWriter{}, []string{"docID1", "docID2"}, testVaultID, nil)
 
 		require.Contains(t, testLoggerProvider.logContents.String(),
 			fmt.Sprintf(messages.QuerySuccess+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
@@ -629,6 +654,19 @@ func TestCreateDocument(t *testing.T) {
 		require.Equal(t, http.StatusConflict, rr.Code)
 		require.Equal(t, fmt.Sprintf(messages.CreateDocumentFailure, testVaultID, messages.ErrDuplicateDocument),
 			rr.Body.String())
+	})
+	t.Run("Response writer fails while writing duplicate document error", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+
+		createDataVaultExpectSuccess(t, op)
+
+		storeEncryptedDocumentExpectSuccess(t, op)
+
+		op.createDocument(&failingResponseWriter{}, []byte(testEncryptedDocument), "", testVaultID)
+
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(messages.CreateDocumentFailure+messages.FailWriteResponse,
+				testVaultID, messages.ErrDuplicateDocument, errFailingResponseWriter))
 	})
 	t.Run("Vault does not exist", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -917,6 +955,17 @@ func TestLogSpecPut(t *testing.T) {
 		require.Equal(t, log.CRITICAL, log.GetLevel("edv-rest"))
 		require.Equal(t, log.ERROR, log.GetLevel(""))
 	})
+	t.Run("Response writer fails while writing read request body error", func(t *testing.T) {
+		resetLoggingLevels()
+
+		op := New(memedvprovider.NewProvider())
+
+		op.logSpecPutHandler(&failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
+
+		require.Contains(t, testLoggerProvider.logContents.String(),
+			fmt.Sprintf(messages.PutLogSpecFailReadRequestBody+messages.FailWriteResponse,
+				errFailingReadCloser, errFailingResponseWriter))
+	})
 	t.Run("Empty request body", func(t *testing.T) {
 		resetLoggingLevels()
 
@@ -931,7 +980,7 @@ func TestLogSpecPut(t *testing.T) {
 		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, messages.InvalidLogSpec, rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidLogSpec, "unexpected end of JSON input"), rr.Body.String())
 
 		// Log levels should remain at the default setting of "info"
 		require.Equal(t, log.INFO, log.GetLevel("restapi"))
@@ -952,7 +1001,7 @@ func TestLogSpecPut(t *testing.T) {
 		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, messages.InvalidLogSpec, rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidLogSpec, "logger: invalid log level"), rr.Body.String())
 
 		// Log levels should remain at the default setting of "info"
 		require.Equal(t, log.INFO, log.GetLevel("restapi"))
@@ -973,7 +1022,7 @@ func TestLogSpecPut(t *testing.T) {
 		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, messages.InvalidLogSpec, rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidLogSpec, "logger: invalid log level"), rr.Body.String())
 
 		// Log levels should remain at the default setting of "info"
 		require.Equal(t, log.INFO, log.GetLevel("restapi"))
@@ -995,7 +1044,7 @@ func TestLogSpecPut(t *testing.T) {
 		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, messages.InvalidLogSpec, rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidLogSpec, "logger: invalid log level"), rr.Body.String())
 
 		// Log levels should remain at the default setting of "info"
 		require.Equal(t, log.INFO, log.GetLevel("restapi"))
@@ -1016,7 +1065,7 @@ func TestLogSpecPut(t *testing.T) {
 		logSpecPutEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, messages.InvalidLogSpec, rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidLogSpec, messages.MultipleDefaultValues), rr.Body.String())
 
 		// Log levels should remain at the default setting of "info"
 		require.Equal(t, log.INFO, log.GetLevel("restapi"))

@@ -136,9 +136,11 @@ func TestCouchDBEDVProvider_CreateStore(t *testing.T) {
 
 	err = prov.CreateStore("testStore")
 	require.Error(t, err)
-	strings.Contains(err.Error(), "")
-	println(err.Error())
-	require.Contains(t, err.Error(), "no such host")
+
+	containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
+		strings.Contains(err.Error(), "Temporary failure in name resolution")
+
+	require.True(t, containsExpectedErrText)
 }
 
 func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
@@ -161,7 +163,10 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 
 		store, err := prov.OpenStore("testStore")
 		require.Nil(t, store)
-		require.Contains(t, err.Error(), "no such host")
+
+		containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
+			strings.Contains(err.Error(), "Temporary failure in name resolution")
+		require.True(t, containsExpectedErrText)
 	})
 }
 
