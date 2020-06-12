@@ -21,7 +21,7 @@ import (
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-var logger = log.New("EDV-Client")
+var logger = log.New("edv-client")
 
 type marshalFunc func(interface{}) ([]byte, error)
 

@@ -13,7 +13,7 @@ import (
 	"github.com/trustbloc/edv/cmd/edv-rest/startcmd"
 )
 
-var logger = log.New("EDV-REST")
+var logger = log.New("edv-rest")
 
 func main() {
 	rootCmd := &cobra.Command{
