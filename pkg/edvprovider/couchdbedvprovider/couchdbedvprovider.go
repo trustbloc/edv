@@ -11,6 +11,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 	couchdbstore "github.com/trustbloc/edge-core/pkg/storage/couchdb"
 
@@ -20,6 +21,8 @@ import (
 )
 
 const mapDocumentIndexedField = "IndexName"
+
+var logger = log.New("EDV-CouchDBProvider")
 
 // ErrMissingDatabaseURL is returned when an attempt is made to instantiate a new CouchDBEDVProvider with a blank URL.
 var ErrMissingDatabaseURL = errors.New("couchDB database URL not set")
@@ -61,13 +64,14 @@ func (c *CouchDBEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error
 		return nil, err
 	}
 
-	return &CouchDBEDVStore{coreStore: coreStore}, nil
+	return &CouchDBEDVStore{coreStore: coreStore, name: name}, nil
 }
 
 // CouchDBEDVStore represents a CouchDB store with functionality needed for EDV data storage.
 // It wraps an edge-core CouchDB store with additional functionality that's needed for EDV operations.
 type CouchDBEDVStore struct {
 	coreStore storage.Store
+	name      string
 }
 
 // Put stores the given document.
@@ -257,12 +261,20 @@ func (c *CouchDBEDVStore) createMappingDocument(indexedAttributeName, encryptedD
 		return err
 	}
 
-	return c.coreStore.Put(encryptedDocID+"_mapping_"+uuid.New().String(), documentBytes)
+	mappingDocumentName := encryptedDocID + "_mapping_" + uuid.New().String()
+
+	logger.Debugf(`Creating mapping document in EDV "%s":
+Name: %s,
+Contents: %s`, c.name, mappingDocumentName, documentBytes)
+
+	return c.coreStore.Put(mappingDocumentName, documentBytes)
 }
 
 func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (map[string]struct{}, error) {
 	query := `{"selector":{"` + mapDocumentIndexedField + `":"` + queryIndexName +
 		`"},"use_index": ["EDV_EncryptedIndexesDesignDoc", "EDV_IndexName"]}`
+
+	logger.Debugf(`Querying EDV "%s" with the following query: %s`, c.name, query)
 
 	itr, err := c.coreStore.Query(query)
 	if err != nil {

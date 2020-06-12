@@ -21,7 +21,7 @@ import (
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-var logger = log.New("edv/pkg")
+var logger = log.New("EDV-Client")
 
 type marshalFunc func(interface{}) ([]byte, error)
 
@@ -61,6 +61,9 @@ func (c *Client) CreateDataVault(config *models.DataVaultConfiguration) (string,
 		return "", fmt.Errorf("failed to marshal data vault configuration: %w", err)
 	}
 
+	logger.Debugf("Sending request to create a new data vault with the following data vault configuration: %s",
+		jsonToSend)
+
 	return c.sendPOSTCreateRequest(jsonToSend, "")
 }
 
@@ -71,6 +74,8 @@ func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocume
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal document: %w", err)
 	}
+
+	logger.Debugf("Sending request to create the following document: %s", jsonToSend)
 
 	return c.sendPOSTCreateRequest(jsonToSend, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
 }
@@ -93,6 +98,10 @@ func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument,
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response message while retrieving document: %w", err)
 	}
+
+	logger.Debugf(`Sent GET request to %s.
+Response status code: %d
+Response body: %s`, endpoint, resp.StatusCode, respBytes)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -134,6 +143,12 @@ func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, erro
 		return nil, fmt.Errorf("failed to read response message while retrieving document: %w", err)
 	}
 
+	logger.Debugf(`Sent POST request to %s.
+Request body: %s
+
+Response status code: %d
+Response body: %s`, endpoint, jsonToSend, resp.StatusCode, respBytes)
+
 	if resp.StatusCode == http.StatusOK {
 		var docURLs []string
 
@@ -164,6 +179,12 @@ func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, endpointPathToAppend s
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	logger.Debugf(`Sent POST request to %s.
+Request body: %s
+
+Response status code: %d
+Response body: %s`, fullEndpoint, jsonToSend, resp.StatusCode, respBytes)
 
 	if resp.StatusCode == http.StatusCreated {
 		return resp.Header.Get("Location"), nil
