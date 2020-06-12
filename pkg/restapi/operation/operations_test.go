@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -123,38 +122,6 @@ func (m failingReadCloser) Read([]byte) (n int, err error) {
 }
 
 func (m failingReadCloser) Close() error {
-	return nil
-}
-
-type alwaysReturnBarebonesDataVaultConfigurationReadCloser struct{}
-
-func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Read(p []byte) (n int, err error) {
-	dataVaultConfigBytes := []byte(`{
- "referenceId": "` + testVaultID + `"
-}`)
-
-	_ = copy(p, dataVaultConfigBytes)
-
-	return 68, io.EOF
-}
-
-func (a alwaysReturnBarebonesDataVaultConfigurationReadCloser) Close() error {
-	return nil
-}
-
-type alwaysReturnBarebonesEncryptedDocumentReadCloser struct{}
-
-func (a alwaysReturnBarebonesEncryptedDocumentReadCloser) Read(p []byte) (n int, err error) {
-	documentBytes := []byte(`{
- "id": "` + testDocID + `"
-}`)
-
-	_ = copy(p, documentBytes)
-
-	return 59, io.EOF
-}
-
-func (a alwaysReturnBarebonesEncryptedDocumentReadCloser) Close() error {
 	return nil
 }
 
@@ -306,19 +273,6 @@ func TestCreateDataVault(t *testing.T) {
 		require.Contains(t, testLoggerProvider.logContents.String(),
 			fmt.Sprintf(messages.CreateVaultFailReadRequestBody+messages.FailWriteResponse,
 				errFailingReadCloser, errFailingResponseWriter))
-	})
-	t.Run("Response writer fails while writing create data vault error", func(t *testing.T) {
-		op := New(memedvprovider.NewProvider())
-
-		createDataVaultExpectSuccess(t, op)
-
-		op.createDataVaultHandler(failingResponseWriter{},
-			&http.Request{Body: alwaysReturnBarebonesDataVaultConfigurationReadCloser{}})
-
-		require.Contains(t, testLoggerProvider.logContents.String(),
-			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse,
-				`invalid character '\\x00' after top-level value`,
-				errFailingResponseWriter))
 	})
 	t.Run("Duplicate data vault", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -716,7 +670,7 @@ func TestCreateDocument(t *testing.T) {
 
 		createDataVaultExpectSuccess(t, op)
 
-		request := http.Request{Body: alwaysReturnBarebonesEncryptedDocumentReadCloser{}}
+		request := http.Request{}
 
 		op.createDocumentHandler(failingResponseWriter{},
 			request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
@@ -742,25 +696,6 @@ func TestCreateDocument(t *testing.T) {
 			testLoggerProvider.logContents.String(), fmt.Sprintf(
 				messages.CreateDocumentFailReadRequestBody+messages.FailWriteResponse,
 				testVaultID, errFailingReadCloser, errFailingResponseWriter))
-	})
-	t.Run("Response writer fails while writing create document error", func(t *testing.T) {
-		op := New(memedvprovider.NewProvider())
-
-		createDataVaultExpectSuccess(t, op)
-
-		req, err := http.NewRequest("POST", "", alwaysReturnBarebonesEncryptedDocumentReadCloser{})
-		require.NoError(t, err)
-
-		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = testVaultID
-
-		req = mux.SetURLVars(req, urlVars)
-
-		op.createDocumentHandler(failingResponseWriter{}, req)
-
-		require.Contains(t, testLoggerProvider.logContents.String(),
-			fmt.Sprintf(messages.InvalidDocument+messages.FailWriteResponse,
-				testVaultID, `invalid character '\\x00' after top-level value`, errFailingResponseWriter))
 	})
 }
 
