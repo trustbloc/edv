@@ -20,7 +20,7 @@ import (
 
 const dockerComposeCommand = "docker-compose"
 
-var logger = log.New("edv/test/bdd")
+var logger = log.New("bdd-test")
 
 // Composition represents a docker-compose execution and management
 type Composition struct {

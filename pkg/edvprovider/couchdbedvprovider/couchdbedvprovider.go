@@ -22,7 +22,7 @@ import (
 
 const mapDocumentIndexedField = "IndexName"
 
-var logger = log.New("EDV-CouchDBProvider")
+var logger = log.New("edv-couchdbprovider")
 
 // ErrMissingDatabaseURL is returned when an attempt is made to instantiate a new CouchDBEDVProvider with a blank URL.
 var ErrMissingDatabaseURL = errors.New("couchDB database URL not set")

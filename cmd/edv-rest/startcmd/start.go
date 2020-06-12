@@ -68,7 +68,7 @@ const (
 	logLevelDebug    = "debug"
 )
 
-var logger = log.New("EDV-REST")
+var logger = log.New("edv-rest")
 
 var errMissingHostURL = fmt.Errorf("host URL not provided")
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
