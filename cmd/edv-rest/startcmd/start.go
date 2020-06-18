@@ -163,7 +163,9 @@ func createFlags(startCmd *cobra.Command) {
 }
 
 func startEDV(parameters *edvParameters) error {
-	setLogLevel(parameters.logLevel)
+	if parameters.logLevel != "" {
+		setLogLevel(parameters.logLevel)
+	}
 
 	if parameters.hostURL == "" {
 		return errMissingHostURL
@@ -201,8 +203,8 @@ Database prefix: %s`, parameters.hostURL, parameters.databaseType, parameters.da
 func setLogLevel(userLogLevel string) {
 	logLevel, err := log.ParseLevel(userLogLevel)
 	if err != nil {
-		logger.Warnf(`%s is not a valid logging level.` +
-			`It must be one of the following: critical,error,warning,info,debug. Defaulting to info.`)
+		logger.Warnf(`%s is not a valid logging level.`+
+			`It must be one of the following: critical,error,warning,info,debug. Defaulting to info.`, userLogLevel)
 
 		logLevel = log.INFO
 	} else if logLevel == log.DEBUG {
