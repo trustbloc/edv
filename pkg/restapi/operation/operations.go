@@ -101,6 +101,13 @@ func (c *Operation) GetRESTHandlers() []Handler {
 	return c.handlers
 }
 
+// Create Data Vault swagger:route POST /encrypted-data-vaults createVaultReq
+//
+// Creates a new data vault.
+//
+// Responses:
+//    default: genericError
+//        201: createVaultRes
 func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Request) {
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -151,6 +158,13 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 	writeCreateDataVaultSuccess(rw, config.ReferenceID, hostURL, configBytesForLog)
 }
 
+// Query Vault swagger:route POST /encrypted-data-vaults/{vaultID}/queries queryVaultReq
+//
+// Queries a data vault using encrypted indices.
+//
+// Responses:
+//    default: genericError
+//        200: queryVaultRes
 func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request) {
 	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
 	if !success {
@@ -197,6 +211,13 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 	writeQueryResponse(rw, fullDocumentURLs, vaultID, queryBytesForLog)
 }
 
+// Create Document swagger:route POST /encrypted-data-vaults/{vaultID}/documents createDocumentReq
+//
+// Stores an encrypted document.
+//
+// Responses:
+//    default: genericError
+//        201: createDocumentRes
 func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
 	if !success {
@@ -217,6 +238,13 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 	c.createDocument(rw, requestBody, req.Host, vaultID)
 }
 
+// Read Document swagger:route GET /encrypted-data-vaults/{vaultID}/documents/{docID} readDocumentReq
+//
+// Retrieves an encrypted document.
+//
+// Responses:
+//    default: genericError
+//        201: readDocumentRes
 func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
 	if !success {
@@ -239,7 +267,17 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 	writeReadDocumentSuccess(rw, documentBytes, docID, vaultID)
 }
 
+// Change Log Specification swagger:route PUT /encrypted-data-vaults/logspec changeLogSpecReq
+//
+// Changes the current log specification.
+// Format: ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
+// Valid log levels: critical,error,warn,info,debug
+//
 // Note that this will not work properly if a module name contains an '=' character.
+//
+// Responses:
+//    default: genericError
+//        200: changeLogSpecRes
 func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request) {
 	incomingLogSpec := models.LogSpec{}
 
@@ -300,6 +338,14 @@ func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request)
 	writePutLogSpecSuccess(rw, requestBody)
 }
 
+// Get Current Log Specification swagger:route GET /encrypted-data-vaults/logspec getLogSpecReq
+//
+// Gets the current log specification.
+// Format: ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
+//
+// Responses:
+//    default: genericError
+//        200: getLogSpecRes
 func (c *Operation) logSpecGetHandler(rw http.ResponseWriter, _ *http.Request) {
 	logLevels := log.GetAllLevels()
 

@@ -30,4 +30,7 @@ coverage.txt
 
 # Exclude build directory
 build
+
 *.log
+
+test/bdd/fixtures/openapi-demo/specs/

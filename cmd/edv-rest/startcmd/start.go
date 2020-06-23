@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
 
@@ -195,9 +196,7 @@ Database type: %s
 Database URL: %s
 Database prefix: %s`, parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix)
 
-	err = parameters.srv.ListenAndServe(parameters.hostURL, router)
-
-	return err
+	return parameters.srv.ListenAndServe(parameters.hostURL, constructCORSHandler(router))
 }
 
 func setLogLevel(userLogLevel string) {
@@ -234,4 +233,13 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 	}
 
 	return edvProv, nil
+}
+
+func constructCORSHandler(handler http.Handler) http.Handler {
+	return cors.New(
+		cors.Options{
+			AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut},
+			AllowedHeaders: []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
+		},
+	).Handler(handler)
 }

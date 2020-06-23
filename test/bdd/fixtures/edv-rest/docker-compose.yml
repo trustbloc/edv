@@ -15,6 +15,7 @@ services:
       - EDV_DATABASE_TYPE=${EDV_DATABASE_TYPE}
       - EDV_DATABASE_URL=${EDV_DATABASE_URL}
       - EDV_DATABASE_PREFIX=${EDV_DATABASE_PREFIX}
+      - LOG_LEVEL=debug
     ports:
       - ${EDV_PORT}:${EDV_PORT}
     command: start

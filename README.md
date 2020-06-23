@@ -18,10 +18,12 @@ The following has not yet been implemented:
 * Index querying with the `has` keyword
 * Streams
 
-## Testing
+## Documentation
 - [Build + BDD tests](docs/test/build.md)
 - [Run as Binary with CLI](docs/rest/edv_cli.md)
 - [Run as Docker Container](docs/rest/edv_docker.md)
+- [OpenAPI Spec](docs/rest/openapi_spec.md)
+- [OpenAPI Demo](docs/rest/openapi_demo.md)
 
 ## Contributing
 Thank you for your interest in contributing. Please see our [community contribution guidelines](https://github.com/trustbloc/community/blob/master/CONTRIBUTING.md) for more information.
