@@ -92,37 +92,3 @@ type readDocumentRes struct { // nolint: unused,deadcode
 	// in: body
 	RetrievedDocument string
 }
-
-// changeLogSpecReq model
-//
-// swagger:parameters changeLogSpecReq
-type changeLogSpecReq struct { // nolint: unused,deadcode
-	// in: body
-	Body struct {
-		// The new log specification
-		//
-		// Required: true
-		// Example: restapi=debug:edv-rest=critical:error
-		Spec string `json:"spec"`
-	}
-}
-
-// TODO: Update this model once the response is in a proper JSON format: #90
-// It's empty right now since the go-swagger OpenAPI generator requires a model to be specified for each defined status
-// code (see the handler code in operations.go).
-
-// changeLogSpecRes model
-//
-// swagger:response changeLogSpecRes
-type changeLogSpecRes struct { // nolint: unused,deadcode
-}
-
-// TODO: Update this model once the response is in a proper JSON format: #90
-// It's empty right now since the go-swagger OpenAPI generator requires a model to be specified for each defined status
-// code (see the handler code in operations.go).
-
-// getLogSpecRes model
-//
-// swagger:response getLogSpecRes
-type getLogSpecRes struct { // nolint: unused,deadcode
-}
