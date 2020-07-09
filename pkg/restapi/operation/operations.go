@@ -8,11 +8,9 @@ package operation
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/trustbloc/edge-core/pkg/log"
@@ -36,7 +34,6 @@ const (
 	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
 	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
-	logSpecEndpoint = edvCommonEndpointPathRoot + "/logspec"
 )
 
 var logger = log.New(logModuleName)
@@ -45,7 +42,6 @@ var logger = log.New(logModuleName)
 type Operation struct {
 	handlers        []Handler
 	vaultCollection VaultCollection
-	stringBuilder   func() stringBuilder
 }
 
 // VaultCollection represents EDV storage.
@@ -60,24 +56,12 @@ type Handler interface {
 	Handle() http.HandlerFunc
 }
 
-type stringBuilder interface {
-	Write(p []byte) (int, error)
-	String() string
-	Reset()
-}
-
-type moduleLevelPair struct {
-	module   string
-	logLevel log.Level
-}
-
 // New returns a new EDV operations instance.
 func New(provider edvprovider.EDVProvider) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: provider,
-		},
-		stringBuilder: func() stringBuilder { return &strings.Builder{} }}
+		}}
 	svc.registerHandler()
 
 	return svc
@@ -91,8 +75,6 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
-		support.NewHTTPHandler(logSpecEndpoint, http.MethodPut, c.logSpecPutHandler),
-		support.NewHTTPHandler(logSpecEndpoint, http.MethodGet, c.logSpecGetHandler),
 	}
 }
 
@@ -265,120 +247,6 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 	}
 
 	writeReadDocumentSuccess(rw, documentBytes, docID, vaultID)
-}
-
-// Change Log Specification swagger:route PUT /encrypted-data-vaults/logspec changeLogSpecReq
-//
-// Changes the current log specification.
-// Format: ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
-// Valid log levels: critical,error,warn,info,debug
-//
-// Note that this will not work properly if a module name contains an '=' character.
-//
-// Responses:
-//    default: genericError
-//        200: changeLogSpecRes
-func (c *Operation) logSpecPutHandler(rw http.ResponseWriter, req *http.Request) {
-	incomingLogSpec := models.LogSpec{}
-
-	requestBody, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		writePutLogSpecRequestReadFailure(rw, err)
-		return
-	}
-
-	err = json.Unmarshal(requestBody, &incomingLogSpec)
-	if err != nil {
-		writeInvalidLogSpec(rw, err, requestBody)
-		return
-	}
-
-	logLevelByModule := strings.Split(incomingLogSpec.Spec, ":")
-
-	defaultLogLevel := log.Level(-1)
-
-	var moduleLevelPairs []moduleLevelPair
-
-	for _, logLevelByModulePart := range logLevelByModule {
-		if strings.Contains(logLevelByModulePart, "=") {
-			moduleAndLevelPair := strings.Split(logLevelByModulePart, "=")
-
-			logLevel, errParse := log.ParseLevel(moduleAndLevelPair[1])
-			if errParse != nil {
-				writeInvalidLogSpec(rw, errParse, requestBody)
-				return
-			}
-
-			moduleLevelPairs = append(moduleLevelPairs,
-				moduleLevelPair{moduleAndLevelPair[0], logLevel})
-		} else {
-			if defaultLogLevel != -1 {
-				// The given log spec is formatted incorrectly; it contains multiple default values.
-				writeInvalidLogSpec(rw, errors.New(messages.MultipleDefaultValues), requestBody)
-				return
-			}
-			var errParse error
-
-			defaultLogLevel, errParse = log.ParseLevel(logLevelByModulePart)
-			if errParse != nil {
-				writeInvalidLogSpec(rw, errParse, requestBody)
-				return
-			}
-		}
-	}
-
-	if defaultLogLevel != -1 {
-		log.SetLevel("", defaultLogLevel)
-	}
-
-	for _, moduleLevelPair := range moduleLevelPairs {
-		log.SetLevel(moduleLevelPair.module, moduleLevelPair.logLevel)
-	}
-
-	writePutLogSpecSuccess(rw, requestBody)
-}
-
-// Get Current Log Specification swagger:route GET /encrypted-data-vaults/logspec getLogSpecReq
-//
-// Gets the current log specification.
-// Format: ModuleName1=Level1:ModuleName2=Level2:ModuleNameN=LevelN:AllOtherModuleDefaultLevel
-//
-// Responses:
-//    default: genericError
-//        200: getLogSpecRes
-func (c *Operation) logSpecGetHandler(rw http.ResponseWriter, _ *http.Request) {
-	logLevels := log.GetAllLevels()
-
-	var defaultDebugLevel string
-
-	response := c.stringBuilder()
-
-	for module, level := range logLevels {
-		if module == "" {
-			defaultDebugLevel = log.ParseString(level)
-		} else {
-			_, err := response.Write([]byte(module + "=" + log.ParseString(level) + ":"))
-			if err != nil {
-				rw.WriteHeader(http.StatusInternalServerError)
-				logger.Errorf(messages.GetLogSpecPrepareErrMsg, err)
-
-				return
-			}
-		}
-	}
-
-	_, err := response.Write([]byte(defaultDebugLevel))
-	if err != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
-		logger.Errorf(messages.GetLogSpecPrepareErrMsg, err)
-
-		return
-	}
-
-	_, err = rw.Write([]byte(response.String()))
-	if err != nil {
-		logger.Errorf(messages.GetLogSpecSuccess+messages.FailWriteResponse, err)
-	}
 }
 
 func (vc *VaultCollection) createDataVault(vaultID string) error {

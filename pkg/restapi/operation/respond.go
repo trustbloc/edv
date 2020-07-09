@@ -210,38 +210,3 @@ func writeReadDocumentSuccess(rw http.ResponseWriter, documentBytes []byte, docI
 				docID, vaultID, errWrite, documentBytes))
 	}
 }
-
-func writePutLogSpecRequestReadFailure(rw http.ResponseWriter, errBodyRead error) {
-	logger.Errorf(messages.PutLogSpecFailReadRequestBody, errBodyRead)
-
-	rw.WriteHeader(http.StatusInternalServerError)
-
-	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.PutLogSpecFailReadRequestBody, errBodyRead)))
-	if errWrite != nil {
-		logger.Errorf(messages.PutLogSpecFailReadRequestBody+messages.FailWriteResponse, errBodyRead, errWrite)
-	}
-}
-
-// Always prints out full debug data at the "error" level, since the method that calls this one is the one
-// that allows log levels to be updated. The caller may need the extra information to diagnose the issue, and of course
-// won't be able to change the log level to debug until they get this working.
-func writeInvalidLogSpec(rw http.ResponseWriter, err error, receivedData []byte) {
-	logger.Errorf(messages.DebugLogEvent, fmt.Sprintf(messages.InvalidLogSpec, err), receivedData)
-
-	rw.WriteHeader(http.StatusBadRequest)
-
-	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.InvalidLogSpec, err)))
-	if errWrite != nil {
-		logger.Errorf(messages.DebugLogEvent,
-			fmt.Sprintf(messages.InvalidLogSpec+messages.FailWriteResponse, err, errWrite), receivedData)
-	}
-}
-
-func writePutLogSpecSuccess(rw io.Writer, requestBody []byte) {
-	_, errWrite := rw.Write([]byte(messages.SetLogSpecSuccess))
-	if errWrite != nil {
-		logger.Errorf(messages.SetLogSpecSuccess+messages.FailWriteResponse, errWrite)
-		logger.Debugf(messages.DebugLogEvent,
-			fmt.Sprintf(messages.SetLogSpecSuccess+messages.FailWriteResponse, errWrite), requestBody)
-	}
-}

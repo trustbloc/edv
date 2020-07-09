@@ -15,6 +15,7 @@ import (
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
+	"github.com/trustbloc/edge-core/pkg/restapi/logspec"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
@@ -187,6 +188,10 @@ func startEDV(parameters *edvParameters) error {
 	router.UseEncodedPath()
 
 	for _, handler := range handlers {
+		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
+	}
+
+	for _, handler := range logspec.New().GetOperations() {
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
 	}
 
