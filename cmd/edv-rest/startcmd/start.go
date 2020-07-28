@@ -57,7 +57,7 @@ const (
 		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
 
 	logLevelFlagName        = "log-level"
-	logLevelEnvKey          = "LOG_LEVEL"
+	logLevelEnvKey          = "EDV_LOG_LEVEL"
 	logLevelFlagShorthand   = "l"
 	logLevelPrefixFlagUsage = "Logging level to set. Supported options: critical, error, warning, info, debug." +
 		`Defaults to "info" if not set. Setting to "debug" may adversely impact performance. Alternatively, this can be ` +
