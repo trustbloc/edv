@@ -61,10 +61,11 @@ func (e *Steps) createDataVault() error {
 	}
 
 	transmuteEDVURLWithTrailingSlash := e.bddInteropContext.TransmuteEDVHostURL + "/"
-	// The Transmute EDV implementation generates a random EDV ID instead of using the vault reference ID like we do
-	if !strings.Contains(transmuteDataVaultLocation, transmuteEDVURLWithTrailingSlash) {
+	// The Transmute EDV implementation generates a random EDV ID instead of using the vault reference ID like we do.
+	// We don't know what the ID will be, so we just check to see if it follows the general format.
+	if !strings.HasPrefix(transmuteDataVaultLocation, transmuteEDVURLWithTrailingSlash) {
 		return errors.New("the transmute data vault location is " + transmuteDataVaultLocation +
-			". It was expected to contain" + transmuteEDVURLWithTrailingSlash + " but it didn't")
+			". It was expected to start with " + transmuteEDVURLWithTrailingSlash + " but it didn't")
 	}
 
 	e.bddInteropContext.TransmuteDataVaultLocation = transmuteDataVaultLocation

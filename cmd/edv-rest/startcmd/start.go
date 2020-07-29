@@ -16,12 +16,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/restapi/logspec"
+	cmdutils "github.com/trustbloc/edge-core/pkg/utils/cmd"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/restapi"
-	cmdutils "github.com/trustbloc/edv/pkg/utils/cmd"
 )
 
 const (
@@ -68,11 +68,22 @@ const (
 	logLevelWarn     = "warning"
 	logLevelInfo     = "info"
 	logLevelDebug    = "debug"
+
+	tlsCertFileFlagName      = "tls-cert-file"
+	tlsCertFileFlagShorthand = ""
+	tlsCertFileFlagUsage     = "TLS certificate file." +
+		" Alternatively, this can be set with the following environment variable: " + tlsCertFileEnvKey
+	tlsCertFileEnvKey = "EDV_TLS_CERT_FILE"
+
+	tlsKeyFileFlagName      = "tls-key-file"
+	tlsKeyFileFlagShorthand = ""
+	tlsKeyFileFlagUsage     = "TLS key file." +
+		" Alternatively, this can be set with the following environment variable: " + tlsKeyFileEnvKey
+	tlsKeyFileEnvKey = "EDV_TLS_KEY_FILE"
 )
 
 var logger = log.New("edv-rest")
 
-var errMissingHostURL = fmt.Errorf("host URL not provided")
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
 	" run start --help to see the available options")
 
@@ -83,17 +94,27 @@ type edvParameters struct {
 	databaseURL    string
 	databasePrefix string
 	logLevel       string
+	tlsConfig      *tlsConfig
+}
+
+type tlsConfig struct {
+	certFile string
+	keyFile  string
 }
 
 type server interface {
-	ListenAndServe(host string, router http.Handler) error
+	ListenAndServe(host, certFile, keyFile string, router http.Handler) error
 }
 
 // HTTPServer represents an actual HTTP server implementation.
 type HTTPServer struct{}
 
 // ListenAndServe starts the server using the standard Go HTTP server implementation.
-func (s *HTTPServer) ListenAndServe(host string, router http.Handler) error {
+func (s *HTTPServer) ListenAndServe(host, certFile, keyFile string, router http.Handler) error {
+	if certFile != "" && keyFile != "" {
+		return http.ListenAndServeTLS(host, certFile, keyFile, router)
+	}
+
 	return http.ListenAndServe(host, router)
 }
 
@@ -112,12 +133,12 @@ func createStartCmd(srv server) *cobra.Command {
 		Short: "Start EDV",
 		Long:  "Start EDV",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			hostURL, err := cmdutils.GetUserSetVar(cmd, hostURLFlagName, hostURLEnvKey, false)
+			hostURL, err := cmdutils.GetUserSetVarFromString(cmd, hostURLFlagName, hostURLEnvKey, false)
 			if err != nil {
 				return err
 			}
 
-			databaseType, err := cmdutils.GetUserSetVar(cmd, databaseTypeFlagName, databaseTypeEnvKey, false)
+			databaseType, err := cmdutils.GetUserSetVarFromString(cmd, databaseTypeFlagName, databaseTypeEnvKey, false)
 			if err != nil {
 				return err
 			}
@@ -127,18 +148,23 @@ func createStartCmd(srv server) *cobra.Command {
 				databaseURL = "N/A"
 			} else {
 				var errGetUserSetVar error
-				databaseURL, errGetUserSetVar = cmdutils.GetUserSetVar(cmd, databaseURLFlagName, databaseURLEnvKey, true)
+				databaseURL, errGetUserSetVar = cmdutils.GetUserSetVarFromString(cmd, databaseURLFlagName, databaseURLEnvKey, true)
 				if errGetUserSetVar != nil {
 					return errGetUserSetVar
 				}
 			}
 
-			databasePrefix, err := cmdutils.GetUserSetVar(cmd, databasePrefixFlagName, databasePrefixEnvKey, true)
+			databasePrefix, err := cmdutils.GetUserSetVarFromString(cmd, databasePrefixFlagName, databasePrefixEnvKey, true)
 			if err != nil {
 				return err
 			}
 
-			loggingLevel, err := cmdutils.GetUserSetVar(cmd, logLevelFlagName, logLevelEnvKey, true)
+			loggingLevel, err := cmdutils.GetUserSetVarFromString(cmd, logLevelFlagName, logLevelEnvKey, true)
+			if err != nil {
+				return err
+			}
+
+			tlsConfig, err := getTLS(cmd)
 			if err != nil {
 				return err
 			}
@@ -150,10 +176,27 @@ func createStartCmd(srv server) *cobra.Command {
 				databaseURL:    databaseURL,
 				databasePrefix: databasePrefix,
 				logLevel:       loggingLevel,
+				tlsConfig:      tlsConfig,
 			}
 			return startEDV(parameters)
 		},
 	}
+}
+
+func getTLS(cmd *cobra.Command) (*tlsConfig, error) {
+	tlsCertFile, err := cmdutils.GetUserSetVarFromString(cmd, tlsCertFileFlagName,
+		tlsCertFileEnvKey, true)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsKeyFile, err := cmdutils.GetUserSetVarFromString(cmd, tlsKeyFileFlagName,
+		tlsKeyFileEnvKey, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tlsConfig{certFile: tlsCertFile, keyFile: tlsKeyFile}, nil
 }
 
 func createFlags(startCmd *cobra.Command) {
@@ -162,15 +205,13 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
 	startCmd.Flags().StringP(databasePrefixFlagName, databasePrefixFlagShorthand, "", databasePrefixFlagUsage)
 	startCmd.Flags().StringP(logLevelFlagName, logLevelFlagShorthand, "", logLevelPrefixFlagUsage)
+	startCmd.Flags().StringP(tlsCertFileFlagName, tlsCertFileFlagShorthand, "", tlsCertFileFlagUsage)
+	startCmd.Flags().StringP(tlsKeyFileFlagName, tlsKeyFileFlagShorthand, "", tlsKeyFileFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error {
 	if parameters.logLevel != "" {
 		setLogLevel(parameters.logLevel)
-	}
-
-	if parameters.hostURL == "" {
-		return errMissingHostURL
 	}
 
 	provider, err := createEDVProvider(parameters)
@@ -199,9 +240,13 @@ func startEDV(parameters *edvParameters) error {
 Host URL: %s
 Database type: %s
 Database URL: %s
-Database prefix: %s`, parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix)
+Database prefix: %s
+TLS certificate file: %s
+TLS key file: %s`, parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
+		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile)
 
-	return parameters.srv.ListenAndServe(parameters.hostURL, constructCORSHandler(router))
+	return parameters.srv.ListenAndServe(parameters.hostURL,
+		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructCORSHandler(router))
 }
 
 func setLogLevel(userLogLevel string) {

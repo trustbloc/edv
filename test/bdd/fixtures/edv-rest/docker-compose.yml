@@ -16,8 +16,12 @@ services:
       - EDV_DATABASE_URL=${EDV_DATABASE_URL}
       - EDV_DATABASE_PREFIX=${EDV_DATABASE_PREFIX}
       - EDV_LOG_LEVEL=debug
+      - EDV_TLS_CERT_FILE=/etc/tls/ec-pubCert.pem
+      - EDV_TLS_KEY_FILE=/etc/tls/ec-key.pem
     ports:
       - ${EDV_PORT}:${EDV_PORT}
+    volumes:
+      - ../keys/tls:/etc/tls
     command: start
     networks:
       - couchdb_bdd_net

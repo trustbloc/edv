@@ -34,3 +34,5 @@ build
 *.log
 
 test/bdd/fixtures/openapi-demo/specs/
+
+test/bdd/fixtures/keys/
