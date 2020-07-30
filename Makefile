@@ -45,7 +45,7 @@ edv-rest-docker:
 	--build-arg ALPINE_VER=$(ALPINE_VER) .
 
 .PHONY: bdd-test
-bdd-test: edv-rest-docker
+bdd-test: edv-rest-docker generate-test-keys
 	@rm -Rf ./test/bdd/*.log
 	@scripts/check_integration.sh
 
@@ -72,6 +72,14 @@ run-openapi-demo: generate-openapi-demo-specs
 	@echo "Starting OpenAPI demo and EDV containers ..."
 	@FIXTURES_PATH=test/bdd/fixtures  \
         scripts/run-openapi-demo.sh
+
+.PHONY: generate-test-keys
+generate-test-keys:
+	@mkdir -p test/bdd/fixtures/keys/tls
+	@docker run -i --rm \
+		-v $(abspath .):/opt/workspace/edv \
+		--entrypoint "/opt/workspace/edv/scripts/generate_test_keys.sh" \
+		frapsoft/openssl
 
 .PHONY: clean
 clean: clean-build

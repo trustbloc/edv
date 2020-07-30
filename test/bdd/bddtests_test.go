@@ -117,17 +117,14 @@ func generateUUID() string {
 }
 
 func FeatureContext(s *godog.Suite) {
-	trustBlocEDVHostURL := "localhost:8080/encrypted-data-vaults"
-
-	bddContext, err := bddctx.NewBDDContext("http://" + trustBlocEDVHostURL)
+	bddContext, err := bddctx.NewBDDContext()
 	if err != nil {
-		panic(fmt.Sprintf("Error returned from NewBDDContext: %s", err))
+		panic(fmt.Sprintf("Failed to create a new NewBDDContext: %s", err))
 	}
 
-	bddInteropContext, err := bddctx.NewBDDInteropContext(trustBlocEDVHostURL,
-		"https://did-edv.web.app/edvs")
+	bddInteropContext, err := bddctx.NewBDDInteropContext()
 	if err != nil {
-		panic(fmt.Sprintf("Error returned from NewBDDInteropContext: %s", err))
+		panic(fmt.Sprintf("Failed to create a new NewBDDInteropContext: %s", err))
 	}
 
 	edv.NewSteps(bddContext).RegisterSteps(s)

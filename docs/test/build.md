@@ -22,4 +22,7 @@ make unit-test
 
 # run bdd tests
 make bdd-test
+
+# generate a self-signed cert that can be used to run the EDV server with TLS (for testing purposes)
+make generate-test-keys
 ```

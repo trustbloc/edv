@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"testing"
@@ -20,7 +21,7 @@ import (
 
 type mockServer struct{}
 
-func (s *mockServer) ListenAndServe(host string, handler http.Handler) error {
+func (s *mockServer) ListenAndServe(host, certFile, keyFile string, handler http.Handler) error {
 	return nil
 }
 
@@ -34,33 +35,14 @@ func TestStartCmdContents(t *testing.T) {
 	checkFlagPropertiesCorrect(t, startCmd, hostURLFlagName, hostURLFlagShorthand, hostURLFlagUsage)
 }
 
-func TestStartCmdWithBlankHostArg(t *testing.T) {
-	startCmd := GetStartCmd(&mockServer{})
-
-	args := []string{"--" + hostURLFlagName, "", "--" + databaseTypeFlagName, "mem"}
-	startCmd.SetArgs(args)
-
-	err := startCmd.Execute()
-
-	require.Equal(t, errMissingHostURL.Error(), err.Error())
-}
-
 func TestStartCmdWithMissingHostArg(t *testing.T) {
 	startCmd := GetStartCmd(&mockServer{})
 
 	err := startCmd.Execute()
 
 	require.Equal(t,
-		"neither host-url (command line flag) nor EDV_HOST_URL (environment variable) have been set",
+		"Neither host-url (command line flag) nor EDV_HOST_URL (environment variable) have been set.",
 		err.Error())
-}
-
-func TestStartEDVWithBlankHost(t *testing.T) {
-	parameters := &edvParameters{hostURL: ""}
-
-	err := startEDV(parameters)
-	require.NotNil(t, err)
-	require.Equal(t, errMissingHostURL, err)
 }
 
 func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
@@ -173,6 +155,29 @@ func TestStartCmdLogLevels(t *testing.T) {
 	})
 }
 
+func TestStartCmdBlankTLSArgs(t *testing.T) {
+	t.Run("Blank cert file arg", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + tlsCertFileFlagName, ""}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+		require.EqualError(t, err, fmt.Sprintf("%s value is empty", tlsCertFileFlagName))
+	})
+	t.Run("Blank key file arg", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + tlsKeyFileFlagName, ""}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+		require.EqualError(t, err, fmt.Sprintf("%s value is empty", tlsKeyFileFlagName))
+	})
+}
+
 func TestStartCmdValidArgsEnvVar(t *testing.T) {
 	startCmd := GetStartCmd(&mockServer{})
 
@@ -222,6 +227,13 @@ func TestCreateProvider(t *testing.T) {
 		require.Nil(t, provider)
 		require.Equal(t, `parse http://%: invalid URL escape "%"`, err.Error())
 	})
+}
+
+func TestListenAndServe(t *testing.T) {
+	h := HTTPServer{}
+	err := h.ListenAndServe("localhost:8080", "test.key", "test.cert", nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "open test.key: no such file or directory")
 }
 
 func checkFlagPropertiesCorrect(t *testing.T, cmd *cobra.Command, flagName, flagShorthand, flagUsage string) {

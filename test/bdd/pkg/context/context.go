@@ -7,15 +7,18 @@ SPDX-License-Identifier: Apache-2.0
 package context
 
 import (
+	"crypto/tls"
 	"encoding/json"
 
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
+	tlsutils "github.com/trustbloc/edge-core/pkg/utils/tls"
 
 	edvclient "github.com/trustbloc/edv/pkg/client"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-const sampleEncryptedDoc = `{
+const (
+	sampleEncryptedDoc = `{
     "id": "VJYHHJx4C8J9Fsgz7rZqSp",
     "indexed": [
         {
@@ -60,19 +63,27 @@ const sampleEncryptedDoc = `{
     "sequence": 0
 }`
 
+	trustBlocEDVHostURL = "localhost:8080/encrypted-data-vaults"
+)
+
 // BDDContext is a global context shared between different test suites in bddtests
 type BDDContext struct {
-	EDVHostURL                 string
+	EDVClient                  *edvclient.Client
 	JWEDecrypter               *jose.JWEDecrypt
 	StructuredDocToBeEncrypted *models.StructuredDocument
 	EncryptedDocToStore        *models.EncryptedDocument
 	ReceivedEncryptedDoc       *models.EncryptedDocument
 }
 
-// NewBDDContext create new BDDContext
-func NewBDDContext(edvHostURL string) (*BDDContext, error) {
+// NewBDDContext creates a new BDDContext
+func NewBDDContext() (*BDDContext, error) {
+	trustBlocEDVClient, err := createTrustBlocEDVClient()
+	if err != nil {
+		return nil, err
+	}
+
 	instance := BDDContext{
-		EDVHostURL: edvHostURL,
+		EDVClient: trustBlocEDVClient,
 	}
 
 	return &instance, nil
@@ -91,19 +102,37 @@ type BDDInteropContext struct {
 }
 
 // NewBDDInteropContext creates a new BDDInteropContext.
-func NewBDDInteropContext(edvHostURL, transmuteEDVHostURL string) (*BDDInteropContext, error) {
+func NewBDDInteropContext() (*BDDInteropContext, error) {
+	trustBlocEDVClient, err := createTrustBlocEDVClient()
+	if err != nil {
+		return nil, err
+	}
+
+	transmuteEDVURL := "https://did-edv.web.app/edvs"
+
+	transmuteEDVClient := edvclient.New(transmuteEDVURL)
+
 	var sampleDocToStore models.EncryptedDocument
 
-	err := json.Unmarshal([]byte(sampleEncryptedDoc), &sampleDocToStore)
+	err = json.Unmarshal([]byte(sampleEncryptedDoc), &sampleDocToStore)
 	if err != nil {
 		return nil, err
 	}
 
 	return &BDDInteropContext{
-		TrustBlocEDVHostURL: edvHostURL,
-		TrustBlocEDVClient:  edvclient.New("http://" + edvHostURL),
-		TransmuteEDVHostURL: transmuteEDVHostURL,
-		TransmuteEDVClient:  edvclient.New(transmuteEDVHostURL),
+		TrustBlocEDVHostURL: trustBlocEDVHostURL,
+		TrustBlocEDVClient:  trustBlocEDVClient,
+		TransmuteEDVHostURL: transmuteEDVURL,
+		TransmuteEDVClient:  transmuteEDVClient,
 		SampleDocToStore:    &sampleDocToStore,
 	}, nil
+}
+
+func createTrustBlocEDVClient() (*edvclient.Client, error) {
+	rootCAs, err := tlsutils.GetCertPool(false, []string{"fixtures/keys/tls/ec-cacert.pem"})
+	if err != nil {
+		return nil, err
+	}
+
+	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs})), nil
 }
