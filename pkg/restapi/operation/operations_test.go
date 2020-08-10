@@ -145,13 +145,14 @@ func (m mockContext) Value(interface{}) interface{} {
 
 type mockEDVProvider struct {
 	errStoreCreateEDVIndex           error
+	errCreateStore                   error
 	errOpenStore                     error
 	numTimesOpenStoreCalled          int
 	numTimesOpenStoreCalledBeforeErr int
 }
 
 func (m *mockEDVProvider) CreateStore(string) error {
-	return nil
+	return m.errCreateStore
 }
 
 func (m *mockEDVProvider) OpenStore(string) (edvprovider.EDVStore, error) {
@@ -251,7 +252,7 @@ func TestCreateDataVault(t *testing.T) {
 			fmt.Sprintf(messages.CreateVaultFailReadRequestBody+messages.FailWriteResponse,
 				errFailingReadCloser, errFailingResponseWriter))
 	})
-	t.Run("Duplicate data vault", func(t *testing.T) {
+	t.Run("Error when creating new store: duplicate data vault", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
 
 		createDataVaultExpectSuccess(t, op)
@@ -267,6 +268,21 @@ func TestCreateDataVault(t *testing.T) {
 		require.Equal(t, http.StatusConflict, rr.Code)
 		require.Equal(t, fmt.Sprintf(messages.VaultCreationFailure, messages.ErrDuplicateVault.Error()),
 			rr.Body.String())
+	})
+	t.Run("Other error when creating new store", func(t *testing.T) {
+		errTest := errors.New("some other create store error")
+		op := New(&mockEDVProvider{errCreateStore: errTest})
+
+		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, fmt.Sprintf(messages.VaultCreationFailure, errTest), rr.Body.String())
 	})
 	t.Run("Response writer fails while writing duplicate data vault error", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())

@@ -251,8 +251,12 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 
 func (vc *VaultCollection) createDataVault(vaultID string) error {
 	err := vc.provider.CreateStore(vaultID)
-	if err == storage.ErrDuplicateStore {
-		return messages.ErrDuplicateVault
+	if err != nil {
+		if err == storage.ErrDuplicateStore {
+			return messages.ErrDuplicateVault
+		}
+
+		return err
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
