@@ -189,7 +189,7 @@ func (c *CouchDBEDVStore) validateNewAttributeAgainstDocs(docIDs []string, newAt
 func (c *CouchDBEDVStore) validateNewAttributeAgainstDoc(newAttribute models.IndexedAttribute, docID string) error {
 	docBytes, err := c.coreStore.Get(docID)
 	if err != nil {
-		if err == storage.ErrValueNotFound {
+		if errors.Is(err, storage.ErrValueNotFound) {
 			return messages.ErrDocumentNotFound
 		}
 
@@ -324,7 +324,7 @@ func (c *CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *m
 	for docID := range docIDs {
 		documentBytes, err := c.coreStore.Get(docID)
 		if err != nil {
-			if err == storage.ErrValueNotFound {
+			if errors.Is(err, storage.ErrValueNotFound) {
 				return nil, messages.ErrDocumentNotFound
 			}
 

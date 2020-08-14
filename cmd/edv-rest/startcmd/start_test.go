@@ -225,7 +225,7 @@ func TestCreateProvider(t *testing.T) {
 
 		provider, err := createEDVProvider(&parameters)
 		require.Nil(t, provider)
-		require.Equal(t, `parse http://%: invalid URL escape "%"`, err.Error())
+		require.EqualError(t, err, `failure while instantiate Kivik CouchDB client: parse http://%: invalid URL escape "%"`)
 	})
 }
 
