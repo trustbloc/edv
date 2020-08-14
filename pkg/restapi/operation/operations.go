@@ -8,6 +8,7 @@ package operation
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -252,7 +253,7 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 func (vc *VaultCollection) createDataVault(vaultID string) error {
 	err := vc.provider.CreateStore(vaultID)
 	if err != nil {
-		if err == storage.ErrDuplicateStore {
+		if errors.Is(err, storage.ErrDuplicateStore) {
 			return messages.ErrDuplicateVault
 		}
 
@@ -310,7 +311,7 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if err == storage.ErrStoreNotFound {
+		if errors.Is(err, storage.ErrStoreNotFound) {
 			return messages.ErrVaultNotFound
 		}
 
@@ -329,7 +330,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 		return messages.ErrDuplicateDocument
 	}
 
-	if err != storage.ErrValueNotFound {
+	if !errors.Is(err, storage.ErrValueNotFound) {
 		return err
 	}
 
@@ -339,7 +340,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if err == storage.ErrStoreNotFound {
+		if errors.Is(err, storage.ErrStoreNotFound) {
 			return nil, messages.ErrVaultNotFound
 		}
 
@@ -348,7 +349,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 
 	documentBytes, err := store.Get(docID)
 	if err != nil {
-		if err == storage.ErrValueNotFound {
+		if errors.Is(err, storage.ErrValueNotFound) {
 			return nil, messages.ErrDocumentNotFound
 		}
 
@@ -361,7 +362,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]string, error) {
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if err == storage.ErrStoreNotFound {
+		if errors.Is(err, storage.ErrStoreNotFound) {
 			return nil, messages.ErrVaultNotFound
 		}
 
