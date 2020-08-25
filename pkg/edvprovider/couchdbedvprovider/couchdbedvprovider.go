@@ -9,6 +9,8 @@ package couchdbedvprovider
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/trustbloc/edge-core/pkg/log"
@@ -20,7 +22,16 @@ import (
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-const mapDocumentIndexedField = "IndexName"
+const (
+	mapDocumentIndexedField = "IndexName"
+
+	failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"
+
+	mappingDocumentFilteredOutLogMsg = `Getting all documents from vault %s. The following ` +
+		`document will be filtered out since it is a mapping document: 
+CouchDB document ID: %s
+Document content: %s`
+)
 
 var logger = log.New("edv-couchdbprovider")
 
@@ -101,6 +112,27 @@ func (c *CouchDBEDVStore) Put(document models.EncryptedDocument) error {
 	}
 
 	return c.coreStore.Put(document.ID, documentBytes)
+}
+
+// GetAll fetches all the documents within this store.
+// TODO: Support pagination #106
+func (c *CouchDBEDVStore) GetAll() ([][]byte, error) {
+	allKeyValuePairs, err := c.coreStore.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf(failGetKeyValuePairsFromCoreStoreErrMsg, err)
+	}
+
+	var allDocuments [][]byte
+
+	for key, value := range allKeyValuePairs {
+		if strings.Contains(key, "_mapping_") {
+			logger.Debugf(mappingDocumentFilteredOutLogMsg, c.name, key, value)
+		} else {
+			allDocuments = append(allDocuments, value)
+		}
+	}
+
+	return allDocuments, nil
 }
 
 // Get fetches the document associated with the given key.

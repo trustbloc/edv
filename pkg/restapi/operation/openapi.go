@@ -73,6 +73,23 @@ type createDocumentRes struct { // nolint: unused,deadcode
 	Location string
 }
 
+// readAllDocumentsReq model
+//
+// swagger:parameters readAllDocumentsReq
+type readAllDocumentsReq struct { // nolint: unused,deadcode
+	// in: path
+	// required: true
+	VaultID string `json:"vaultID"`
+}
+
+// readAllDocumentsRes model
+//
+// swagger:response readAllDocumentsRes
+type readAllDocumentsRes struct { // nolint: unused,deadcode
+	// in: body
+	RetrievedDocument string
+}
+
 // readDocumentReq model
 //
 // swagger:parameters readDocumentReq

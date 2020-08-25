@@ -12,5 +12,6 @@ require (
 	github.com/gorilla/mux v1.7.4
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.5.1
-	github.com/trustbloc/edge-core v0.1.4-0.20200814194611-5f3b95f18b63
+	github.com/trustbloc/edge-core v0.1.4-0.20200826135230-320b0953ce08
+	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
 )

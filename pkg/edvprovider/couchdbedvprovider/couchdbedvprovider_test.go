@@ -9,6 +9,7 @@ package couchdbedvprovider
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -268,6 +269,74 @@ func TestCouchDBEDVStore_createMappingDocument(t *testing.T) {
 
 	err := store.createMappingDocument("", "")
 	require.NoError(t, err)
+}
+
+func TestCouchDBEDVStore_GetAll(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		coreStore := mockstore.MockStore{
+			Store: make(map[string][]byte),
+		}
+
+		testDocument1 := models.EncryptedDocument{
+			ID:                          "Doc1",
+			Sequence:                    0,
+			IndexedAttributeCollections: nil,
+			JWE:                         []byte(`{"SomeJWEKey1":"SomeJWEValue1"}`),
+		}
+
+		testDocument2 := models.EncryptedDocument{
+			ID:                          "Doc2",
+			Sequence:                    0,
+			IndexedAttributeCollections: nil,
+			JWE:                         []byte(`{"SomeJWEKey2":"SomeJWEValue2"}`),
+		}
+
+		testDocument3 := models.EncryptedDocument{
+			ID:                          "Doc3",
+			Sequence:                    0,
+			IndexedAttributeCollections: nil,
+			JWE:                         []byte(`{"SomeJWEKey3":"SomeJWEValue3"}`),
+		}
+
+		testDocumentBytes1, err := json.Marshal(testDocument1)
+		require.NoError(t, err)
+
+		testDocumentBytes2, err := json.Marshal(testDocument2)
+		require.NoError(t, err)
+
+		testDocumentBytes3, err := json.Marshal(testDocument3)
+		require.NoError(t, err)
+
+		err = coreStore.Put("Key1", testDocumentBytes1)
+		require.NoError(t, err)
+
+		err = coreStore.Put("Key2", testDocumentBytes2)
+		require.NoError(t, err)
+
+		err = coreStore.Put("Key3_mapping_", testDocumentBytes3)
+		require.NoError(t, err)
+
+		couchDBStore := CouchDBEDVStore{
+			coreStore: &coreStore,
+			name:      "",
+		}
+
+		// testDocument3 should be filtered out since it was stored with a key that indicates that
+		// it's a mapping document.
+		allValues, err := couchDBStore.GetAll()
+		require.NoError(t, err)
+		require.Contains(t, allValues, testDocumentBytes1)
+		require.Contains(t, allValues, testDocumentBytes2)
+		require.Len(t, allValues, 2)
+	})
+	t.Run("Fail to get all key value pairs from core store", func(t *testing.T) {
+		errGetAll := errors.New("get all error")
+		store := CouchDBEDVStore{coreStore: &mockstore.MockStore{ErrGetAll: errGetAll}}
+
+		values, err := store.GetAll()
+		require.EqualError(t, err, fmt.Errorf(failGetKeyValuePairsFromCoreStoreErrMsg, errGetAll).Error())
+		require.Nil(t, values)
+	})
 }
 
 func TestCouchDBEDVStore_Get(t *testing.T) {
