@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/DATA-DOG/godog"
+	"github.com/cucumber/godog"
 	"github.com/google/tink/go/keyset"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes/subtle"
