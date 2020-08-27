@@ -73,16 +73,23 @@ type BDDContext struct {
 	StructuredDocToBeEncrypted *models.StructuredDocument
 	EncryptedDocToStore        *models.EncryptedDocument
 	ReceivedEncryptedDoc       *models.EncryptedDocument
+	TLSConfig                  *tls.Config
 }
 
 // NewBDDContext creates a new BDDContext
-func NewBDDContext() (*BDDContext, error) {
+func NewBDDContext(caCertPaths ...string) (*BDDContext, error) {
+	rootCAs, err := tlsutils.GetCertPool(false, caCertPaths)
+	if err != nil {
+		return nil, err
+	}
+
 	trustBlocEDVClient, err := createTrustBlocEDVClient()
 	if err != nil {
 		return nil, err
 	}
 
 	instance := BDDContext{
+		TLSConfig: &tls.Config{RootCAs: rootCAs},
 		EDVClient: trustBlocEDVClient,
 	}
 

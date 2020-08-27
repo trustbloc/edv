@@ -22,6 +22,7 @@ import (
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/restapi"
+	"github.com/trustbloc/edv/pkg/restapi/healthcheck"
 )
 
 const (
@@ -224,9 +225,18 @@ func startEDV(parameters *edvParameters) error {
 		return err
 	}
 
-	handlers := edvService.GetOperations()
 	router := mux.NewRouter()
 	router.UseEncodedPath()
+
+	// add health check endpoint
+	healthCheckService := healthcheck.New()
+
+	healthCheckHandlers := healthCheckService.GetOperations()
+	for _, handler := range healthCheckHandlers {
+		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
+	}
+
+	handlers := edvService.GetOperations()
 
 	for _, handler := range handlers {
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())

@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/godog"
+	"github.com/cucumber/godog"
 
 	"github.com/trustbloc/edv/test/bdd/dockerutil"
+	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	bddctx "github.com/trustbloc/edv/test/bdd/pkg/context"
 	"github.com/trustbloc/edv/test/bdd/pkg/edv"
 	"github.com/trustbloc/edv/test/bdd/pkg/interop"
@@ -117,7 +118,7 @@ func generateUUID() string {
 }
 
 func FeatureContext(s *godog.Suite) {
-	bddContext, err := bddctx.NewBDDContext()
+	bddContext, err := bddctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem", "fixtures/keys/tls/ec-pubCert.pem")
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create a new NewBDDContext: %s", err))
 	}
@@ -128,5 +129,6 @@ func FeatureContext(s *godog.Suite) {
 	}
 
 	edv.NewSteps(bddContext).RegisterSteps(s)
+	common.NewSteps(bddContext).RegisterSteps(s)
 	interop.NewSteps(bddInteropContext).RegisterSteps(s)
 }

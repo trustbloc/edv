@@ -11,7 +11,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/DATA-DOG/godog"
+	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 
 	"github.com/trustbloc/edv/pkg/restapi/models"
