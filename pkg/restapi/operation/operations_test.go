@@ -732,24 +732,37 @@ func TestReadAllDocuments(t *testing.T) {
 		readAllDocumentsEndpointHandler.Handle().ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
 
-		// This unmarshalling and remarshalling is done so that we can directly compare the expected output
-		// with the output from the EDV service.
-		var expectedEncryptedDoc1 models.EncryptedDocument
+		var actualDocs []models.EncryptedDocument
 
-		err = json.Unmarshal([]byte(testEncryptedDocument), &expectedEncryptedDoc1)
+		err = json.Unmarshal(rr.Body.Bytes(), &actualDocs)
 		require.NoError(t, err)
 
-		var expectedEncryptedDoc2 models.EncryptedDocument
-
-		err = json.Unmarshal([]byte(testEncryptedDocument2), &expectedEncryptedDoc2)
+		// Marshal to bytes so that we can compare with the expected docs easily
+		actualDocumentsBytes1, err := json.Marshal(actualDocs[0])
 		require.NoError(t, err)
 
-		expectedEncryptedDocs := []models.EncryptedDocument{expectedEncryptedDoc1, expectedEncryptedDoc2}
-
-		expectedEncryptedDocsBytes, err := json.Marshal(expectedEncryptedDocs)
+		actualDocumentsBytes2, err := json.Marshal(actualDocs[1])
 		require.NoError(t, err)
 
-		require.Equal(t, string(expectedEncryptedDocsBytes), rr.Body.String())
+		var gotExpectedDocs bool
+
+		// The order of the returned docs can vary - either order is acceptable
+		if string(actualDocumentsBytes1) == testEncryptedDocument &&
+			string(actualDocumentsBytes2) == testEncryptedDocument2 {
+			gotExpectedDocs = true
+		} else if string(actualDocumentsBytes1) == testEncryptedDocument2 &&
+			string(actualDocumentsBytes2) == testEncryptedDocument {
+			gotExpectedDocs = true
+		}
+
+		require.True(t, gotExpectedDocs, `Expected these two documents (in any order):
+Expected document 1: %s
+
+Expected document 2: %s
+
+Actual document 1: %s
+Actual document 2: %s`, testEncryptedDocument, testEncryptedDocument2,
+			actualDocumentsBytes1, actualDocumentsBytes2)
 	})
 	t.Run("Vault does not exist", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
