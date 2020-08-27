@@ -10,15 +10,18 @@ import (
 	"net/http"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/internal/common/support"
 )
 
 // API endpoints.
 const (
+	logModuleName       = "edv-healthcheck-restapi"
 	healthCheckEndpoint = "/healthcheck"
 )
+
+var logger = log.New(logModuleName)
 
 type healthCheckResp struct {
 	Status      string    `json:"status"`
@@ -56,6 +59,6 @@ func (o *Operation) healthCheckHandler(rw http.ResponseWriter, r *http.Request) 
 		CurrentTime: time.Now(),
 	})
 	if err != nil {
-		log.Errorf("healthcheck response failure, %s", err)
+		logger.Errorf("healthcheck response failure, %s", err)
 	}
 }
