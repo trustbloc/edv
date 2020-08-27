@@ -11,11 +11,13 @@ import (
 	"net/http"
 
 	"github.com/cucumber/godog"
-	logger "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
+	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
 )
+
+var logger = log.New("edv-bddtest-common")
 
 // Steps is steps for VC BDD tests.
 type Steps struct {
