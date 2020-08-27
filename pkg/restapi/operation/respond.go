@@ -8,6 +8,7 @@ package operation
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -101,7 +102,7 @@ func writeQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string, va
 
 	matchingDocumentIDsBytes, err := json.Marshal(matchingDocumentIDs)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.FailToMarshalDocIDs, err, vaultID,
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.FailToMarshalDocIDs, err, vaultID,
 			queryBytesForLog)
 		return
 	}
@@ -166,7 +167,22 @@ func writeCreateDocumentSuccess(rw http.ResponseWriter, host, vaultID, docID str
 	rw.WriteHeader(http.StatusCreated)
 }
 
-func writeErrorWithVaultID(rw http.ResponseWriter, statusCode int, message string, err error, vaultID string,
+func writeErrorWithVaultID(rw http.ResponseWriter, statusCode int, message string, err error, vaultID string) {
+	logger.Errorf(message, vaultID, err)
+	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(message, vaultID, err))
+
+	rw.WriteHeader(statusCode)
+
+	_, errWrite := rw.Write([]byte(fmt.Sprintf(message, vaultID, err)))
+	if errWrite != nil {
+		logger.Errorf(message+messages.FailWriteResponse, vaultID, err, errWrite)
+		logger.Debugf(messages.DebugLogEvent,
+			fmt.Sprintf(message+messages.FailWriteResponse, vaultID, err, errWrite))
+	}
+}
+
+func writeErrorWithVaultIDAndReceivedData(rw http.ResponseWriter, statusCode int, message string,
+	err error, vaultID string,
 	receivedData []byte) {
 	logger.Errorf(message, vaultID, err)
 	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(message, vaultID, err), receivedData)
@@ -179,6 +195,41 @@ func writeErrorWithVaultID(rw http.ResponseWriter, statusCode int, message strin
 		logger.Debugf(messages.DebugLogEventWithReceivedData,
 			fmt.Sprintf(message+messages.FailWriteResponse, vaultID, err, errWrite),
 			receivedData)
+	}
+}
+
+func writeReadAllDocumentsFailure(rw http.ResponseWriter, errReadDoc error, vaultID string) {
+	logger.Infof(messages.ReadAllDocumentsFailure, vaultID, errReadDoc)
+
+	if errors.Is(errReadDoc, messages.ErrVaultNotFound) {
+		rw.WriteHeader(http.StatusNotFound)
+	} else {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}
+
+	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.ReadAllDocumentsFailure, vaultID, errReadDoc)))
+	if errWrite != nil {
+		logger.Errorf(messages.ReadAllDocumentsFailure+messages.FailWriteResponse, vaultID, errReadDoc, errWrite)
+	}
+}
+
+func writeReadAllDocumentsSuccess(rw http.ResponseWriter, allDocuments []json.RawMessage, vaultID string) {
+	logger.Debugf(messages.DebugLogEvent,
+		fmt.Sprintf(messages.ReadAllDocumentsSuccessWithRetrievedDocs, vaultID, allDocuments))
+
+	allDocumentsMarshalled, err := json.Marshal(allDocuments)
+	if err != nil {
+		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.FailToMarshalAllDocuments, err, vaultID)
+		return
+	}
+
+	_, errWrite := rw.Write(allDocumentsMarshalled)
+	if errWrite != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		logger.Errorf(messages.ReadAllDocumentsSuccess+messages.FailWriteResponse, vaultID, errWrite)
+		logger.Debugf(messages.DebugLogEvent,
+			fmt.Sprintf(messages.ReadAllDocumentsSuccessWithRetrievedDocs+messages.FailWriteResponse,
+				vaultID, errWrite, allDocuments))
 	}
 }
 

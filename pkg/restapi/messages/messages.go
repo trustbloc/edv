@@ -85,6 +85,20 @@ Received data: %s`
 	// fails to marshal back into bytes for logging purposes.
 	MarshalDocumentForLogFailure = "Failed to marshal document back into bytes for logging purposes: %s."
 
+	// ReadAllDocumentsReceiveRequest is used for logging read all documents requests.
+	ReadAllDocumentsReceiveRequest = "Received request to read all documents from data vault %s."
+	// ReadAllDocumentsFailure is used when an error occurs while reading all documents.
+	ReadAllDocumentsFailure = `Failed to read all documents in vault %s: %s.`
+	// ReadAllDocumentsSuccess is used when all documents are successfully read.
+	ReadAllDocumentsSuccess = "Successfully retrieved all documents in vault %s."
+	// ReadAllDocumentsSuccessWithRetrievedDocs is used when all request documents are successfully read.
+	// Includes the content of the retrieved documents.
+	ReadAllDocumentsSuccessWithRetrievedDocs = "Successfully retrieved all documents in vault %s. " +
+		"Retrieved docs: %s"
+	// FailToMarshalAllDocuments is used when the returned array of documents fails to marshal.
+	// This should not happen during normal operation.
+	FailToMarshalAllDocuments = ReadAllDocumentsSuccess + " Failed to marshal the documents: %s"
+
 	// ReadDocumentReceiveRequest is used for logging read document requests.
 	ReadDocumentReceiveRequest = "Received request to read document %s from data vault %s."
 	// ReadDocumentFailure is used when an error occurs while reading a document.
@@ -118,6 +132,10 @@ Error: %s`
 
 	// UnescapeFailure is used when an error occurs while unescaping a path variable
 	UnescapeFailure = "Unable to unescape %s path variable: %s."
+
+	// FailWhileGetAllDocsFromStoreErrMsg is used when there's a failure while getting all documents from an
+	// underlying store
+	FailWhileGetAllDocsFromStoreErrMsg = "failure while getting all documents from store: %w"
 )
 
 type edvError string

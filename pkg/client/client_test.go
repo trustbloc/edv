@@ -9,6 +9,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -32,7 +33,8 @@ const (
 	testVaultID            = "testvault"
 	testVaultIDWithSlashes = "http://example.com/" + testVaultID
 	testDocumentID         = "VJYHHJx4C8J9Fsgz7rZqSp"
-	testEncryptedDocJWE    = `{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxMzA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQ` +
+	testDocumentID2        = "AJYHHJx4C8J9Fsgz7rZqSp"
+	testJWE                = `{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxMzA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQ` +
 		`XV0aGNyeXB0IiwicmVjaXBpZW50cyI6W3siZW5jcnlwdGVkX2tleSI6ImdLcXNYNm1HUXYtS3oyelQzMndIbE5DUjFiVU54ZlRTd0ZYcFVWb` +
 		`3FIMjctQUN0bURpZHBQdlVRcEdKSDZqMDkiLCJoZWFkZXIiOnsia2lkIjoiNzd6eWlNeHY0SlRzc2tMeFdFOWI1cVlDN2o1b3Fxc1VMUnFhc` +
 		`VNqd1oya1kiLCJzZW5kZXIiOiJiNmhrRkpXM2RfNmZZVjAtcjV0WEJoWnBVVmtrYXhBSFBDUEZxUDVyTHh3aGpwdFJraTRURjBmTEFNcy1se` +
@@ -40,6 +42,12 @@ const (
 		`GhnaC1EZnNjOW5Cb3BYVHA1OEhNZiJ9fV19","iv":"e8mXGCAamvwYcdf2","ciphertext":"dLKWmjFyL-G1uqF588Ya0g10QModI-q0f` +
 		`7vw_v3_jhzskuNqX7Yx4aSD7x2jhUdat82kHS4qLYw8BuUGvGimI_sCQ9m3On` +
 		`QTHSjZnpg7VWRqAULBC3MSTtBa1DtZjZL4C0Y=","tag":"W4yJzyuGYzuZtZMRv2bDUg=="}`
+	testJWE2 = `{"protected":"eyJhbGciOiJSU0EtT0FFUCIsImVuYyI6IkEyNTZHQ00ifQ","encrypted_k` +
+		`ey":"OKOawDo13gRp2ojaHV7LFpZcgV7T6DVZKTyKOMTYUmKoTCVJRgckCL9kiMT03JGeipsEdY3mx_etLbbWSrFr05kLzcSr4qKA` +
+		`q7YN7e9jwQRb23nfa6c9d-StnImGyFDbSv04uVuxIp5Zms1gNxKKK2Da14B8S4rzVRltdYwam_lDp5XnZAYpQdb76FdIKLaVmqgfw` +
+		`X7XWRxv2322i-vDxRfqNzo_tETKzpVLzfiwQyeyPGLBIO56YJ7eObdv0je81860ppamavo35UgoRdbYaBcoh9QcfylQr66oc6vFWX` +
+		`RcZ_ZT2LawVCWTIy3brGPi6UklfCpIMfIjf7iGdXKHzg","iv":"48V1_ALb6US04U3b","ciphertext":"5eym8TW_c8SuK0ltJ` +
+		`3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tX_EFShS8iB7j6jiSdiwkIr3ajwQzaBtQD_A","tag":"XFBoMYUZodetZdvTiFvSkQ"}`
 
 	queryVaultEndpointPath = "/encrypted-data-vaults/{vaultIDPathVariable}/queries"
 	testQueryVaultResponse = `["docID1","docID2"]`
@@ -226,6 +234,122 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 	require.True(t, testPassed)
 }
 
+func TestClient_ReadAllDocuments(t *testing.T) {
+	t.Run("Status OK", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		validConfig := getTestValidDataVaultConfiguration(false)
+		_, err := client.CreateDataVault(&validConfig)
+		require.NoError(t, err)
+
+		testEncryptedDoc1 := getTestValidEncryptedDocument()
+
+		_, err = client.CreateDocument(testVaultID, testEncryptedDoc1)
+		require.NoError(t, err)
+
+		testEncryptedDoc2 := models.EncryptedDocument{
+			ID:       testDocumentID2,
+			Sequence: 1,
+			JWE:      []byte(testJWE2),
+		}
+
+		_, err = client.CreateDocument(testVaultID, &testEncryptedDoc2)
+		require.NoError(t, err)
+
+		documents, err := client.ReadAllDocuments(testVaultID)
+		require.NoError(t, err)
+		require.Len(t, documents, 2)
+
+		// Marshal to bytes so that we can compare with the expected docs easily
+		actualDocumentsBytes1, err := json.Marshal(documents[0])
+		require.NoError(t, err)
+
+		actualDocumentsBytes2, err := json.Marshal(documents[1])
+		require.NoError(t, err)
+
+		expectedDocumentBytes1, err := json.Marshal(*testEncryptedDoc1)
+		require.NoError(t, err)
+
+		expectedDocumentBytes2, err := json.Marshal(testEncryptedDoc2)
+		require.NoError(t, err)
+
+		var gotExpectedDocs bool
+
+		// The order of the returned docs can vary - either order is acceptable
+		if string(actualDocumentsBytes1) == string(expectedDocumentBytes1) &&
+			string(actualDocumentsBytes2) == string(expectedDocumentBytes2) {
+			gotExpectedDocs = true
+		} else if string(actualDocumentsBytes1) == string(expectedDocumentBytes2) &&
+			string(actualDocumentsBytes2) == string(expectedDocumentBytes1) {
+			gotExpectedDocs = true
+		}
+
+		require.True(t, gotExpectedDocs, `Expected these two documents (in any order):
+Expected document 1: %s
+
+Expected document 2: %s
+
+Actual document 1: %s
+Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentBytes2),
+			string(actualDocumentsBytes1), string(actualDocumentsBytes2))
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Status not found", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		documents, err := client.ReadAllDocuments(testVaultID)
+		require.EqualError(t, err, "the EDV server returned status code 404 along with the following "+
+			"message: Failed to read all documents in vault testvault: specified vault does not exist.")
+		require.Nil(t, documents)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure while sending GET request", func(t *testing.T) {
+		client := New("BadURL")
+
+		documents, err := client.ReadAllDocuments(testVaultID)
+		require.EqualError(t, err, `failure while sending request to retrieve all documents `+
+			`from vault testvault: failure while sending GET request: Get BadURL/testvault/documents:`+
+			` unsupported protocol scheme ""`)
+		require.Nil(t, documents)
+	})
+	t.Run("Failure while unmarshalling response body", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		mockReadAllDocumentsHTTPHandler :=
+			support.NewHTTPHandler("/encrypted-data-vaults/{vaultIDPathVariable}/documents", http.MethodGet,
+				mockReadAllDocumentsHandler)
+
+		srv := startMockEDVServer(srvAddr, mockReadAllDocumentsHTTPHandler)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		documents, err := client.ReadAllDocuments(testVaultID)
+		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
+		require.Nil(t, documents)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+}
+
 func TestClient_ReadDocument(t *testing.T) {
 	srvAddr := randomURL()
 
@@ -247,7 +371,7 @@ func TestClient_ReadDocument(t *testing.T) {
 
 	require.Equal(t, testDocumentID, document.ID)
 	require.Equal(t, 0, document.Sequence)
-	require.Equal(t, testEncryptedDocJWE, string(document.JWE))
+	require.Equal(t, testJWE, string(document.JWE))
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -295,7 +419,7 @@ func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
 
 	require.Equal(t, testDocumentID, document.ID)
 	require.Equal(t, 0, document.Sequence)
-	require.Equal(t, testEncryptedDocJWE, string(document.JWE))
+	require.Equal(t, testJWE, string(document.JWE))
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -480,7 +604,7 @@ func getTestValidEncryptedDocument() *models.EncryptedDocument {
 	return &models.EncryptedDocument{
 		ID:       testDocumentID,
 		Sequence: 0,
-		JWE:      []byte(testEncryptedDocJWE),
+		JWE:      []byte(testJWE),
 	}
 }
 
@@ -525,6 +649,14 @@ func startMockEDVServer(srvAddr string, httpHandler operation.Handler) *http.Ser
 	}(&srv)
 
 	return &srv
+}
+
+// Just writes some invalid JSON to the response.
+func mockReadAllDocumentsHandler(rw http.ResponseWriter, _ *http.Request) {
+	_, err := rw.Write([]byte("this is invalid JSON and will cause a json.Unmarshal to fail"))
+	if err != nil {
+		logger.Fatalf("failed to write in mock read all documents handler")
+	}
 }
 
 // Just writes some invalid JSON to the response.

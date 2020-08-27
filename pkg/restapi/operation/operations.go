@@ -30,10 +30,11 @@ const (
 	vaultIDPathVariable       = "vaultID"
 	docIDPathVariable         = "docID"
 
-	createVaultEndpoint    = edvCommonEndpointPathRoot
-	queryVaultEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/queries"
-	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
-	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
+	createVaultEndpoint      = edvCommonEndpointPathRoot
+	queryVaultEndpoint       = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/queries"
+	createDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
+	readAllDocumentsEndpoint = createDocumentEndpoint
+	readDocumentEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
 )
 
@@ -75,6 +76,7 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
+		support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 	}
 }
@@ -156,7 +158,8 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.QueryFailReadRequestBody, err, vaultID, nil)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.QueryFailReadRequestBody,
+			err, vaultID, nil)
 		return
 	}
 
@@ -166,7 +169,7 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 	err = json.Unmarshal(requestBody, &incomingQuery)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID, requestBody)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID, requestBody)
 		return
 	}
 
@@ -185,7 +188,7 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 	matchingDocumentIDs, err := c.vaultCollection.queryVault(vaultID, &incomingQuery)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID, queryBytesForLog)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID, queryBytesForLog)
 		return
 	}
 
@@ -209,7 +212,7 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusInternalServerError, messages.CreateDocumentFailReadRequestBody,
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.CreateDocumentFailReadRequestBody,
 			err, vaultID, nil)
 		return
 	}
@@ -219,6 +222,36 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 		requestBody)
 
 	c.createDocument(rw, requestBody, req.Host, vaultID)
+}
+
+// Read All Documents swagger:route GET /encrypted-data-vaults/{vaultID}/documents readAllDocumentsReq
+//
+// Retrieves all encrypted documents from the specified vault.
+//
+// Responses:
+//    default: genericError
+//        201: readAllDocumentsRes
+func (c *Operation) readAllDocumentsHandler(rw http.ResponseWriter, req *http.Request) {
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.ReadAllDocumentsReceiveRequest, vaultID))
+
+	allDocuments, err := c.vaultCollection.readAllDocuments(vaultID)
+	if err != nil {
+		writeReadAllDocumentsFailure(rw, err, vaultID)
+		return
+	}
+
+	var allDocumentsJSONRawMessage []json.RawMessage
+
+	for _, document := range allDocuments {
+		allDocumentsJSONRawMessage = append(allDocumentsJSONRawMessage, document)
+	}
+
+	writeReadAllDocumentsSuccess(rw, allDocumentsJSONRawMessage, vaultID)
 }
 
 // Read Document swagger:route GET /encrypted-data-vaults/{vaultID}/documents/{docID} readDocumentReq
@@ -282,7 +315,7 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 
 	err := json.Unmarshal(requestBody, &incomingDocument)
 	if err != nil {
-		writeErrorWithVaultID(rw, http.StatusBadRequest, messages.InvalidDocument, err, vaultID, requestBody)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err, vaultID, requestBody)
 		return
 	}
 
@@ -335,6 +368,24 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 	}
 
 	return store.Put(document)
+}
+
+func (vc *VaultCollection) readAllDocuments(vaultID string) ([][]byte, error) {
+	store, err := vc.provider.OpenStore(vaultID)
+	if err != nil {
+		if errors.Is(err, storage.ErrStoreNotFound) {
+			return nil, messages.ErrVaultNotFound
+		}
+
+		return nil, err
+	}
+
+	documentBytes, err := store.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf(messages.FailWhileGetAllDocsFromStoreErrMsg, err)
+	}
+
+	return documentBytes, err
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {

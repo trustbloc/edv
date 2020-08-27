@@ -9,6 +9,7 @@ package memedvprovider
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/trustbloc/edge-core/pkg/storage"
 	"github.com/trustbloc/edge-core/pkg/storage/memstore"
@@ -16,6 +17,8 @@ import (
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
+
+const failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"
 
 // ErrQueryingNotSupported is used when an attempt is made to query a vault backed by a memstore.
 var ErrQueryingNotSupported = errors.New("querying is not supported by memstore")
@@ -61,6 +64,22 @@ func (m MemEDVStore) Put(document models.EncryptedDocument) error {
 	}
 
 	return m.coreStore.Put(document.ID, documentBytes)
+}
+
+// GetAll fetches all the documents within this store.
+func (m MemEDVStore) GetAll() ([][]byte, error) {
+	allKeyValuePairs, err := m.coreStore.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf(failGetKeyValuePairsFromCoreStoreErrMsg, err)
+	}
+
+	var allDocuments [][]byte
+
+	for _, value := range allKeyValuePairs {
+		allDocuments = append(allDocuments, value)
+	}
+
+	return allDocuments, nil
 }
 
 // Get fetches the document associated with the given key.

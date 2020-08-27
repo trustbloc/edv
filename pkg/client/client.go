@@ -21,6 +21,13 @@ import (
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
+const (
+	failSendGetRequest             = "failure while sending GET request: %w"
+	failSendRequestForAllDocuments = "failure while sending request to retrieve all documents from vault %s: %w"
+	failSendRequestForDocument     = "failure while sending request to vault %s to retrieve document %s: %w"
+	failReadResponseBody           = "failure while reading response body: %w"
+)
+
 var logger = log.New("edv-client")
 
 type marshalFunc func(interface{}) ([]byte, error)
@@ -80,34 +87,50 @@ func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocume
 	return c.sendPOSTCreateRequest(jsonToSend, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
 }
 
+// ReadAllDocuments sends the EDV server a request to retrieve all the documents within the specified vault.
+func (c *Client) ReadAllDocuments(vaultID string) ([]models.EncryptedDocument, error) {
+	endpoint := fmt.Sprintf("%s/%s/documents", c.edvServerURL, url.PathEscape(vaultID))
+
+	statusCode, respBody, err := c.sendGETRequest(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf(failSendRequestForAllDocuments, vaultID, err)
+	}
+
+	switch statusCode {
+	case http.StatusOK:
+		var documents []models.EncryptedDocument
+
+		err = json.Unmarshal(respBody, &documents)
+		if err != nil {
+			return nil, err
+		}
+
+		return documents, nil
+	default:
+		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+			statusCode, respBody)
+	}
+}
+
 // ReadDocument sends the EDV server a request to retrieve the specified document.
 // The requested document is returned.
 func (c *Client) ReadDocument(vaultID, docID string) (*models.EncryptedDocument, error) {
 	endpoint := fmt.Sprintf("%s/%s/documents/%s", c.edvServerURL, url.PathEscape(vaultID), url.PathEscape(docID))
 
-	// The linter falsely claims that the body is not being closed
-	// https://github.com/golangci/golangci-lint/issues/637
-	resp, err := c.httpClient.Get(endpoint) //nolint: bodyclose
+	statusCode, respBody, err := c.sendGETRequest(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send GET message: %w", err)
-	}
-
-	defer closeReadCloser(resp.Body)
-
-	respBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response message while retrieving document: %w", err)
+		return nil, fmt.Errorf(failSendRequestForDocument, vaultID, docID, err)
 	}
 
 	logger.Debugf(`Sent GET request to %s.
 Response status code: %d
-Response body: %s`, endpoint, resp.StatusCode, respBytes)
+Response body: %s`, endpoint, statusCode, respBody)
 
-	switch resp.StatusCode {
+	switch statusCode {
 	case http.StatusOK:
 		document := models.EncryptedDocument{}
 
-		err = json.Unmarshal(respBytes, &document)
+		err = json.Unmarshal(respBody, &document)
 		if err != nil {
 			return nil, err
 		}
@@ -115,8 +138,30 @@ Response body: %s`, endpoint, resp.StatusCode, respBytes)
 		return &document, nil
 	default:
 		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
-			resp.StatusCode, respBytes)
+			statusCode, respBody)
 	}
+}
+
+func (c *Client) sendGETRequest(endpoint string) (int, []byte, error) {
+	// The linter falsely claims that the body is not being closed
+	// https://github.com/golangci/golangci-lint/issues/637
+	resp, err := c.httpClient.Get(endpoint) //nolint: bodyclose
+	if err != nil {
+		return -1, nil, fmt.Errorf(failSendGetRequest, err)
+	}
+
+	defer closeReadCloser(resp.Body)
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return -1, nil, fmt.Errorf(failReadResponseBody, err)
+	}
+
+	logger.Debugf(`Sent GET request to %s.
+Response status code: %d
+Response body: %s`, endpoint, resp.StatusCode, respBytes)
+
+	return resp.StatusCode, respBytes, err
 }
 
 // QueryVault queries the given vault and returns the URLs of all documents that match the given query.

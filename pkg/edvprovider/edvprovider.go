@@ -43,6 +43,9 @@ type EDVStore interface {
 	// Put stores the given document.
 	Put(document models.EncryptedDocument) error
 
+	// GetAll fetches all the documents within this store.
+	GetAll() ([][]byte, error)
+
 	// Get fetches the document associated with the given key.
 	Get(k string) ([]byte, error)
 
