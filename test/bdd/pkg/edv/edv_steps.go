@@ -15,8 +15,9 @@ import (
 
 	"github.com/cucumber/godog"
 	"github.com/google/tink/go/keyset"
+	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes"
-	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes/subtle"
+	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/keyio"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 
 	"github.com/trustbloc/edv/pkg/restapi/models"
@@ -114,21 +115,22 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 	}
 
 	buf := new(bytes.Buffer)
-	pubKeyWriter := ecdhes.NewWriter(buf)
+	pubKeyWriter := keyio.NewWriter(buf)
 
 	err = pubKH.WriteWithNoSecrets(pubKeyWriter)
 	if err != nil {
 		return err
 	}
 
-	ecPubKey := new(subtle.ECPublicKey)
+	ecPubKey := new(composite.PublicKey)
 
 	err = json.Unmarshal(buf.Bytes(), ecPubKey)
 	if err != nil {
 		return err
 	}
 
-	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, []subtle.ECPublicKey{*ecPubKey})
+	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, composite.DIDCommEncType, "", nil,
+		[]*composite.PublicKey{ecPubKey})
 	if err != nil {
 		return err
 	}
@@ -140,7 +142,7 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 
 	e.bddContext.EncryptedDocToStore = encryptedDocToStore
 
-	e.bddContext.JWEDecrypter = jose.NewJWEDecrypt(keyHandle)
+	e.bddContext.JWEDecrypter = jose.NewJWEDecrypt(nil, keyHandle)
 
 	return nil
 }
@@ -230,12 +232,12 @@ func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) erro
 
 func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
 	marshalledStructuredDoc []byte) (*models.EncryptedDocument, error) {
-	jwe, err := jweEncrypter.Encrypt(marshalledStructuredDoc, nil)
+	jwe, err := jweEncrypter.Encrypt(marshalledStructuredDoc)
 	if err != nil {
 		return nil, err
 	}
 
-	encryptedStructuredDoc, err := jwe.Serialize(json.Marshal)
+	encryptedStructuredDoc, err := jwe.FullSerialize(json.Marshal)
 	if err != nil {
 		return nil, err
 	}
