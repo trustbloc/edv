@@ -242,6 +242,8 @@ func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
 		return nil, err
 	}
 
+	println(encryptedStructuredDoc)
+
 	// TODO: Update this to demonstrate a full example of how to create an indexed attribute using HMAC-SHA256.
 	// https://github.com/trustbloc/edv/issues/53
 	indexedAttribute := models.IndexedAttribute{

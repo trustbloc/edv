@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/log"
+	"github.com/trustbloc/edge-core/pkg/log/mocklogger"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -94,21 +94,9 @@ const (
 }`
 )
 
-var testLoggerProvider = TestLoggerProvider{}
+var mockLoggerProvider = mocklogger.Provider{MockLogger: &mocklogger.MockLogger{}} //nolint: gochecknoglobals
 var errFailingResponseWriter = errors.New("failingResponseWriter always fails")
 var errFailingReadCloser = errors.New("failingReadCloser always fails")
-
-type TestLoggerProvider struct {
-	logContents bytes.Buffer
-}
-
-func (t *TestLoggerProvider) GetLogger(string) log.Logger {
-	logrusLogger := logrus.New()
-	logrusLogger.SetOutput(&t.logContents)
-	logrusLogger.SetLevel(logrus.DebugLevel)
-
-	return logrusLogger
-}
 
 type failingResponseWriter struct {
 }
@@ -203,7 +191,7 @@ func (m *mockEDVStore) Query(*models.Query) ([]string, error) {
 }
 
 func TestMain(m *testing.M) {
-	log.Initialize(&testLoggerProvider)
+	log.Initialize(&mockLoggerProvider)
 
 	log.SetLevel(logModuleName, log.DEBUG)
 
@@ -256,7 +244,7 @@ func TestCreateDataVault(t *testing.T) {
 		op.createDataVault(&failingResponseWriter{}, &models.DataVaultConfiguration{}, "",
 			nil)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse,
 				messages.BlankReferenceID, errFailingResponseWriter))
 	})
@@ -265,7 +253,7 @@ func TestCreateDataVault(t *testing.T) {
 
 		op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.CreateVaultFailReadRequestBody+messages.FailWriteResponse,
 				errFailingReadCloser, errFailingResponseWriter))
 	})
@@ -309,7 +297,7 @@ func TestCreateDataVault(t *testing.T) {
 		op.createDataVault(&failingResponseWriter{},
 			&models.DataVaultConfiguration{ReferenceID: testVaultID}, "", nil)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.VaultCreationFailure+messages.FailWriteResponse,
 				messages.ErrDuplicateVault, errFailingResponseWriter))
 	})
@@ -436,7 +424,7 @@ func TestQueryVault(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(failingResponseWriter{}, req)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.QueryFailure+messages.FailWriteResponse, testVaultID,
 				memedvprovider.ErrQueryingNotSupported, errFailingResponseWriter))
 	})
@@ -472,7 +460,7 @@ func TestQueryVault(t *testing.T) {
 
 		op.queryVaultHandler(failingResponseWriter{}, req)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.QueryFailReadRequestBody+messages.FailWriteResponse,
 				testVaultID, errFailingReadCloser, errFailingResponseWriter))
 	})
@@ -508,13 +496,13 @@ func TestQueryVault(t *testing.T) {
 	t.Run("Fail to write response when no matching documents found", func(t *testing.T) {
 		writeQueryResponse(failingResponseWriter{}, nil, testVaultID, nil)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.QueryNoMatchingDocs+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
 	})
 	t.Run("Fail to write response when matching documents are found", func(t *testing.T) {
 		writeQueryResponse(failingResponseWriter{}, []string{"docID1", "docID2"}, testVaultID, nil)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.QuerySuccess+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
 	})
 }
@@ -628,7 +616,7 @@ func TestCreateDocument(t *testing.T) {
 
 		op.createDocument(&failingResponseWriter{}, []byte(testEncryptedDocument), "", testVaultID)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.CreateDocumentFailure+messages.FailWriteResponse,
 				testVaultID, messages.ErrDuplicateDocument, errFailingResponseWriter))
 	})
@@ -685,7 +673,7 @@ func TestCreateDocument(t *testing.T) {
 		op.createDocumentHandler(failingResponseWriter{},
 			request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.UnescapeFailure+messages.FailWriteResponse, vaultIDPathVariable,
 				errFailingResponseWriter, errFailingResponseWriter))
 	})
@@ -703,7 +691,7 @@ func TestCreateDocument(t *testing.T) {
 		op.createDocumentHandler(failingResponseWriter{}, req)
 
 		require.Contains(t,
-			testLoggerProvider.logContents.String(), fmt.Sprintf(
+			mockLoggerProvider.MockLogger.AllLogContents, fmt.Sprintf(
 				messages.CreateDocumentFailReadRequestBody+messages.FailWriteResponse,
 				testVaultID, errFailingReadCloser, errFailingResponseWriter))
 	})
@@ -946,7 +934,7 @@ func TestReadDocument(t *testing.T) {
 		op.readDocumentHandler(failingResponseWriter{},
 			request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithVaultIDThatCannotBeEscaped()}))
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.UnescapeFailure+messages.FailWriteResponse,
 				vaultIDPathVariable, errFailingResponseWriter, errFailingResponseWriter))
 	})
@@ -962,7 +950,7 @@ func TestReadDocument(t *testing.T) {
 		op.readDocumentHandler(failingResponseWriter{},
 			request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithDocIDThatCannotBeEscaped()}))
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.UnescapeFailure+messages.FailWriteResponse,
 				docIDPathVariable, errFailingResponseWriter, errFailingResponseWriter))
 	})
@@ -980,7 +968,7 @@ func TestReadDocument(t *testing.T) {
 
 		op.readDocumentHandler(failingResponseWriter{}, req)
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.ReadDocumentFailure, testDocID, testVaultID, messages.ErrVaultNotFound))
 	})
 	t.Run("Response writer fails while writing retrieved document", func(t *testing.T) {
@@ -995,7 +983,7 @@ func TestReadDocument(t *testing.T) {
 		op.readDocumentHandler(failingResponseWriter{},
 			request.WithContext(mockContext{valueToReturnWhenValueMethodCalled: getMapWithValidVaultIDAndDocID()}))
 
-		require.Contains(t, testLoggerProvider.logContents.String(),
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.ReadDocumentSuccess+messages.FailWriteResponse,
 				testDocID, testVaultID, errFailingResponseWriter))
 	})
