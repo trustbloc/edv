@@ -324,7 +324,7 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 
 		documents, err := client.ReadAllDocuments(testVaultID)
 		require.EqualError(t, err, `failure while sending request to retrieve all documents `+
-			`from vault testvault: failure while sending GET request: Get BadURL/testvault/documents:`+
+			`from vault testvault: failure while sending GET request: Get "BadURL/testvault/documents":`+
 			` unsupported protocol scheme ""`)
 		require.Nil(t, documents)
 	})

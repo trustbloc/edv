@@ -6,7 +6,7 @@ module github.com/trustbloc/edv/test/bdd
 
 replace github.com/trustbloc/edv => ../..
 
-go 1.13
+go 1.15
 
 require (
 	github.com/cucumber/godog v0.9.0
