@@ -125,7 +125,7 @@ func TestNewProvider(t *testing.T) {
 	})
 	t.Run("Failure: invalid URL", func(t *testing.T) {
 		prov, err := NewProvider("%", "")
-		require.EqualError(t, err, `failure while instantiate Kivik CouchDB client: parse http://%: invalid URL escape "%"`)
+		require.EqualError(t, err, `failure while instantiate Kivik CouchDB client: parse "http://%": invalid URL escape "%"`)
 		require.Nil(t, prov)
 	})
 }
