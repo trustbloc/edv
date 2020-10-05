@@ -19,6 +19,13 @@ type DataVaultConfiguration struct {
 	HMAC        IDTypePair `json:"hmac"`
 }
 
+// DataVaultConfigurationMapping represents an entry in the data vault config store that maps a DataVaultConfiguration
+// to a vaultID
+type DataVaultConfigurationMapping struct {
+	DataVaultConfiguration DataVaultConfiguration `json:"dataVaultConfiguration"`
+	VaultID                string                 `json:"vaultId"`
+}
+
 // StructuredDocument represents a Structured Document.
 type StructuredDocument struct {
 	ID      string                 `json:"id"`

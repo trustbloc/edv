@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,7 +15,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/log"
+	"github.com/trustbloc/edge-core/pkg/storage"
 
+	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 )
@@ -25,8 +28,27 @@ func (s *mockServer) ListenAndServe(host, certFile, keyFile string, handler http
 	return nil
 }
 
+type mockDBInitializer struct{}
+
+func (i *mockDBInitializer) CreateConfigStore(provider edvprovider.EDVProvider) error {
+	return nil
+}
+
+type mockEDVProvider struct {
+	errCreateStore error
+	errOpenStore   error
+}
+
+func (m *mockEDVProvider) CreateStore(string) error {
+	return m.errCreateStore
+}
+
+func (m *mockEDVProvider) OpenStore(string) (edvprovider.EDVStore, error) {
+	return nil, m.errOpenStore
+}
+
 func TestStartCmdContents(t *testing.T) {
-	startCmd := GetStartCmd(&mockServer{})
+	startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 	require.Equal(t, "start", startCmd.Use)
 	require.Equal(t, "Start EDV", startCmd.Short)
@@ -36,7 +58,7 @@ func TestStartCmdContents(t *testing.T) {
 }
 
 func TestStartCmdWithMissingHostArg(t *testing.T) {
-	startCmd := GetStartCmd(&mockServer{})
+	startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 	err := startCmd.Execute()
 
@@ -48,13 +70,13 @@ func TestStartCmdWithMissingHostArg(t *testing.T) {
 func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
 	parameters := &edvParameters{hostURL: "NotBlank", databaseType: "NotAValidType"}
 
-	err := startEDV(parameters)
+	err := startEDV(parameters, &mockDBInitializer{})
 	require.Equal(t, errInvalidDatabaseType, err)
 }
 
 func TestStartCmdValidArgs(t *testing.T) {
 	t.Run("database type: mem", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
 		startCmd.SetArgs(args)
@@ -64,7 +86,7 @@ func TestStartCmdValidArgs(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("database type: couchdb", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080",
 			"--" + databaseTypeFlagName, "couchdb", "--" + databaseURLFlagName, "localhost:8080"}
@@ -78,7 +100,7 @@ func TestStartCmdValidArgs(t *testing.T) {
 
 func TestStartCmdLogLevels(t *testing.T) {
 	t.Run(`Log level not specified - default to "info"`, func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
 		startCmd.SetArgs(args)
@@ -88,7 +110,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 		require.Equal(t, log.INFO, log.GetLevel(""))
 	})
 	t.Run("Log level: critical", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + logLevelFlagName, logLevelCritical}
@@ -99,7 +121,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 		require.Equal(t, log.CRITICAL, log.GetLevel(""))
 	})
 	t.Run("Log level: error", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + logLevelFlagName, logLevelError}
@@ -110,7 +132,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 		require.Equal(t, log.ERROR, log.GetLevel(""))
 	})
 	t.Run("Log level: warn", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + logLevelFlagName, logLevelWarn}
@@ -121,7 +143,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 		require.Equal(t, log.WARNING, log.GetLevel(""))
 	})
 	t.Run("Log level: info", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + logLevelFlagName, logLevelInfo}
@@ -132,7 +154,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 		require.Equal(t, log.INFO, log.GetLevel(""))
 	})
 	t.Run("Log level: debug", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + logLevelFlagName, logLevelDebug}
@@ -143,7 +165,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 		require.Equal(t, log.DEBUG, log.GetLevel(""))
 	})
 	t.Run("Invalid log level - default to info", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + logLevelFlagName, "mango"}
@@ -157,7 +179,7 @@ func TestStartCmdLogLevels(t *testing.T) {
 
 func TestStartCmdBlankTLSArgs(t *testing.T) {
 	t.Run("Blank cert file arg", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + tlsCertFileFlagName, ""}
@@ -167,7 +189,7 @@ func TestStartCmdBlankTLSArgs(t *testing.T) {
 		require.EqualError(t, err, fmt.Sprintf("%s value is empty", tlsCertFileFlagName))
 	})
 	t.Run("Blank key file arg", func(t *testing.T) {
-		startCmd := GetStartCmd(&mockServer{})
+		startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + tlsKeyFileFlagName, ""}
@@ -179,7 +201,7 @@ func TestStartCmdBlankTLSArgs(t *testing.T) {
 }
 
 func TestStartCmdValidArgsEnvVar(t *testing.T) {
-	startCmd := GetStartCmd(&mockServer{})
+	startCmd := GetStartCmd(&mockServer{}, &mockDBInitializer{})
 
 	err := os.Setenv(hostURLEnvKey, "localhost:8080")
 	require.Nil(t, err)
@@ -234,6 +256,37 @@ func TestListenAndServe(t *testing.T) {
 	err := h.ListenAndServe("localhost:8080", "test.key", "test.cert", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "open test.key: no such file or directory")
+}
+
+func TestActualDbInitializer_CreateConfigStore(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		provider := memedvprovider.NewProvider()
+
+		dbInitializer := ActualDBInitializer{}
+
+		err := dbInitializer.CreateConfigStore(provider)
+		require.NoError(t, err)
+	})
+	t.Run("Success - create duplicate store", func(t *testing.T) {
+		dbInitializer := ActualDBInitializer{}
+
+		err := dbInitializer.CreateConfigStore(&mockEDVProvider{errCreateStore: storage.ErrDuplicateStore})
+		require.Nil(t, err)
+	})
+	t.Run("failure - other error in create store", func(t *testing.T) {
+		dbInitializer := ActualDBInitializer{}
+		errTest := errors.New("error in create store")
+
+		err := dbInitializer.CreateConfigStore(&mockEDVProvider{errCreateStore: errTest})
+		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
+	})
+	t.Run("failure - open store error", func(t *testing.T) {
+		dbInitializer := ActualDBInitializer{}
+		errTest := errors.New("error in open store")
+
+		err := dbInitializer.CreateConfigStore(&mockEDVProvider{errOpenStore: errTest})
+		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
+	})
 }
 
 func checkFlagPropertiesCorrect(t *testing.T, cmd *cobra.Command, flagName, flagShorthand, flagUsage string) {

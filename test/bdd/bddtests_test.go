@@ -51,19 +51,17 @@ func TestMain(m *testing.M) {
 func runBDDTests(tags, format string) int {
 	return godog.RunWithOptions("godogs", func(s *godog.Suite) {
 		var composition []*dockerutil.Composition
-		var composeFiles = []string{"./fixtures/couchdb", "./fixtures/edv-rest"}
+		var composeFiles = []string{"./fixtures/couchdb"}
+		var edvComposeFile = "./fixtures/edv-rest"
 		s.BeforeSuite(func() {
 			if os.Getenv("DISABLE_COMPOSITION") != "true" {
 				// Need a unique name, but docker does not allow '-' in names
 				composeProjectName := strings.ReplaceAll(generateUUID(), "-", "")
 
 				for _, v := range composeFiles {
-					newComposition, err := dockerutil.NewComposition(composeProjectName, "docker-compose.yml", v)
-					if err != nil {
-						panic(fmt.Sprintf("Error composing system in BDD context: %s", err))
-					}
-					composition = append(composition, newComposition)
+					composition = appendToComposition(composition, v, composeProjectName)
 				}
+
 				fmt.Println("docker-compose up ... waiting for containers to start ...")
 				testSleep := 5
 				if os.Getenv("TEST_SLEEP") != "" {
@@ -74,9 +72,12 @@ func runBDDTests(tags, format string) int {
 						panic(fmt.Sprintf("Invalid value found in 'TEST_SLEEP': %s", e))
 					}
 				}
-				fmt.Printf("*** testSleep=%d", testSleep)
-				println()
-				time.Sleep(time.Second * time.Duration(testSleep))
+
+				sleepAndWait(testSleep)
+
+				composition = appendToComposition(composition, edvComposeFile, composeProjectName)
+
+				sleepAndWait(testSleep)
 			}
 		})
 		s.AfterSuite(func() {
@@ -100,6 +101,25 @@ func runBDDTests(tags, format string) int {
 		Strict:        true,
 		StopOnFailure: true,
 	})
+}
+
+func appendToComposition(composition []*dockerutil.Composition,
+	composeFile, composeProjectName string) []*dockerutil.Composition {
+	newComposition, err := dockerutil.NewComposition(composeProjectName,
+		"docker-compose.yml", composeFile)
+	if err != nil {
+		panic(fmt.Sprintf("Error composing system in BDD context: %s", err))
+	}
+
+	composition = append(composition, newComposition)
+
+	return composition
+}
+
+func sleepAndWait(numSeconds int) {
+	fmt.Printf("*** testSleep=%d", numSeconds)
+	println()
+	time.Sleep(time.Second * time.Duration(numSeconds))
 }
 
 func getCmdArg(argName string) string {

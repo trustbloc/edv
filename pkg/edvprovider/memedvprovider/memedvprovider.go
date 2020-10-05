@@ -11,11 +11,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/trustbloc/edv/pkg/edvprovider"
+	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
+
 	"github.com/trustbloc/edge-core/pkg/storage"
 	"github.com/trustbloc/edge-core/pkg/storage/memstore"
-
-	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"
@@ -95,4 +96,42 @@ func (m MemEDVStore) CreateEDVIndex() error {
 // Query is not supported in memstore, and calling it will always return an error.
 func (m MemEDVStore) Query(query *models.Query) ([]string, error) {
 	return nil, ErrQueryingNotSupported
+}
+
+// StoreDataVaultConfiguration stores the given dataVaultConfiguration and vaultID
+func (m MemEDVStore) StoreDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
+	err := m.checkDuplicateReferenceID(config.ReferenceID)
+	if err != nil {
+		return fmt.Errorf(messages.CheckDuplicateRefIDFailure, err)
+	}
+
+	configEntry := models.DataVaultConfigurationMapping{
+		DataVaultConfiguration: *config,
+		VaultID:                vaultID,
+	}
+
+	configBytes, err := json.Marshal(configEntry)
+	if err != nil {
+		return fmt.Errorf(messages.FailToMarshalConfig, err)
+	}
+
+	return m.coreStore.Put(config.ReferenceID, configBytes)
+}
+
+func (m MemEDVStore) checkDuplicateReferenceID(referenceID string) error {
+	_, err := m.coreStore.Get(referenceID)
+	if err == nil {
+		return messages.ErrDuplicateVault
+	}
+
+	if !errors.Is(err, storage.ErrValueNotFound) {
+		return err
+	}
+
+	return nil
+}
+
+// CreateReferenceIDIndex is not supported in memstore, and calling it will always return an error.
+func (m MemEDVStore) CreateReferenceIDIndex() error {
+	return edvprovider.ErrIndexingNotSupported
 }

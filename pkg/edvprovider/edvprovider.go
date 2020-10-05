@@ -54,4 +54,10 @@ type EDVStore interface {
 
 	// Query does an EDV encrypted index query.
 	Query(query *models.Query) ([]string, error)
+
+	// CreateReferenceIDIndex creates index for the referenceId field in config documents
+	CreateReferenceIDIndex() error
+
+	// StoreDataVaultConfiguration stores the given DataVaultConfiguration and vaultID
+	StoreDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error
 }

@@ -11,28 +11,10 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/btcsuite/btcutil/base58"
 	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 )
-
-// This function can't tell if the value before being encoded was precisely 128 bits long.
-// This is because the byte58.decode function returns an array of bytes, not just a string of bits.
-// So the closest I can do is see if the decoded byte array is 16 bytes long,
-// however this means that if the original value was 121 bits to 127 bits long it'll still be accepted.
-func checkIfBase58Encoded128BitValue(id string) error {
-	decodedBytes := base58.Decode(id)
-	if len(decodedBytes) == 0 {
-		return messages.ErrNotBase58Encoded
-	}
-
-	if len(decodedBytes) != 16 {
-		return messages.ErrNot128BitValue
-	}
-
-	return nil
-}
 
 // Unescapes the given path variable from the vars map and writes a response if any failure occurs.
 // Returns the unescaped version of the path variable and a bool indicating whether the unescaping was successful.

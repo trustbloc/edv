@@ -109,7 +109,10 @@ const (
         "tag": "pfZO0JulJcrc3trOZy8rjA"
     }
 }`
-	testQuery = `{"IndexName":"","MatchingEncryptedDocID":"` + testDocID1 + `"}`
+
+	testQuery       = `{"IndexName":"","MatchingEncryptedDocID":"` + testDocID1 + `"}`
+	testReferenceID = "referenceID"
+	testVaultID     = "9ANbuHxeBcicymvRZfcKB2"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -131,21 +134,36 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestCouchDBEDVProvider_CreateStore(t *testing.T) {
-	prov, err := NewProvider("someURL", "")
-	require.NoError(t, err)
-	require.NotNil(t, prov)
+	t.Run("Success - using base58-encoded 128-bit vaultID as name", func(t *testing.T) {
+		prov, err := NewProvider("someURL", "")
+		require.NoError(t, err)
+		require.NotNil(t, prov)
 
-	err = prov.CreateStore("testStore")
-	require.Error(t, err)
+		err = prov.CreateStore(testVaultID)
+		require.Error(t, err)
 
-	containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
-		strings.Contains(err.Error(), "Temporary failure in name resolution")
+		containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
+			strings.Contains(err.Error(), "Temporary failure in name resolution")
 
-	require.True(t, containsExpectedErrText)
+		require.True(t, containsExpectedErrText)
+	})
+	t.Run("Success - using regular string as name", func(t *testing.T) {
+		prov, err := NewProvider("someURL", "")
+		require.NoError(t, err)
+		require.NotNil(t, prov)
+
+		err = prov.CreateStore("testStore")
+		require.Error(t, err)
+
+		containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
+			strings.Contains(err.Error(), "Temporary failure in name resolution")
+
+		require.True(t, containsExpectedErrText)
+	})
 }
 
 func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
+	t.Run("Success - regular string store name", func(t *testing.T) {
 		mockCoreProv := mockstore.NewMockStoreProvider()
 
 		err := mockCoreProv.CreateStore("testStore")
@@ -154,6 +172,18 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 		prov := CouchDBEDVProvider{coreProvider: mockCoreProv}
 
 		store, err := prov.OpenStore("testStore")
+		require.NoError(t, err)
+		require.NotNil(t, store)
+	})
+	t.Run("Success - base58-encoded 128-bit store name", func(t *testing.T) {
+		mockCoreProv := mockstore.NewMockStoreProvider()
+
+		err := mockCoreProv.CreateStore("testStore")
+		require.NoError(t, err)
+
+		prov := CouchDBEDVProvider{coreProvider: mockCoreProv}
+
+		store, err := prov.OpenStore(testVaultID)
 		require.NoError(t, err)
 		require.NotNil(t, store)
 	})
@@ -356,9 +386,18 @@ func TestCouchDBEDVStore_CreateEDVIndex(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCouchDBEDVStore_CreateReferenceIDIndex(t *testing.T) {
+	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+	err := store.CreateReferenceIDIndex()
+	require.NoError(t, err)
+}
+
 type mockIterator struct {
 	timesNextCalled         int
 	maxTimesNextCanBeCalled int
+	noResultsFound          bool
 	errNext                 error
 	errValue                error
 	errRelease              error
@@ -371,6 +410,10 @@ func (m *mockIterator) Next() (bool, error) {
 		return false, m.errNext
 	}
 	m.timesNextCalled++
+
+	if m.noResultsFound {
+		return false, nil
+	}
 
 	return true, nil
 }
@@ -558,5 +601,56 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		docIDs, err := store.Query(&query)
 		require.Equal(t, errTest, err)
 		require.Empty(t, docIDs)
+	})
+}
+
+func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: true}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
+			ReferenceID: testReferenceID}, testVaultID)
+		require.NoError(t, err)
+	})
+	t.Run("Failure: error during query in coreStore", func(t *testing.T) {
+		errTest := errors.New("coreStore query referenceID error")
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrQuery: errTest}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
+			ReferenceID: testReferenceID}, testVaultID)
+		require.EqualError(t, fmt.Errorf(messages.CheckDuplicateRefIDFailure, errTest), err.Error())
+	})
+	t.Run("Failure: iterator next() call returns error", func(t *testing.T) {
+		errTest := errors.New("iterator next error")
+		mockCoreStore := mockstore.MockStore{
+			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errTest}}
+
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
+			ReferenceID: testReferenceID}, testVaultID)
+		require.EqualError(t, fmt.Errorf(messages.CheckDuplicateRefIDFailure, errTest), err.Error())
+	})
+	t.Run("Failure: vault with duplicated referenceID already exists", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: false}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
+			ReferenceID: testReferenceID}, testVaultID)
+		require.EqualError(t, fmt.Errorf(messages.CheckDuplicateRefIDFailure, messages.ErrDuplicateVault), err.Error())
+	})
+	t.Run("Failure: error when putting config entry in coreStore", func(t *testing.T) {
+		errTest := errors.New("coreStore put config error")
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: true}, ErrPut: errTest}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		testConfig := models.DataVaultConfiguration{ReferenceID: testReferenceID}
+
+		err := store.StoreDataVaultConfiguration(&testConfig, testVaultID)
+		require.Equal(t, errTest, err)
 	})
 }

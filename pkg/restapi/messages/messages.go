@@ -39,6 +39,15 @@ Received data: %s`
 		"but failed to read the request body: %s."
 	// InvalidVaultConfig is used when a received data vault configuration is invalid.
 	InvalidVaultConfig = "Received invalid data vault configuration: %s."
+	// StoreVaultConfigFailure is used when an error prevents a data vault configuration from being stored.
+	StoreVaultConfigFailure = "failed to store data vault configuration: %s"
+	// ConfigStoreNotFound is used when the configuration store can not be found
+	ConfigStoreNotFound = "configuration store not found"
+	// CheckDuplicateRefIDFailure is used when an error occurs while querying referenceIds
+	CheckDuplicateRefIDFailure = "an error occurred while querying referenceIds: %s"
+	// FailToMarshalConfig is used when a data vault configuration can't be marshalled
+	// This should not happen during normal operation.
+	FailToMarshalConfig = "failed to marshal data vault configuration into bytes %s"
 	// BlankReferenceID is the message returned by the EDV server when an attempt is made to create a vault
 	// with a blank reference ID.
 	BlankReferenceID = "referenceId can't be blank"
@@ -74,6 +83,9 @@ Received data: %s`
 	// This should not happen during normal operation.
 	CreateDocumentFailReadRequestBody = CreateDocumentReceiveRequest +
 		` Failed to read request body: %s.`
+	// GetCouchDBVaultNameFromVaultIDFailure is used when an error occurs while fetching the vault name in couchdb
+	// that is mapped to the vaultID.
+	GetCouchDBVaultNameFromVaultIDFailure = "Failed to obtain vault name associated with vaultID %s: %s"
 	// InvalidDocument is used when an invalid document is received.
 	InvalidDocument = `Received a request to create a document in vault %s, ` +
 		"but the document is invalid: %s."

@@ -30,8 +30,10 @@ import (
 )
 
 const (
-	testVaultID            = "testvault"
-	testVaultIDWithSlashes = "http://example.com/" + testVaultID
+	dataVaultConfigurationStoreName = "data_vault_configurations"
+
+	testReferenceID        = "testRefID"
+	testVaultIDNonExistent = "testVaultIDImpossible"
 	testDocumentID         = "VJYHHJx4C8J9Fsgz7rZqSp"
 	testDocumentID2        = "AJYHHJx4C8J9Fsgz7rZqSp"
 	testJWE                = `{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxMzA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQ` +
@@ -72,28 +74,10 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	validConfig := getTestValidDataVaultConfiguration(false)
+	validConfig := getTestValidDataVaultConfiguration()
 	location, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
-	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault", location)
-
-	err = srv.Shutdown(context.Background())
-	require.NoError(t, err)
-}
-
-func TestClient_CreateDataVault_VaultIDContainsSlash(t *testing.T) {
-	srvAddr := randomURL()
-
-	srv := startEDVServer(t, srvAddr)
-
-	waitForServerToStart(t, srvAddr)
-
-	client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-	validConfig := getTestValidDataVaultConfiguration(true)
-	location, err := client.CreateDataVault(&validConfig)
-	require.NoError(t, err)
-	require.Equal(t, srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault", location)
+	require.Contains(t, location, srvAddr+"/encrypted-data-vaults/")
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -119,35 +103,12 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestClient_CreateDataVault_DuplicateVault(t *testing.T) {
-	srvAddr := randomURL()
-
-	srv := startEDVServer(t, srvAddr)
-
-	waitForServerToStart(t, srvAddr)
-
-	client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-	validConfig := getTestValidDataVaultConfiguration(false)
-	_, err := client.CreateDataVault(&validConfig)
-	require.NoError(t, err)
-
-	location, err := client.CreateDataVault(&validConfig)
-	require.Empty(t, location)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), messages.ErrDuplicateVault)
-	require.Contains(t, err.Error(), "status code 409")
-
-	err = srv.Shutdown(context.Background())
-	require.NoError(t, err)
-}
-
 func TestClient_CreateDataVault_ServerUnreachable(t *testing.T) {
 	srvAddr := randomURL()
 
 	client := New("http://" + srvAddr)
 
-	validConfig := getTestValidDataVaultConfiguration(false)
+	validConfig := getTestValidDataVaultConfiguration()
 	location, err := client.CreateDataVault(&validConfig)
 	require.Empty(t, location)
 
@@ -165,38 +126,16 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	validConfig := getTestValidDataVaultConfiguration(false)
+	validConfig := getTestValidDataVaultConfiguration()
 
-	_, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
+	vaultID := getVaultIDFromURL(vaultLocationURL)
+
+	location, err := client.CreateDocument(vaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
-	require.Equal(t, srvAddr+"/encrypted-data-vaults/testvault/documents/"+testDocumentID, location)
-
-	err = srv.Shutdown(context.Background())
-	require.NoError(t, err)
-}
-
-func TestClient_CreateDocument_VaultIDContainsSlash(t *testing.T) {
-	srvAddr := randomURL()
-
-	srv := startEDVServer(t, srvAddr)
-
-	waitForServerToStart(t, srvAddr)
-
-	client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-	validConfig := getTestValidDataVaultConfiguration(true)
-
-	_, err := client.CreateDataVault(&validConfig)
-	require.NoError(t, err)
-
-	location, err := client.CreateDocument(testVaultIDWithSlashes, getTestValidEncryptedDocument())
-	require.NoError(t, err)
-	require.Equal(t,
-		srvAddr+"/encrypted-data-vaults/http:%2F%2Fexample.com%2Ftestvault/documents/"+testDocumentID,
-		location)
+	require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, location)
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -211,7 +150,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
+	location, err := client.CreateDocument(testVaultIDNonExistent, getTestValidEncryptedDocument())
 	require.Empty(t, location)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
@@ -226,7 +165,7 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	location, err := client.CreateDocument(testVaultID, &models.EncryptedDocument{})
+	location, err := client.CreateDocument(testVaultIDNonExistent, &models.EncryptedDocument{})
 	require.Empty(t, location)
 
 	// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
@@ -244,13 +183,15 @@ func TestClient_ReadAllDocuments(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		validConfig := getTestValidDataVaultConfiguration(false)
-		_, err := client.CreateDataVault(&validConfig)
+		validConfig := getTestValidDataVaultConfiguration()
+		vaultLocationURL, err := client.CreateDataVault(&validConfig)
 		require.NoError(t, err)
+
+		vaultID := getVaultIDFromURL(vaultLocationURL)
 
 		testEncryptedDoc1 := getTestValidEncryptedDocument()
 
-		_, err = client.CreateDocument(testVaultID, testEncryptedDoc1)
+		_, err = client.CreateDocument(vaultID, testEncryptedDoc1)
 		require.NoError(t, err)
 
 		testEncryptedDoc2 := models.EncryptedDocument{
@@ -259,10 +200,10 @@ func TestClient_ReadAllDocuments(t *testing.T) {
 			JWE:      []byte(testJWE2),
 		}
 
-		_, err = client.CreateDocument(testVaultID, &testEncryptedDoc2)
+		_, err = client.CreateDocument(vaultID, &testEncryptedDoc2)
 		require.NoError(t, err)
 
-		documents, err := client.ReadAllDocuments(testVaultID)
+		documents, err := client.ReadAllDocuments(vaultID)
 		require.NoError(t, err)
 		require.Len(t, documents, 2)
 
@@ -311,9 +252,10 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		documents, err := client.ReadAllDocuments(testVaultID)
+		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
 		require.EqualError(t, err, "the EDV server returned status code 404 along with the following "+
-			"message: Failed to read all documents in vault testvault: specified vault does not exist.")
+			"message: Failed to read all documents in vault "+testVaultIDNonExistent+
+			": specified vault does not exist.")
 		require.Nil(t, documents)
 
 		err = srv.Shutdown(context.Background())
@@ -322,10 +264,10 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 	t.Run("Failure while sending GET request", func(t *testing.T) {
 		client := New("BadURL")
 
-		documents, err := client.ReadAllDocuments(testVaultID)
+		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
 		require.EqualError(t, err, `failure while sending request to retrieve all documents `+
-			`from vault testvault: failure while sending GET request: Get "BadURL/testvault/documents":`+
-			` unsupported protocol scheme ""`)
+			`from vault `+testVaultIDNonExistent+`: failure while sending GET request: Get "BadURL/`+
+			testVaultIDNonExistent+`/documents":`+` unsupported protocol scheme ""`)
 		require.Nil(t, documents)
 	})
 	t.Run("Failure while unmarshalling response body", func(t *testing.T) {
@@ -341,7 +283,7 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		documents, err := client.ReadAllDocuments(testVaultID)
+		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
 		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
 		require.Nil(t, documents)
 
@@ -359,14 +301,16 @@ func TestClient_ReadDocument(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	validConfig := getTestValidDataVaultConfiguration(false)
-	_, err := client.CreateDataVault(&validConfig)
+	validConfig := getTestValidDataVaultConfiguration()
+	vaultLocationURL, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	_, err = client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
+	vaultID := getVaultIDFromURL(vaultLocationURL)
+
+	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 
-	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	document, err := client.ReadDocument(vaultID, testDocumentID)
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
@@ -390,36 +334,9 @@ func TestClient_ReadDocument_UnmarshalFail(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	document, err := client.ReadDocument(testVaultIDNonExistent, testDocumentID)
 	require.Nil(t, document)
 	require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
-
-	err = srv.Shutdown(context.Background())
-	require.NoError(t, err)
-}
-
-func TestClient_ReadDocument_VaultIDContainsSlash(t *testing.T) {
-	srvAddr := randomURL()
-
-	srv := startEDVServer(t, srvAddr)
-
-	waitForServerToStart(t, srvAddr)
-
-	client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-	validConfig := getTestValidDataVaultConfiguration(true)
-	_, err := client.CreateDataVault(&validConfig)
-	require.NoError(t, err)
-
-	_, err = client.CreateDocument(testVaultIDWithSlashes, getTestValidEncryptedDocument())
-	require.NoError(t, err)
-
-	document, err := client.ReadDocument(testVaultIDWithSlashes, testDocumentID)
-	require.NoError(t, err)
-
-	require.Equal(t, testDocumentID, document.ID)
-	require.Equal(t, 0, document.Sequence)
-	require.Equal(t, testJWE, string(document.JWE))
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
@@ -434,11 +351,13 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	validConfig := getTestValidDataVaultConfiguration(false)
-	_, err := client.CreateDataVault(&validConfig)
+	validConfig := getTestValidDataVaultConfiguration()
+	vaultLocationURL, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	_, err = client.CreateDocument(testVaultID, getTestValidEncryptedDocument())
+	vaultID := getVaultIDFromURL(vaultLocationURL)
+
+	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument())
 	require.NoError(t, err)
 
 	document, err := client.ReadDocument("wrongvault", testDocumentID)
@@ -459,11 +378,13 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	validConfig := getTestValidDataVaultConfiguration(false)
-	_, err := client.CreateDataVault(&validConfig)
+	validConfig := getTestValidDataVaultConfiguration()
+	vaultLocationURL, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
-	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	vaultID := getVaultIDFromURL(vaultLocationURL)
+
+	document, err := client.ReadDocument(vaultID, testDocumentID)
 	require.Nil(t, document)
 	require.Contains(t, err.Error(), messages.ErrDocumentNotFound.Error())
 
@@ -476,7 +397,7 @@ func TestClient_ReadDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	document, err := client.ReadDocument(testVaultIDNonExistent, testDocumentID)
 	require.Nil(t, document)
 	require.Contains(t, err.Error(), "connection refused")
 }
@@ -492,7 +413,7 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	document, err := client.ReadDocument(testVaultID, testDocumentID)
+	document, err := client.ReadDocument(testVaultIDNonExistent, testDocumentID)
 	require.Nil(t, document)
 	require.Contains(t, err.Error(), "404 page not found")
 
@@ -581,20 +502,15 @@ func TestClient_QueryVault(t *testing.T) {
 	})
 }
 
-func getTestValidDataVaultConfiguration(includeSlashInVaultID bool) models.DataVaultConfiguration {
+func getTestValidDataVaultConfiguration() models.DataVaultConfiguration {
 	testDataVaultConfiguration := models.DataVaultConfiguration{
-		Sequence:   0,
-		Controller: "",
-		Invoker:    "",
-		Delegator:  "",
-		KEK:        models.IDTypePair{},
-		HMAC:       models.IDTypePair{},
-	}
-
-	if includeSlashInVaultID {
-		testDataVaultConfiguration.ReferenceID = testVaultIDWithSlashes
-	} else {
-		testDataVaultConfiguration.ReferenceID = testVaultID
+		Sequence:    0,
+		Controller:  "",
+		Invoker:     "",
+		Delegator:   "",
+		KEK:         models.IDTypePair{},
+		HMAC:        models.IDTypePair{},
+		ReferenceID: testReferenceID,
 	}
 
 	return testDataVaultConfiguration
@@ -610,7 +526,11 @@ func getTestValidEncryptedDocument() *models.EncryptedDocument {
 
 // Returns a reference to the server so the caller can stop it.
 func startEDVServer(t *testing.T, srvAddr string) *http.Server {
-	edvService, err := restapi.New(memedvprovider.NewProvider())
+	memProv := memedvprovider.NewProvider()
+	err := memProv.CreateStore(dataVaultConfigurationStoreName)
+	require.NoError(t, err)
+
+	edvService, err := restapi.New(memProv)
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()
@@ -746,4 +666,11 @@ func getRandomPort() (int, error) {
 	}
 
 	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+// Extract and return vaultID from vaultLocationURL: /encrypted-data-vaults/{vaultID}
+func getVaultIDFromURL(vaultLocationURL string) string {
+	vaultLocationSplitUp := strings.Split(vaultLocationURL, "/")
+
+	return vaultLocationSplitUp[len(vaultLocationSplitUp)-1]
 }
