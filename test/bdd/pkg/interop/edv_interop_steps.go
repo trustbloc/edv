@@ -43,17 +43,42 @@ func (e *Steps) createDataVault() error {
 	vaultRefID := uuid.New().String()
 	e.bddInteropContext.DataVaultConfig = &models.DataVaultConfiguration{ReferenceID: vaultRefID}
 
+	err := e.trustBlocCreateDataVault()
+	if err != nil {
+		return err
+	}
+
+	err = e.transmuteCreateDataVault()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Steps) trustBlocCreateDataVault() error {
 	trustBlocEDVLocation, err :=
 		e.bddInteropContext.TrustBlocEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 	if err != nil {
 		return err
 	}
 
-	expectedTrustBlocVaultLocation := e.bddInteropContext.TrustBlocEDVHostURL + "/" + vaultRefID
-	if trustBlocEDVLocation != expectedTrustBlocVaultLocation {
-		return common.UnexpectedValueError(expectedTrustBlocVaultLocation, trustBlocEDVLocation)
+	trustBlocEDVLocationWithTrailingSlash := e.bddInteropContext.TrustBlocEDVHostURL + "/"
+	if !strings.HasPrefix(trustBlocEDVLocation, trustBlocEDVLocationWithTrailingSlash) {
+		return errors.New("the trustBloc data vault location is " + trustBlocEDVLocation +
+			". It was expected to start with " + trustBlocEDVLocationWithTrailingSlash + " but it didn't")
 	}
 
+	e.bddInteropContext.TrustBlocDataVaultLocation = trustBlocEDVLocation
+
+	trustBlocDataVaultLocationURLSplitUp := strings.Split(trustBlocEDVLocation, "/")
+	e.bddInteropContext.TrustBlocEDVDataVaultID =
+		trustBlocDataVaultLocationURLSplitUp[len(trustBlocDataVaultLocationURLSplitUp)-1]
+
+	return nil
+}
+
+func (e *Steps) transmuteCreateDataVault() error {
 	transmuteDataVaultLocation, err :=
 		e.bddInteropContext.TransmuteEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 	if err != nil {
@@ -61,8 +86,6 @@ func (e *Steps) createDataVault() error {
 	}
 
 	transmuteEDVURLWithTrailingSlash := e.bddInteropContext.TransmuteEDVHostURL + "/"
-	// The Transmute EDV implementation generates a random EDV ID instead of using the vault reference ID like we do.
-	// We don't know what the ID will be, so we just check to see if it follows the general format.
 	if !strings.HasPrefix(transmuteDataVaultLocation, transmuteEDVURLWithTrailingSlash) {
 		return errors.New("the transmute data vault location is " + transmuteDataVaultLocation +
 			". It was expected to start with " + transmuteEDVURLWithTrailingSlash + " but it didn't")
@@ -82,7 +105,7 @@ func (e *Steps) createDataVaultAgain() error {
 		e.bddInteropContext.TrustBlocEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 
 	if !strings.Contains(errTrustBlocCreateVault.Error(), statusCode409Msg) {
-		return errors.New("expected TrustBloc duplicate vault creation attempt to result in a 409 error, " +
+		return errors.New("expected Transmute duplicate vault creation attempt to result in a 409 error, " +
 			"but got " + errTrustBlocCreateVault.Error() + " instead")
 	}
 
@@ -99,14 +122,14 @@ func (e *Steps) createDataVaultAgain() error {
 
 func (e *Steps) createDocument() error {
 	trustBlocDocLocation, err :=
-		e.bddInteropContext.TrustBlocEDVClient.CreateDocument(e.bddInteropContext.DataVaultConfig.ReferenceID,
+		e.bddInteropContext.TrustBlocEDVClient.CreateDocument(e.bddInteropContext.TrustBlocEDVDataVaultID,
 			e.bddInteropContext.SampleDocToStore)
 	if err != nil {
 		return err
 	}
 
 	expectedTrustBlocDocLocation := e.bddInteropContext.TrustBlocEDVHostURL + "/" +
-		e.bddInteropContext.DataVaultConfig.ReferenceID + "/documents/" + e.bddInteropContext.SampleDocToStore.ID
+		e.bddInteropContext.TrustBlocEDVDataVaultID + "/documents/" + e.bddInteropContext.SampleDocToStore.ID
 	if trustBlocDocLocation != expectedTrustBlocDocLocation {
 		return common.UnexpectedValueError(expectedTrustBlocDocLocation, trustBlocDocLocation)
 	}
@@ -128,7 +151,7 @@ func (e *Steps) createDocument() error {
 
 func (e *Steps) retrieveDocument() error {
 	retrievedDocFromTrustBlocEDV, err := e.bddInteropContext.TrustBlocEDVClient.ReadDocument(
-		e.bddInteropContext.DataVaultConfig.ReferenceID, e.bddInteropContext.SampleDocToStore.ID)
+		e.bddInteropContext.TrustBlocEDVDataVaultID, e.bddInteropContext.SampleDocToStore.ID)
 	if err != nil {
 		return err
 	}

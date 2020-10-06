@@ -69,6 +69,7 @@ const (
 // BDDContext is a global context shared between different test suites in bddtests
 type BDDContext struct {
 	EDVClient                  *edvclient.Client
+	VaultID                    string
 	JWEDecrypter               *jose.JWEDecrypt
 	StructuredDocToBeEncrypted *models.StructuredDocument
 	EncryptedDocToStore        *models.EncryptedDocument
@@ -100,11 +101,13 @@ func NewBDDContext(caCertPaths ...string) (*BDDContext, error) {
 type BDDInteropContext struct {
 	TrustBlocEDVHostURL        string
 	TrustBlocEDVClient         *edvclient.Client
+	TrustBlocEDVDataVaultID    string
+	TrustBlocDataVaultLocation string
 	TransmuteEDVHostURL        string
 	TransmuteEDVClient         *edvclient.Client
-	DataVaultConfig            *models.DataVaultConfiguration
-	TransmuteDataVaultLocation string
 	TransmuteDataVaultID       string
+	TransmuteDataVaultLocation string
+	DataVaultConfig            *models.DataVaultConfiguration
 	SampleDocToStore           *models.EncryptedDocument
 }
 

@@ -18,12 +18,15 @@ import (
 	couchdbstore "github.com/trustbloc/edge-core/pkg/storage/couchdb"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
+	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const (
 	mapDocumentIndexedField = "IndexName"
+
+	mapConfigReferenceIDField = "dataVaultConfiguration.referenceId"
 
 	failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"
 
@@ -63,14 +66,38 @@ func NewProvider(databaseURL, dbPrefix string) (*CouchDBEDVProvider, error) {
 	return &CouchDBEDVProvider{coreProvider: couchDBProvider}, nil
 }
 
-// CreateStore creates a new store with the given name.
+// CreateStore creates a new store. If the given name is a base58-encoded 128-bit value, we decode and creates a uuid
+// from the bytes array since couchDB does not allow using uppercase characters in database names.
 func (c *CouchDBEDVProvider) CreateStore(name string) error {
+	err := edvutils.CheckIfBase58Encoded128BitValue(name)
+	if err == nil {
+		storeName, err := edvutils.Base58Encoded128BitToUUID(name)
+		if err != nil {
+			return err
+		}
+
+		return c.coreProvider.CreateStore(storeName)
+	}
+
 	return c.coreProvider.CreateStore(name)
 }
 
-// OpenStore opens an existing store and returns it.
+// OpenStore opens an existing store and returns it. The name is converted to a uuid if it is a base58-encoded
+// 128-bit value.
 func (c *CouchDBEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error) {
-	coreStore, err := c.coreProvider.OpenStore(name)
+	storeName := name
+
+	if edvutils.CheckIfBase58Encoded128BitValue(name) == nil {
+		storeNameString, err := edvutils.Base58Encoded128BitToUUID(name)
+		if err != nil {
+			return nil, err
+		}
+
+		storeName = storeNameString
+	}
+
+	coreStore, err := c.coreProvider.OpenStore(storeName)
+
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +178,17 @@ func (c *CouchDBEDVStore) CreateEDVIndex() error {
 	return c.coreStore.CreateIndex(createIndexRequest)
 }
 
+// CreateReferenceIDIndex creates index for the referenceId field in config documents
+func (c *CouchDBEDVStore) CreateReferenceIDIndex() error {
+	createIndexRequest := storage.CreateIndexRequest{
+		IndexStorageLocation: "EDV_ConfigStoreDesignDoc",
+		IndexName:            "EDV_ReferenceId",
+		WhatToIndex:          `{"fields": ["` + mapConfigReferenceIDField + `"]}`,
+	}
+
+	return c.coreStore.CreateIndex(createIndexRequest)
+}
+
 // Query does an EDV encrypted index query.
 // We first get the "mapping document" and then use the ID we get from that to lookup the associated encrypted document.
 // Then we check that encrypted document to see if the value matches what was specified in the query.
@@ -161,6 +199,47 @@ func (c *CouchDBEDVStore) Query(query *models.Query) ([]string, error) {
 	}
 
 	return c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
+}
+
+// StoreDataVaultConfiguration stores the given DataVaultConfiguration and vaultID
+func (c *CouchDBEDVStore) StoreDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
+	err := c.checkDuplicateReferenceID(config.ReferenceID)
+	if err != nil {
+		return fmt.Errorf(messages.CheckDuplicateRefIDFailure, err)
+	}
+
+	configEntry := models.DataVaultConfigurationMapping{
+		DataVaultConfiguration: *config,
+		VaultID:                vaultID,
+	}
+
+	configBytes, err := json.Marshal(configEntry)
+	if err != nil {
+		return fmt.Errorf(messages.FailToMarshalConfig, err)
+	}
+
+	return c.coreStore.Put(vaultID, configBytes)
+}
+
+func (c *CouchDBEDVStore) checkDuplicateReferenceID(referenceID string) error {
+	query := `{"selector":{"` + mapConfigReferenceIDField + `":"` + referenceID +
+		`"},"use_index": ["EDV_ConfigStoreDesignDoc", "EDV_ReferenceId"]}`
+
+	itr, err := c.coreStore.Query(query)
+	if err != nil {
+		return err
+	}
+
+	ok, err := itr.Next()
+	if err != nil {
+		return err
+	}
+
+	if ok {
+		return messages.ErrDuplicateVault
+	}
+
+	return nil
 }
 
 // validateNewDoc tries to ensure that index name+pairs declared unique are maintained as such. Note that
@@ -306,7 +385,7 @@ func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) 
 	query := `{"selector":{"` + mapDocumentIndexedField + `":"` + queryIndexName +
 		`"},"use_index": ["EDV_EncryptedIndexesDesignDoc", "EDV_IndexName"]}`
 
-	logger.Debugf(`Querying EDV "%s" with the following query: %s`, c.name, query)
+	logger.Debugf(`Querying config store with the following query: %s`, query)
 
 	itr, err := c.coreStore.Query(query)
 	if err != nil {

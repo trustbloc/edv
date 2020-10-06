@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 )
@@ -67,9 +68,12 @@ func writeCreateDataVaultFailure(rw http.ResponseWriter, errVaultCreation error,
 	logger.Debugf(messages.DebugLogEventWithReceivedData,
 		fmt.Sprintf(messages.VaultCreationFailure, errVaultCreation), configBytesForLog)
 
-	if errVaultCreation == messages.ErrDuplicateVault {
+	switch {
+	case strings.Contains(errVaultCreation.Error(), string(messages.ErrDuplicateVault)):
 		rw.WriteHeader(http.StatusConflict)
-	} else {
+	case strings.Contains(errVaultCreation.Error(), messages.ConfigStoreNotFound):
+		rw.WriteHeader(http.StatusInternalServerError)
+	default:
 		rw.WriteHeader(http.StatusBadRequest)
 	}
 
@@ -82,10 +86,10 @@ func writeCreateDataVaultFailure(rw http.ResponseWriter, errVaultCreation error,
 	}
 }
 
-func writeCreateDataVaultSuccess(rw http.ResponseWriter, referenceID, hostURL string, configBytesForLog []byte) {
-	urlEncodedReferenceID := url.PathEscape(referenceID)
+func writeCreateDataVaultSuccess(rw http.ResponseWriter, vaultID, hostURL string, configBytesForLog []byte) {
+	urlEncodedVaultID := url.PathEscape(vaultID)
 
-	newVaultLocation := hostURL + "/encrypted-data-vaults/" + urlEncodedReferenceID
+	newVaultLocation := hostURL + "/encrypted-data-vaults/" + urlEncodedVaultID
 
 	logger.Debugf(messages.DebugLogEventWithReceivedData,
 		"Successfully created new data vault at "+newVaultLocation, configBytesForLog)

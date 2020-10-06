@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/restapi/logspec"
+	"github.com/trustbloc/edge-core/pkg/storage"
 	cmdutils "github.com/trustbloc/edge-core/pkg/utils/cmd"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -81,12 +83,16 @@ const (
 	tlsKeyFileFlagUsage     = "TLS key file." +
 		" Alternatively, this can be set with the following environment variable: " + tlsKeyFileEnvKey
 	tlsKeyFileEnvKey = "EDV_TLS_KEY_FILE"
+
+	dataVaultConfigurationStoreName = "data_vault_configurations"
 )
 
 var logger = log.New("edv-rest")
 
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
 	" run start --help to see the available options")
+
+var errCreateConfigStore = "failed to create data vault configuration store: %w"
 
 type edvParameters struct {
 	srv            server
@@ -119,16 +125,51 @@ func (s *HTTPServer) ListenAndServe(host, certFile, keyFile string, router http.
 	return http.ListenAndServe(host, router)
 }
 
+type dbInitializer interface {
+	CreateConfigStore(provider edvprovider.EDVProvider) error
+}
+
+// ActualDBInitializer enables mocking to avoid making connection to couchdb in unit testing
+type ActualDBInitializer struct{}
+
+// CreateConfigStore creates the config store for all database types, and creates indices if supported.
+func (i *ActualDBInitializer) CreateConfigStore(provider edvprovider.EDVProvider) error {
+	err := provider.CreateStore(dataVaultConfigurationStoreName)
+	if err != nil {
+		if errors.Is(err, storage.ErrDuplicateStore) {
+			return nil
+		}
+
+		return fmt.Errorf(errCreateConfigStore, err)
+	}
+
+	store, err := provider.OpenStore(dataVaultConfigurationStoreName)
+	if err != nil {
+		return fmt.Errorf(errCreateConfigStore, err)
+	}
+
+	err = store.CreateReferenceIDIndex()
+	if err != nil {
+		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
+			return nil
+		}
+
+		return fmt.Errorf(errCreateConfigStore, err)
+	}
+
+	return nil
+}
+
 // GetStartCmd returns the Cobra start command.
-func GetStartCmd(srv server) *cobra.Command {
-	startCmd := createStartCmd(srv)
+func GetStartCmd(srv server, dbInit dbInitializer) *cobra.Command {
+	startCmd := createStartCmd(srv, dbInit)
 
 	createFlags(startCmd)
 
 	return startCmd
 }
 
-func createStartCmd(srv server) *cobra.Command {
+func createStartCmd(srv server, dbInit dbInitializer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start EDV",
@@ -179,7 +220,7 @@ func createStartCmd(srv server) *cobra.Command {
 				logLevel:       loggingLevel,
 				tlsConfig:      tlsConfig,
 			}
-			return startEDV(parameters)
+			return startEDV(parameters, dbInit)
 		},
 	}
 }
@@ -210,12 +251,17 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(tlsKeyFileFlagName, tlsKeyFileFlagShorthand, "", tlsKeyFileFlagUsage)
 }
 
-func startEDV(parameters *edvParameters) error {
+func startEDV(parameters *edvParameters, dbInit dbInitializer) error {
 	if parameters.logLevel != "" {
 		setLogLevel(parameters.logLevel)
 	}
 
 	provider, err := createEDVProvider(parameters)
+	if err != nil {
+		return err
+	}
+
+	err = dbInit.CreateConfigStore(provider)
 	if err != nil {
 		return err
 	}

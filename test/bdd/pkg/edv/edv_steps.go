@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/cucumber/godog"
 	"github.com/google/tink/go/keyset"
@@ -36,6 +37,8 @@ const (
 
 	documentTypeExpectedStructuredDoc  = "expected Structured Document"
 	documentTypeDecryptedStructuredDoc = "decrypted Structured Document"
+
+	testReferenceID = "testReferenceID"
 )
 
 // Steps is steps for EDV BDD tests
@@ -50,36 +53,31 @@ func NewSteps(ctx *context.BDDContext) *Steps {
 
 // RegisterSteps registers EDV server test steps
 func (e *Steps) RegisterSteps(s *godog.Suite) {
-	s.Step(`^Client sends request to create a new data vault with id "([^"]*)"`+
-		` and receives the vault location "([^"]*)" in response$`, e.createDataVault)
+	s.Step(`^Client sends request to create a new data vault and receives the vault location$`, e.createDataVault)
 	s.Step(`^Client constructs a Structured Document with id "([^"]*)"$`, e.clientConstructsAStructuredDocument)
 	s.Step(`^Client encrypts the Structured Document and uses it to construct an Encrypted Document$`,
 		e.clientEncryptsTheStructuredDocument)
-	s.Step(`^Client stores the Encrypted Document in the data vault with id "([^"]*)" and receives the document`+
-		` location "([^"]*)" in response$`, e.storeDocumentInVault)
+	s.Step(`^Client stores the Encrypted Document in the data vault`, e.storeDocumentInVault)
 	s.Step(`^Client sends request to retrieve the previously stored Encrypted Document with id "([^"]*)"`+
-		` in the data vault with id "([^"]*)" and receives the previously stored Encrypted Document in response$`,
+		` in the data vault and receives the previously stored Encrypted Document in response$`,
 		e.retrieveDocument)
 	s.Step(`^Client decrypts the Encrypted Document it received`+
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
-	s.Step(`^Client queries the vault with id "([^"]*)" to find the previously created document `+
+	s.Step(`^Client queries the vault to find the previously created document `+
 		`with an encrypted index named "([^"]*)" with associated value "([^"]*)"$`,
 		e.queryVault)
 }
 
-func (e *Steps) createDataVault(vaultID, expectedVaultLocation string) error {
-	config := models.DataVaultConfiguration{ReferenceID: vaultID}
+func (e *Steps) createDataVault() error {
+	config := models.DataVaultConfiguration{ReferenceID: testReferenceID}
 
 	vaultLocation, err := e.bddContext.EDVClient.CreateDataVault(&config)
-	if err != nil {
-		return err
-	}
 
-	if vaultLocation != expectedVaultLocation {
-		return common.UnexpectedValueError(expectedVaultLocation, vaultLocation)
-	}
+	s := strings.Split(vaultLocation, "/")
+	vaultID := s[len(s)-1]
+	e.bddContext.VaultID = vaultID
 
-	return nil
+	return err
 }
 
 func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
@@ -147,21 +145,14 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 	return nil
 }
 
-func (e *Steps) storeDocumentInVault(vaultID, expectedDocLocation string) error {
-	docLocation, err := e.bddContext.EDVClient.CreateDocument(vaultID, e.bddContext.EncryptedDocToStore)
-	if err != nil {
-		return err
-	}
+func (e *Steps) storeDocumentInVault() error {
+	_, err := e.bddContext.EDVClient.CreateDocument(e.bddContext.VaultID, e.bddContext.EncryptedDocToStore)
 
-	if docLocation != expectedDocLocation {
-		return common.UnexpectedValueError(expectedDocLocation, docLocation)
-	}
-
-	return nil
+	return err
 }
 
-func (e *Steps) retrieveDocument(docID, vaultID string) error {
-	retrievedDocument, err := e.bddContext.EDVClient.ReadDocument(vaultID, docID)
+func (e *Steps) retrieveDocument(docID string) error {
+	retrievedDocument, err := e.bddContext.EDVClient.ReadDocument(e.bddContext.VaultID, docID)
 	if err != nil {
 		return err
 	}
@@ -202,13 +193,13 @@ func (e *Steps) decryptDocument() error {
 	return nil
 }
 
-func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) error {
+func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
 	query := models.Query{
 		Name:  queryIndexName,
 		Value: queryIndexValue,
 	}
 
-	docURLs, err := e.bddContext.EDVClient.QueryVault(vaultID, &query)
+	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, &query)
 	if err != nil {
 		return err
 	}
@@ -221,7 +212,8 @@ func (e *Steps) queryVault(vaultID, queryIndexName, queryIndexValue string) erro
 			" document(s), but " + strconv.Itoa(numDocumentsFound) + " were found instead")
 	}
 
-	expectedDocURL := "localhost:8080/encrypted-data-vaults/testvault/documents/VJYHHJx4C8J9Fsgz7rZqSp"
+	expectedDocURL := "localhost:8080/encrypted-data-vaults/" + e.bddContext.VaultID +
+		"/documents/VJYHHJx4C8J9Fsgz7rZqSp"
 
 	if docURLs[0] != expectedDocURL {
 		return common.UnexpectedValueError(expectedDocURL, docURLs[0])
@@ -241,8 +233,6 @@ func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
 	if err != nil {
 		return nil, err
 	}
-
-	println(encryptedStructuredDoc)
 
 	// TODO: Update this to demonstrate a full example of how to create an indexed attribute using HMAC-SHA256.
 	// https://github.com/trustbloc/edv/issues/53

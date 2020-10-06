@@ -18,13 +18,15 @@ import (
 	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
+	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const (
-	logModuleName = "restapi"
+	logModuleName                   = "restapi"
+	dataVaultConfigurationStoreName = "data_vault_configurations"
 
 	edvCommonEndpointPathRoot = "/encrypted-data-vaults"
 	vaultIDPathVariable       = "vaultID"
@@ -134,13 +136,25 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 		return
 	}
 
-	err := c.vaultCollection.createDataVault(config.ReferenceID)
+	vaultID, err := edvutils.GenerateEDVCompatibleID()
 	if err != nil {
 		writeCreateDataVaultFailure(rw, err, configBytesForLog)
 		return
 	}
 
-	writeCreateDataVaultSuccess(rw, config.ReferenceID, hostURL, configBytesForLog)
+	err = c.vaultCollection.storeDataVaultConfiguration(config, vaultID)
+	if err != nil {
+		writeCreateDataVaultFailure(rw, fmt.Errorf(messages.StoreVaultConfigFailure, err), configBytesForLog)
+		return
+	}
+
+	err = c.vaultCollection.createDataVault(vaultID)
+	if err != nil {
+		writeCreateDataVaultFailure(rw, err, configBytesForLog)
+		return
+	}
+
+	writeCreateDataVaultSuccess(rw, vaultID, hostURL, configBytesForLog)
 }
 
 // Query Vault swagger:route POST /encrypted-data-vaults/{vaultID}/queries queryVaultReq
@@ -163,7 +177,8 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.QueryReceiveRequest, vaultID), requestBody)
+	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.QueryReceiveRequest,
+		vaultID), requestBody)
 
 	var incomingQuery models.Query
 
@@ -212,8 +227,8 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.CreateDocumentFailReadRequestBody,
-			err, vaultID, nil)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError,
+			messages.CreateDocumentFailReadRequestBody, err, vaultID, nil)
 		return
 	}
 
@@ -310,12 +325,32 @@ func (vc *VaultCollection) createDataVault(vaultID string) error {
 	return nil
 }
 
+// storeDataVaultConfiguration stores a given DataVaultConfiguration and vaultID
+func (vc *VaultCollection) storeDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
+	store, err := vc.provider.OpenStore(dataVaultConfigurationStoreName)
+	if err != nil {
+		if errors.Is(err, storage.ErrStoreNotFound) {
+			return errors.New(messages.ConfigStoreNotFound)
+		}
+
+		return err
+	}
+
+	err = store.StoreDataVaultConfiguration(config, vaultID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, hostURL, vaultID string) {
 	var incomingDocument models.EncryptedDocument
 
 	err := json.Unmarshal(requestBody, &incomingDocument)
 	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err, vaultID, requestBody)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err,
+			vaultID, requestBody)
 		return
 	}
 
@@ -351,7 +386,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 		return err
 	}
 
-	if encodingErr := checkIfBase58Encoded128BitValue(document.ID); encodingErr != nil {
+	if encodingErr := edvutils.CheckIfBase58Encoded128BitValue(document.ID); encodingErr != nil {
 		return encodingErr
 	}
 
@@ -370,8 +405,8 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 	return store.Put(document)
 }
 
-func (vc *VaultCollection) readAllDocuments(vaultID string) ([][]byte, error) {
-	store, err := vc.provider.OpenStore(vaultID)
+func (vc *VaultCollection) readAllDocuments(vaultName string) ([][]byte, error) {
+	store, err := vc.provider.OpenStore(vaultName)
 	if err != nil {
 		if errors.Is(err, storage.ErrStoreNotFound) {
 			return nil, messages.ErrVaultNotFound
