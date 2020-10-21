@@ -206,10 +206,6 @@ func (m *mockEDVStore) Query(*models.Query) ([]string, error) {
 	return []string{"docID1", "docID2"}, nil
 }
 
-func (m *mockEDVStore) CreateVaultIDIndex() error {
-	panic("implement me")
-}
-
 func (m *mockEDVStore) CreateReferenceIDIndex() error {
 	panic("implement me")
 }

@@ -36,7 +36,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(startcmd.GetStartCmd(&startcmd.HTTPServer{}, &startcmd.ActualDBInitializer{}))
+	rootCmd.AddCommand(startcmd.GetStartCmd(&startcmd.HTTPServer{}))
 
 	if err := rootCmd.Execute(); err != nil {
 		logger.Fatalf("Failed to run edv: %s", err)

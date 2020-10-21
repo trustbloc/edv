@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -116,11 +115,6 @@ const (
 )
 
 func TestNewProvider(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		prov, err := NewProvider("someURL", "")
-		require.NoError(t, err)
-		require.NotNil(t, prov)
-	})
 	t.Run("Failure: blank URL", func(t *testing.T) {
 		prov, err := NewProvider("", "")
 		require.Equal(t, ErrMissingDatabaseURL, err)
@@ -131,34 +125,26 @@ func TestNewProvider(t *testing.T) {
 		require.EqualError(t, err, `failure while instantiate Kivik CouchDB client: parse "http://%": invalid URL escape "%"`)
 		require.Nil(t, prov)
 	})
+	t.Run("Failure: connection refused", func(t *testing.T) {
+		prov, err := NewProvider("http://localhost:5984", "")
+		require.NotNil(t, err)
+		require.Nil(t, prov)
+		require.Contains(t, err.Error(), "connection refused")
+	})
 }
 
 func TestCouchDBEDVProvider_CreateStore(t *testing.T) {
 	t.Run("Success - using base58-encoded 128-bit vaultID as name", func(t *testing.T) {
-		prov, err := NewProvider("someURL", "")
+		prov := CouchDBEDVProvider{coreProvider: mockstore.NewMockStoreProvider()}
+
+		err := prov.CreateStore(testVaultID)
 		require.NoError(t, err)
-		require.NotNil(t, prov)
-
-		err = prov.CreateStore(testVaultID)
-		require.Error(t, err)
-
-		containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
-			strings.Contains(err.Error(), "Temporary failure in name resolution")
-
-		require.True(t, containsExpectedErrText)
 	})
 	t.Run("Success - using regular string as name", func(t *testing.T) {
-		prov, err := NewProvider("someURL", "")
+		prov := CouchDBEDVProvider{coreProvider: mockstore.NewMockStoreProvider()}
+
+		err := prov.CreateStore("testStore")
 		require.NoError(t, err)
-		require.NotNil(t, prov)
-
-		err = prov.CreateStore("testStore")
-		require.Error(t, err)
-
-		containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
-			strings.Contains(err.Error(), "Temporary failure in name resolution")
-
-		require.True(t, containsExpectedErrText)
 	})
 }
 
@@ -187,17 +173,12 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, store)
 	})
-	t.Run("Failure: unable to open store due to lookup failure", func(t *testing.T) {
-		prov, err := NewProvider("someURL", "")
-		require.NoError(t, err)
-		require.NotNil(t, prov)
+	t.Run("Failure: other error in open store", func(t *testing.T) {
+		testErr := errors.New("test error")
+		prov := CouchDBEDVProvider{coreProvider: &mockstore.Provider{ErrOpenStoreHandle: testErr}}
 
-		store, err := prov.OpenStore("testStore")
-		require.Nil(t, store)
-
-		containsExpectedErrText := strings.Contains(err.Error(), "no such host") ||
-			strings.Contains(err.Error(), "Temporary failure in name resolution")
-		require.True(t, containsExpectedErrText)
+		_, err := prov.OpenStore("testStore")
+		require.Equal(t, testErr, err)
 	})
 }
 
