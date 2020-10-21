@@ -26,7 +26,7 @@ cms
 .idea
 .DS_Store
 
-coverage.txt
+coverage.out
 
 # Exclude build directory
 build
