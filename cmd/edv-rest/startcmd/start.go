@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
+	"strconv"
+	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
@@ -59,6 +61,14 @@ const (
 		" creating or accessing underlying databases." +
 		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
 
+	databaseTimeoutFlagName      = "database-timeout"
+	databaseTimeoutEnvKey        = "EDV_DATABASE_TIMEOUT"
+	databaseTimeoutFlagShorthand = "o"
+	databaseTimeoutFlagUsage     = "Total time in seconds to wait until the database is available before giving up." +
+		" Default: " + string(rune(databaseTimeoutDefault)) + " seconds." +
+		" Alternatively, this can be set with the following environment variable: " + databaseTimeoutEnvKey
+	databaseTimeoutDefault = 30
+
 	logLevelFlagName        = "log-level"
 	logLevelEnvKey          = "EDV_LOG_LEVEL"
 	logLevelFlagShorthand   = "l"
@@ -85,6 +95,8 @@ const (
 	tlsKeyFileEnvKey = "EDV_TLS_KEY_FILE"
 
 	dataVaultConfigurationStoreName = "data_vault_configurations"
+
+	sleep = time.Second
 )
 
 var logger = log.New("edv-rest")
@@ -94,14 +106,25 @@ var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type."
 
 var errCreateConfigStore = "failed to create data vault configuration store: %w"
 
+// nolint:gochecknoglobals
+var supportedEDVStorageProviders = map[string]func(string, string) (edvprovider.EDVProvider, error){
+	databaseTypeCouchDBOption: func(databaseURL, prefix string) (edvprovider.EDVProvider, error) {
+		return couchdbedvprovider.NewProvider(databaseURL, prefix)
+	},
+	databaseTypeMemOption: func(_, _ string) (edvprovider.EDVProvider, error) { // nolint:unparam
+		return memedvprovider.NewProvider(), nil
+	},
+}
+
 type edvParameters struct {
-	srv            server
-	hostURL        string
-	databaseType   string
-	databaseURL    string
-	databasePrefix string
-	logLevel       string
-	tlsConfig      *tlsConfig
+	srv             server
+	hostURL         string
+	databaseType    string
+	databaseURL     string
+	databasePrefix  string
+	databaseTimeout uint64
+	logLevel        string
+	tlsConfig       *tlsConfig
 }
 
 type tlsConfig struct {
@@ -125,51 +148,16 @@ func (s *HTTPServer) ListenAndServe(host, certFile, keyFile string, router http.
 	return http.ListenAndServe(host, router)
 }
 
-type dbInitializer interface {
-	CreateConfigStore(provider edvprovider.EDVProvider) error
-}
-
-// ActualDBInitializer enables mocking to avoid making connection to couchdb in unit testing
-type ActualDBInitializer struct{}
-
-// CreateConfigStore creates the config store for all database types, and creates indices if supported.
-func (i *ActualDBInitializer) CreateConfigStore(provider edvprovider.EDVProvider) error {
-	err := provider.CreateStore(dataVaultConfigurationStoreName)
-	if err != nil {
-		if errors.Is(err, storage.ErrDuplicateStore) {
-			return nil
-		}
-
-		return fmt.Errorf(errCreateConfigStore, err)
-	}
-
-	store, err := provider.OpenStore(dataVaultConfigurationStoreName)
-	if err != nil {
-		return fmt.Errorf(errCreateConfigStore, err)
-	}
-
-	err = store.CreateReferenceIDIndex()
-	if err != nil {
-		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
-			return nil
-		}
-
-		return fmt.Errorf(errCreateConfigStore, err)
-	}
-
-	return nil
-}
-
 // GetStartCmd returns the Cobra start command.
-func GetStartCmd(srv server, dbInit dbInitializer) *cobra.Command {
-	startCmd := createStartCmd(srv, dbInit)
+func GetStartCmd(srv server) *cobra.Command {
+	startCmd := createStartCmd(srv)
 
 	createFlags(startCmd)
 
 	return startCmd
 }
 
-func createStartCmd(srv server, dbInit dbInitializer) *cobra.Command {
+func createStartCmd(srv server) *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start EDV",
@@ -201,6 +189,11 @@ func createStartCmd(srv server, dbInit dbInitializer) *cobra.Command {
 				return err
 			}
 
+			databaseTimeout, err := getTimeout(cmd)
+			if err != nil {
+				return err
+			}
+
 			loggingLevel, err := cmdutils.GetUserSetVarFromString(cmd, logLevelFlagName, logLevelEnvKey, true)
 			if err != nil {
 				return err
@@ -212,17 +205,36 @@ func createStartCmd(srv server, dbInit dbInitializer) *cobra.Command {
 			}
 
 			parameters := &edvParameters{
-				srv:            srv,
-				hostURL:        hostURL,
-				databaseType:   databaseType,
-				databaseURL:    databaseURL,
-				databasePrefix: databasePrefix,
-				logLevel:       loggingLevel,
-				tlsConfig:      tlsConfig,
+				srv:             srv,
+				hostURL:         hostURL,
+				databaseType:    databaseType,
+				databaseURL:     databaseURL,
+				databasePrefix:  databasePrefix,
+				databaseTimeout: databaseTimeout,
+				logLevel:        loggingLevel,
+				tlsConfig:       tlsConfig,
 			}
-			return startEDV(parameters, dbInit)
+			return startEDV(parameters)
 		},
 	}
+}
+
+func getTimeout(cmd *cobra.Command) (timeout uint64, err error) {
+	databaseTimeout, err := cmdutils.GetUserSetVarFromString(cmd, databaseTimeoutFlagName, databaseTimeoutEnvKey, true)
+	if err != nil {
+		return 0, err
+	}
+
+	if databaseTimeout == "" {
+		databaseTimeout = strconv.Itoa(databaseTimeoutDefault)
+	}
+
+	databaseTimeoutInt, err := strconv.Atoi(databaseTimeout)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse timeout %s: %w", databaseTimeout, err)
+	}
+
+	return uint64(databaseTimeoutInt), nil
 }
 
 func getTLS(cmd *cobra.Command) (*tlsConfig, error) {
@@ -246,12 +258,13 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(databaseTypeFlagName, databaseTypeFlagShorthand, "", databaseTypeFlagUsage)
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
 	startCmd.Flags().StringP(databasePrefixFlagName, databasePrefixFlagShorthand, "", databasePrefixFlagUsage)
+	startCmd.Flags().StringP(databaseTimeoutFlagName, databaseTimeoutFlagShorthand, "", databaseTimeoutFlagUsage)
 	startCmd.Flags().StringP(logLevelFlagName, logLevelFlagShorthand, "", logLevelPrefixFlagUsage)
 	startCmd.Flags().StringP(tlsCertFileFlagName, tlsCertFileFlagShorthand, "", tlsCertFileFlagUsage)
 	startCmd.Flags().StringP(tlsKeyFileFlagName, tlsKeyFileFlagShorthand, "", tlsKeyFileFlagUsage)
 }
 
-func startEDV(parameters *edvParameters, dbInit dbInitializer) error {
+func startEDV(parameters *edvParameters) error {
 	if parameters.logLevel != "" {
 		setLogLevel(parameters.logLevel)
 	}
@@ -261,7 +274,7 @@ func startEDV(parameters *edvParameters, dbInit dbInitializer) error {
 		return err
 	}
 
-	err = dbInit.CreateConfigStore(provider)
+	err = createConfigStore(provider)
 	if err != nil {
 		return err
 	}
@@ -322,23 +335,53 @@ func setLogLevel(userLogLevel string) {
 func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, error) {
 	var edvProv edvprovider.EDVProvider
 
-	switch {
-	case strings.EqualFold(parameters.databaseType, databaseTypeMemOption):
-		edvProv = memedvprovider.NewProvider()
-
+	if parameters.databaseType == databaseTypeMemOption {
 		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")
-	case strings.EqualFold(parameters.databaseType, databaseTypeCouchDBOption):
-		couchDBEDVProv, err := couchdbedvprovider.NewProvider(parameters.databaseURL, parameters.databasePrefix)
-		if err != nil {
-			return nil, err
-		}
+	}
 
-		edvProv = couchDBEDVProv
-	default:
-		return edvProv, errInvalidDatabaseType
+	providerFunc, supported := supportedEDVStorageProviders[parameters.databaseType]
+	if !supported {
+		return nil, errInvalidDatabaseType
+	}
+
+	err := retry(func() error {
+		var openErr error
+		edvProv, openErr = providerFunc(parameters.databaseURL, parameters.databasePrefix)
+		return openErr
+	}, parameters.databaseTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s: %w", parameters.databaseType, err)
 	}
 
 	return edvProv, nil
+}
+
+// createConfigStore creates the config store and creates indices if supported.
+func createConfigStore(provider edvprovider.EDVProvider) error {
+	err := provider.CreateStore(dataVaultConfigurationStoreName)
+	if err != nil {
+		if errors.Is(err, storage.ErrDuplicateStore) {
+			return nil
+		}
+
+		return fmt.Errorf(errCreateConfigStore, err)
+	}
+
+	store, err := provider.OpenStore(dataVaultConfigurationStoreName)
+	if err != nil {
+		return fmt.Errorf(errCreateConfigStore, err)
+	}
+
+	err = store.CreateReferenceIDIndex()
+	if err != nil {
+		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
+			return nil
+		}
+
+		return fmt.Errorf(errCreateConfigStore, err)
+	}
+
+	return nil
 }
 
 func constructCORSHandler(handler http.Handler) http.Handler {
@@ -348,4 +391,13 @@ func constructCORSHandler(handler http.Handler) http.Handler {
 			AllowedHeaders: []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
 		},
 	).Handler(handler)
+}
+
+func retry(fn func() error, numRetries uint64) error {
+	return backoff.RetryNotify(fn,
+		backoff.WithMaxRetries(backoff.NewConstantBackOff(sleep), numRetries),
+		func(retryErr error, t time.Duration) {
+			logger.Warnf("failed to connect to database, will sleep for %s before trying again: %s",
+				t, retryErr)
+		})
 }
