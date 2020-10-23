@@ -50,7 +50,7 @@ const (
 	databaseURLEnvKey        = "EDV_DATABASE_URL"
 	databaseURLFlagShorthand = "r"
 	databaseURLFlagUsage     = "The URL of the database. Not needed if using memstore." +
-		" For CouchDB, include the username:password@ text if required." +
+		" For CouchDB, include the username:password@ text." +
 		" Alternatively, this can be set with the following environment variable: " + databaseURLEnvKey
 
 	databasePrefixFlagName      = "database-prefix"

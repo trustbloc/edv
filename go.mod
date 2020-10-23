@@ -12,5 +12,5 @@ require (
 	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
 	github.com/gorilla/mux v1.7.4
 	github.com/stretchr/testify v1.6.1
-	github.com/trustbloc/edge-core v0.1.5-0.20201021133227-9e762376a045
+	github.com/trustbloc/edge-core v0.1.5-0.20201023140820-2a85df5bc1aa
 )
