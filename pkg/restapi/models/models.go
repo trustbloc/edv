@@ -10,10 +10,10 @@ import "encoding/json"
 
 // DataVaultConfiguration represents a Data Vault Configuration.
 type DataVaultConfiguration struct {
-	Sequence    int        `json:"sequence"`
+	Sequence    uint64     `json:"sequence"`
 	Controller  string     `json:"controller"`
-	Invoker     string     `json:"invoker"`
-	Delegator   string     `json:"delegator"`
+	Invoker     []string   `json:"invoker"`
+	Delegator   []string   `json:"delegator"`
 	ReferenceID string     `json:"referenceId"`
 	KEK         IDTypePair `json:"kek"`
 	HMAC        IDTypePair `json:"hmac"`
@@ -36,7 +36,7 @@ type StructuredDocument struct {
 // EncryptedDocument represents an Encrypted Document.
 type EncryptedDocument struct {
 	ID                          string                       `json:"id"`
-	Sequence                    int                          `json:"sequence"`
+	Sequence                    uint64                       `json:"sequence"`
 	IndexedAttributeCollections []IndexedAttributeCollection `json:"indexed"`
 	JWE                         json.RawMessage              `json:"jwe"`
 }

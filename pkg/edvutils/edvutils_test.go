@@ -8,6 +8,7 @@ package edvutils
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,9 @@ const (
 	testConvertedUUIDString       = "d15034fa-9525-4ebf-3352-d19c8b02cf05"
 
 	not128BitString = "testString"
+
+	validURIString   = "did:example:123456789"
+	invalidURIString = "invalidURI"
 )
 
 func Test_GenerateEDVCompatibleID(t *testing.T) {
@@ -56,6 +60,30 @@ func TestBase58Encoded128BitToUUID(t *testing.T) {
 		uuidString, err := Base58Encoded128BitToUUID(testBase58encoded128bitString)
 		require.NoError(t, err)
 		require.Equal(t, testConvertedUUIDString, uuidString)
+	})
+}
+
+func TestCheckIfURI(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		err := CheckIfURI(validURIString)
+		require.NoError(t, err)
+	})
+	t.Run("Failure - invalid URI", func(t *testing.T) {
+		err := CheckIfURI(invalidURIString)
+		require.NotNil(t, err)
+		require.Equal(t, fmt.Sprintf(messages.InvalidURI, invalidURIString), err.Error())
+	})
+}
+
+func TestCheckIfArrayIsURI(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		err := CheckIfArrayIsURI([]string{validURIString})
+		require.NoError(t, err)
+	})
+	t.Run("Failure - invalid URI", func(t *testing.T) {
+		err := CheckIfArrayIsURI([]string{invalidURIString})
+		require.NotNil(t, err)
+		require.Equal(t, fmt.Sprintf(messages.InvalidURI, invalidURIString), err.Error())
 	})
 }
 

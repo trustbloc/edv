@@ -8,6 +8,8 @@ package edvutils
 
 import (
 	"crypto/rand"
+	"fmt"
+	"net/url"
 
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/google/uuid"
@@ -62,4 +64,25 @@ func Base58Encoded128BitToUUID(name string) (string, error) {
 	}
 
 	return storeNameUUID.String(), nil
+}
+
+// CheckIfURI checks if the given string is a valid URI.
+func CheckIfURI(str string) error {
+	_, err := url.ParseRequestURI(str)
+	if err != nil {
+		return fmt.Errorf(messages.InvalidURI, str)
+	}
+
+	return nil
+}
+
+// CheckIfArrayIsURI checks if every string in the given string array is a valid URI.
+func CheckIfArrayIsURI(arr []string) error {
+	for _, str := range arr {
+		if err := CheckIfURI(str); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -96,7 +96,8 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 
 	location, err := client.CreateDataVault(&invalidConfig)
 	require.Empty(t, location)
-	require.Contains(t, err.Error(), messages.BlankReferenceID)
+
+	require.Contains(t, err.Error(), "Received invalid data vault configuration")
 	require.Contains(t, err.Error(), "status code 400")
 
 	err = srv.Shutdown(context.Background())
@@ -314,7 +315,7 @@ func TestClient_ReadDocument(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
-	require.Equal(t, 0, document.Sequence)
+	require.Equal(t, uint64(0), document.Sequence)
 	require.Equal(t, testJWE, string(document.JWE))
 
 	err = srv.Shutdown(context.Background())
@@ -504,12 +505,18 @@ func TestClient_QueryVault(t *testing.T) {
 
 func getTestValidDataVaultConfiguration() models.DataVaultConfiguration {
 	testDataVaultConfiguration := models.DataVaultConfiguration{
-		Sequence:    0,
-		Controller:  "",
-		Invoker:     "",
-		Delegator:   "",
-		KEK:         models.IDTypePair{},
-		HMAC:        models.IDTypePair{},
+		Sequence:   0,
+		Controller: "did:example:123456789",
+		Invoker:    []string{"did:example:11111"},
+		Delegator:  []string{"did:example:22222"},
+		KEK: models.IDTypePair{
+			ID:   "https://example.com/kms/12345",
+			Type: "AesKeyWrappingKey2019",
+		},
+		HMAC: models.IDTypePair{
+			ID:   "https://example.com/kms/67891",
+			Type: "Sha256HmacKey2019",
+		},
 		ReferenceID: testReferenceID,
 	}
 

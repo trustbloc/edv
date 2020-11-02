@@ -69,7 +69,15 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 }
 
 func (e *Steps) createDataVault() error {
-	config := models.DataVaultConfiguration{ReferenceID: testReferenceID}
+	config := models.DataVaultConfiguration{
+		Sequence:    0,
+		Controller:  "did:example:123456789",
+		Invoker:     []string{},
+		Delegator:   []string{},
+		ReferenceID: testReferenceID,
+		KEK:         models.IDTypePair{ID: "https://example.com/kms/12345", Type: "AesKeyWrappingKey2019"},
+		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
+	}
 
 	vaultLocation, err := e.bddContext.EDVClient.CreateDataVault(&config)
 

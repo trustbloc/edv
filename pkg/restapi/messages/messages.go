@@ -48,9 +48,35 @@ Received data: %s`
 	// FailToMarshalConfig is used when a data vault configuration can't be marshalled
 	// This should not happen during normal operation.
 	FailToMarshalConfig = "failed to marshal data vault configuration into bytes %s"
-	// BlankReferenceID is the message returned by the EDV server when an attempt is made to create a vault
-	// with a blank reference ID.
-	BlankReferenceID = "referenceId can't be blank"
+	// BlankController is the message returned by the EDV server when a attempt is made to create a vault
+	// with a blank controller.
+	BlankController = "controller can't be blank"
+	// BlankKEKID is the message returned by the EDV server when a attempt is made to create a vault
+	// with a blank key agreement key id.
+	BlankKEKID = "key agreement key id can't be blank"
+	// BlankKEKType is the message returned by the EDV server when a attempt is made to create a vault
+	// with a blank key agreement key type.
+	BlankKEKType = "key agreement key type can't be blank"
+	// BlankHMACID is the message returned by the EDV server when a attempt is made to create a vault
+	// with a blank HMAC id.
+	BlankHMACID = "HMAC id can't be blank"
+	// BlankHMACType is the message returned by the EDV server when a attempt is made to create a vault
+	// with a blank HMAC type.
+	BlankHMACType = "HMAC type can't be blank"
+	// InvalidURI is used when the value is not a valid URI.
+	InvalidURI = "'%s' is not a valid URI"
+	// InvalidControllerString is the message returned by the EDV server when a attempt is made to create a vault
+	// with an invalid controller value.
+	InvalidControllerString = "invalid controller value: %w"
+	// InvalidInvokerStringArray is the message returned by the EDV server when a attempt is made to create a vault
+	// with invalid invoker values.
+	InvalidInvokerStringArray = "invalid invoker value: %w"
+	// InvalidDelegatorStringArray is the message returned by the EDV server when a attempt is made to create a vault
+	// with invalid delegator values.
+	InvalidDelegatorStringArray = "invalid delegator value: %w"
+	// InvalidKEKIDString is the message returned by the EDV server when a attempt is made to create a vault
+	// with an invalid key agreement key id value.
+	InvalidKEKIDString = "invalid key agreement key id: %w"
 	// VaultCreationFailure is used when an error prevents a new data vault from being created.
 	VaultCreationFailure = "Failed to create a new data vault: %s."
 	// MarshalVaultConfigForLogFailure is used when the log level is set to debug and a data vault configuration
@@ -89,6 +115,8 @@ Received data: %s`
 	// InvalidDocument is used when an invalid document is received.
 	InvalidDocument = `Received a request to create a document in vault %s, ` +
 		"but the document is invalid: %s."
+	// BlankJWE is used when the jwe field in an encrypted document is empty
+	BlankJWE = "jwe field can't be empty"
 	// CreateDocumentFailure is used when an error occurs while creating a new document.
 	CreateDocumentFailure = `Failure while creating document in vault %s: %s.`
 	// CreateDocumentSuccess is used when a document is successfully created.
