@@ -171,7 +171,7 @@ func (c *Client) QueryVault(vaultID string, query *models.Query) ([]string, erro
 		return nil, err
 	}
 
-	endpoint := fmt.Sprintf("%s/%s/queries", c.edvServerURL, url.PathEscape(vaultID))
+	endpoint := fmt.Sprintf("%s/%s/query", c.edvServerURL, url.PathEscape(vaultID))
 
 	// The linter falsely claims that the body is not being closed
 	// https://github.com/golangci/golangci-lint/issues/637

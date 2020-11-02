@@ -34,7 +34,7 @@ func TestController_GetOperations(t *testing.T) {
 	require.Equal(t, http.MethodPost, ops[0].Method())
 	require.NotNil(t, ops[0].Handle())
 
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/queries", ops[1].Path())
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/query", ops[1].Path())
 	require.Equal(t, http.MethodPost, ops[1].Method())
 	require.NotNil(t, ops[1].Handle())
 
