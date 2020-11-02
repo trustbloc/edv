@@ -32,8 +32,12 @@ const (
 	vaultIDPathVariable       = "vaultID"
 	docIDPathVariable         = "docID"
 
-	createVaultEndpoint      = edvCommonEndpointPathRoot
-	queryVaultEndpoint       = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/queries"
+	createVaultEndpoint = edvCommonEndpointPathRoot
+	// TODO (#126): As of writing, the spec shows multiple, conflicting query endpoints.
+	// See: https://github.com/decentralized-identity/secure-data-store/issues/110.
+	// The endpoint listed below is the correct one (per the comment made by one of the spec contributors).
+	// This also matches the one used by Transmute's EDV implementation.
+	queryVaultEndpoint       = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/query"
 	createDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
 	readAllDocumentsEndpoint = createDocumentEndpoint
 	readDocumentEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +

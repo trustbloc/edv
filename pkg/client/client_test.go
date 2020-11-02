@@ -51,7 +51,7 @@ const (
 		`RcZ_ZT2LawVCWTIy3brGPi6UklfCpIMfIjf7iGdXKHzg","iv":"48V1_ALb6US04U3b","ciphertext":"5eym8TW_c8SuK0ltJ` +
 		`3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tX_EFShS8iB7j6jiSdiwkIr3ajwQzaBtQD_A","tag":"XFBoMYUZodetZdvTiFvSkQ"}`
 
-	queryVaultEndpointPath = "/encrypted-data-vaults/{vaultIDPathVariable}/queries"
+	queryVaultEndpointPath = "/encrypted-data-vaults/{vaultIDPathVariable}/query"
 	testQueryVaultResponse = `["docID1","docID2"]`
 )
 
