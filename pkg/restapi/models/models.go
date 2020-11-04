@@ -67,3 +67,33 @@ type Query struct {
 	Name  string `json:"index"`
 	Value string `json:"equals"`
 }
+
+// JSONWebEncryption represents a JWE
+type JSONWebEncryption struct {
+	B64ProtectedHeaders      string                 `json:"protected,omitempty"`
+	UnprotectedHeaders       map[string]interface{} `json:"unprotected,omitempty"`
+	Recipients               []Recipient            `json:"recipients,omitempty"`
+	B64SingleRecipientEncKey string                 `json:"encrypted_key,omitempty"`
+	SingleRecipientHeader    *RecipientHeaders      `json:"header,omitempty"`
+	B64AAD                   string                 `json:"aad,omitempty"`
+	B64IV                    string                 `json:"iv,omitempty"`
+	B64Ciphertext            string                 `json:"ciphertext,omitempty"`
+	B64Tag                   string                 `json:"tag,omitempty"`
+}
+
+// Recipient is a recipient of a JWE including the shared encryption key.
+type Recipient struct {
+	Header       *RecipientHeaders `json:"header,omitempty"`
+	EncryptedKey string            `json:"encrypted_key,omitempty"`
+}
+
+// RecipientHeaders are the recipient headers.
+type RecipientHeaders struct {
+	Alg string          `json:"alg,omitempty"`
+	APU string          `json:"apu,omitempty"`
+	IV  string          `json:"iv,omitempty"`
+	Tag string          `json:"tag,omitempty"`
+	KID string          `json:"kid,omitempty"`
+	EPK json.RawMessage `json:"epk,omitempty"`
+	SPK json.RawMessage `json:"spk,omitempty"`
+}

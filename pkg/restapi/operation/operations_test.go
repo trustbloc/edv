@@ -288,7 +288,7 @@ func TestCreateDataVault(t *testing.T) {
 			nil)
 		require.Equal(t, http.StatusConflict, rr.Code)
 		require.Equal(t, "Failed to create a new data vault: failed to store data vault configuration: "+
-			"an error occurred while querying referenceIds: vault already exists.", rr.Body.String())
+			"an error occurred while querying reference IDs: vault already exists.", rr.Body.String())
 	})
 	t.Run("Other error when creating new store", func(t *testing.T) {
 		errTest := errors.New("some other create store error")
@@ -633,6 +633,7 @@ func TestCreateDocument(t *testing.T) {
 		vaultID := createDataVaultExpectSuccess(t, op)
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
+		storeEncryptedDocumentExpectSuccess(t, op, testDocID2, testEncryptedDocument2, vaultID)
 	})
 	t.Run("Invalid encrypted document JSON", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -709,7 +710,7 @@ func TestCreateDocument(t *testing.T) {
 		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID, messages.ErrNot128BitValue),
 			rr.Body.String())
 	})
-	t.Run("Empty jwe", func(t *testing.T) {
+	t.Run("Empty JWE", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
 
 		createConfigStoreExpectSuccess(t, op)
@@ -732,8 +733,8 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID, messages.BlankJWE),
-			rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID,
+			fmt.Sprintf(messages.InvalidRawJWE, messages.BlankJWE)), rr.Body.String())
 	})
 	t.Run("Duplicate document", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())

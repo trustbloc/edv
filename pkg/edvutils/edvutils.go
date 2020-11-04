@@ -8,6 +8,9 @@ package edvutils
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -15,7 +18,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
+
+const jweAlgField = "alg"
 
 type generateRandomBytesFunc func([]byte) (int, error)
 
@@ -81,6 +87,71 @@ func CheckIfArrayIsURI(arr []string) error {
 	for _, str := range arr {
 		if err := CheckIfURI(str); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// ValidateRawJWE returns an error if the given raw JWE is empty or has invalid alg fields.
+func ValidateRawJWE(rawJWE json.RawMessage) error {
+	if len(rawJWE) == 0 {
+		return errors.New(messages.BlankJWE)
+	}
+
+	jwe := models.JSONWebEncryption{}
+	if err := json.Unmarshal(rawJWE, &jwe); err != nil {
+		return err
+	}
+
+	if jwe.B64ProtectedHeaders != "" {
+		foundAlg, err := checkAlgInProtectedHeader(jwe.B64ProtectedHeaders)
+		if err != nil {
+			return err
+		}
+
+		if foundAlg {
+			return nil
+		}
+	}
+
+	if jwe.SingleRecipientHeader != nil && jwe.SingleRecipientHeader.Alg != "" {
+		return nil
+	}
+
+	if jwe.Recipients != nil {
+		return checkJWERecipientsHeaders(jwe.Recipients)
+	}
+
+	return errors.New(messages.BlankJWEAlg)
+}
+
+// checkAlgInProtectedHeader base-64 decodes the protected headers string and returns true if 'alg' exists.
+func checkAlgInProtectedHeader(b64Protected string) (bool, error) {
+	decodedProtectedHeadersBytes, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(b64Protected)
+	if err != nil {
+		return false, errors.New(messages.Base64DecodeJWEProtectedHeadersFailure)
+	}
+
+	var decodedProtectedHeaders map[string]interface{}
+
+	err = json.Unmarshal(decodedProtectedHeadersBytes, &decodedProtectedHeaders)
+	if err != nil {
+		return false, errors.New(messages.BadJWEProtectedHeaders)
+	}
+
+	if _, ok := decodedProtectedHeaders[jweAlgField]; ok {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// checkJWERecipientsHeaders checks if all recipients in the recipient array have valid 'alg' fields.
+func checkJWERecipientsHeaders(recipients []models.Recipient) error {
+	for _, recipient := range recipients {
+		if recipient.Header == nil || recipient.Header.Alg == "" {
+			return errors.New(messages.BlankJWEAlg)
 		}
 	}
 

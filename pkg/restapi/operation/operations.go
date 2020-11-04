@@ -372,7 +372,7 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 		}
 	}
 
-	if err = validateIncomingEncryptedDocument(incomingDocument); err != nil {
+	if err = validateEncryptedDocument(incomingDocument); err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err,
 			vaultID, requestBody)
 		return
@@ -474,11 +474,11 @@ func validateDataVaultConfiguration(dataVaultConfig *models.DataVaultConfigurati
 		return fmt.Errorf(messages.InvalidControllerString, err)
 	}
 
-	if err := checkFieldsWithURIArray(&dataVaultConfig.Invoker, dataVaultConfig.Controller); err != nil {
+	if err := checkFieldsWithURIArray(dataVaultConfig.Invoker); err != nil {
 		return fmt.Errorf(messages.InvalidInvokerStringArray, err)
 	}
 
-	if err := checkFieldsWithURIArray(&dataVaultConfig.Delegator, dataVaultConfig.Controller); err != nil {
+	if err := checkFieldsWithURIArray(dataVaultConfig.Delegator); err != nil {
 		return fmt.Errorf(messages.InvalidDelegatorStringArray, err)
 	}
 
@@ -513,30 +513,26 @@ func checkConfigRequiredFields(config *models.DataVaultConfiguration) error {
 	return nil
 }
 
-// If the given array is empty, populate it with the default value. If it's not empty, check if every string in the
-// array is a valid URI.
-func checkFieldsWithURIArray(arr *[]string, defaultVal string) error {
-	if len(*arr) == 0 {
-		*arr = make([]string, 1)
-		(*arr)[0] = defaultVal
-
+// Check if every string in the array is a valid URI.
+func checkFieldsWithURIArray(arr []string) error {
+	if len(arr) == 0 {
 		return nil
 	}
 
-	if err := edvutils.CheckIfArrayIsURI(*arr); err != nil {
+	if err := edvutils.CheckIfArrayIsURI(arr); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func validateIncomingEncryptedDocument(doc models.EncryptedDocument) error {
+func validateEncryptedDocument(doc models.EncryptedDocument) error {
 	if encodingErr := edvutils.CheckIfBase58Encoded128BitValue(doc.ID); encodingErr != nil {
 		return encodingErr
 	}
 
-	if doc.JWE == nil {
-		return errors.New(messages.BlankJWE)
+	if err := edvutils.ValidateRawJWE(doc.JWE); err != nil {
+		return fmt.Errorf(messages.InvalidRawJWE, err.Error())
 	}
 
 	return nil

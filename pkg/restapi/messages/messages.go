@@ -44,7 +44,7 @@ Received data: %s`
 	// ConfigStoreNotFound is used when the configuration store can not be found
 	ConfigStoreNotFound = "configuration store not found"
 	// CheckDuplicateRefIDFailure is used when an error occurs while querying referenceIds
-	CheckDuplicateRefIDFailure = "an error occurred while querying referenceIds: %s"
+	CheckDuplicateRefIDFailure = "an error occurred while querying reference IDs: %s"
 	// FailToMarshalConfig is used when a data vault configuration can't be marshalled
 	// This should not happen during normal operation.
 	FailToMarshalConfig = "failed to marshal data vault configuration into bytes %s"
@@ -52,14 +52,14 @@ Received data: %s`
 	// with a blank controller.
 	BlankController = "controller can't be blank"
 	// BlankKEKID is the message returned by the EDV server when a attempt is made to create a vault
-	// with a blank key agreement key id.
-	BlankKEKID = "key agreement key id can't be blank"
+	// with a blank key agreement key ID.
+	BlankKEKID = "key agreement key ID can't be blank"
 	// BlankKEKType is the message returned by the EDV server when a attempt is made to create a vault
 	// with a blank key agreement key type.
 	BlankKEKType = "key agreement key type can't be blank"
 	// BlankHMACID is the message returned by the EDV server when a attempt is made to create a vault
-	// with a blank HMAC id.
-	BlankHMACID = "HMAC id can't be blank"
+	// with a blank HMAC ID.
+	BlankHMACID = "HMAC ID can't be blank"
 	// BlankHMACType is the message returned by the EDV server when a attempt is made to create a vault
 	// with a blank HMAC type.
 	BlankHMACType = "HMAC type can't be blank"
@@ -75,8 +75,8 @@ Received data: %s`
 	// with invalid delegator values.
 	InvalidDelegatorStringArray = "invalid delegator value: %w"
 	// InvalidKEKIDString is the message returned by the EDV server when a attempt is made to create a vault
-	// with an invalid key agreement key id value.
-	InvalidKEKIDString = "invalid key agreement key id: %w"
+	// with an invalid key agreement key ID value.
+	InvalidKEKIDString = "invalid key agreement key ID: %w"
 	// VaultCreationFailure is used when an error prevents a new data vault from being created.
 	VaultCreationFailure = "Failed to create a new data vault: %s."
 	// MarshalVaultConfigForLogFailure is used when the log level is set to debug and a data vault configuration
@@ -115,8 +115,17 @@ Received data: %s`
 	// InvalidDocument is used when an invalid document is received.
 	InvalidDocument = `Received a request to create a document in vault %s, ` +
 		"but the document is invalid: %s."
-	// BlankJWE is used when the jwe field in an encrypted document is empty
-	BlankJWE = "jwe field can't be empty"
+	// InvalidRawJWE is used when the JWE in a document is invalid.
+	InvalidRawJWE = "invalid raw JWE: %s"
+	// BlankJWE is used when the JWE field in an encrypted document is empty
+	BlankJWE = "JWE can't be empty"
+	// BlankJWEAlg is used when the JWE alg field in an encrypted document is empty
+	BlankJWEAlg = "JWE alg can't be empty"
+	// Base64DecodeJWEProtectedHeadersFailure is used when an error occurs while base64-decoding the JWE protected
+	// headers.
+	Base64DecodeJWEProtectedHeadersFailure = "failed to decode JWE protected headers"
+	// BadJWEProtectedHeaders is used when the decoded protected header is not in 'key':'value' format.
+	BadJWEProtectedHeaders = "bad JWE protected header"
 	// CreateDocumentFailure is used when an error occurs while creating a new document.
 	CreateDocumentFailure = `Failure while creating document in vault %s: %s.`
 	// CreateDocumentSuccess is used when a document is successfully created.
