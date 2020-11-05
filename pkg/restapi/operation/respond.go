@@ -29,37 +29,20 @@ func writeCreateDataVaultRequestReadFailure(rw http.ResponseWriter, errBodyRead 
 	}
 }
 
-func writeCreateDataVaultUnmarshalFailure(rw http.ResponseWriter, errUnmarshal error, receivedConfig []byte) {
-	logger.Errorf(messages.InvalidVaultConfig, errUnmarshal)
+func writeCreateDataVaultInvalidRequest(rw http.ResponseWriter, errInvalid error, receivedConfig []byte) {
+	logger.Errorf(messages.InvalidVaultConfig, errInvalid)
 	logger.Debugf(messages.DebugLogEventWithReceivedData,
-		fmt.Sprintf(messages.InvalidVaultConfig, errUnmarshal),
+		fmt.Sprintf(messages.InvalidVaultConfig, errInvalid),
 		receivedConfig)
 
 	rw.WriteHeader(http.StatusBadRequest)
 
-	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.InvalidVaultConfig, errUnmarshal)))
+	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.InvalidVaultConfig, errInvalid)))
 	if errWrite != nil {
-		logger.Errorf(messages.InvalidVaultConfig+messages.FailWriteResponse, errUnmarshal, errWrite)
+		logger.Errorf(messages.InvalidVaultConfig+messages.FailWriteResponse, errInvalid, errWrite)
 		logger.Debugf(messages.DebugLogEventWithReceivedData,
-			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse, errUnmarshal, errWrite),
+			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse, errInvalid, errWrite),
 			receivedConfig)
-	}
-}
-
-func writeBlankReferenceIDErrMsg(rw http.ResponseWriter, configBytesForLog []byte) {
-	logger.Errorf(messages.InvalidVaultConfig, messages.BlankReferenceID)
-	logger.Debugf(messages.DebugLogEventWithReceivedData,
-		fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankReferenceID),
-		configBytesForLog)
-
-	rw.WriteHeader(http.StatusBadRequest)
-
-	_, err := rw.Write([]byte(fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankReferenceID)))
-	if err != nil {
-		logger.Errorf(messages.InvalidVaultConfig+messages.FailWriteResponse, messages.BlankReferenceID, err)
-		logger.Debugf(messages.DebugLogEventWithReceivedData,
-			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse, messages.BlankReferenceID, err),
-			configBytesForLog)
 	}
 }
 

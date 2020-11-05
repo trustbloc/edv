@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -34,24 +33,14 @@ import (
 const (
 	testReferenceID = "testReferenceID"
 	testVaultID     = "Sr7yHjomhn1aeaFnxREfRN"
-
-	testDataVaultConfigurationWithBlankReferenceID = `{
-  "sequence": 0,
-  "controller": "did:example:123456789",
-  "referenceId": "",
-  "kek": {
-    "id": "https://example.com/kms/12345",
-    "type": "AesKeyWrappingKey2019"
-  },
-  "hmac": {
-    "id": "https://example.com/kms/67891",
-    "type": "Sha256HmacKey2019"
-  }
-}`
+	testInvalidURI  = "invalidURI"
+	testValidURI    = "did:example:123456789"
+	testKEKType     = "AesKeyWrappingKey2019"
+	testHMACType    = "Sha256HmacKey2019"
 
 	testDataVaultConfiguration = `{
   "sequence": 0,
-  "controller": "did:example:123456789",
+  "controller": "` + testValidURI + `",
   "referenceId": "` + testReferenceID + `",
   "kek": {
     "id": "https://example.com/kms/12345",
@@ -93,6 +82,10 @@ const (
 
 	testEncryptedDocumentWithIDThatWasNot128BitsBeforeBase58Encoding = `{
   "id": "2CHi6"
+}`
+
+	testEncryptedDocumentWithNoJWE = `{
+	"id": "BJYHHJx4C8J9Fsgz7rZqSa"
 }`
 )
 
@@ -234,6 +227,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestCreateDataVault(t *testing.T) {
+	testValidateIncomingDataVaultConfiguration(t)
+
 	t.Run("Success: without prefix", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
 
@@ -272,35 +267,6 @@ func TestCreateDataVault(t *testing.T) {
 			fmt.Sprintf(messages.StoreVaultConfigFailure, messages.ConfigStoreNotFound)), rr.Body.String())
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
-	t.Run("Blank reference ID", func(t *testing.T) {
-		op := New(memedvprovider.NewProvider())
-
-		req, err := http.NewRequest(http.MethodPost, "",
-			bytes.NewBuffer([]byte(testDataVaultConfigurationWithBlankReferenceID)))
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-		resp, err := ioutil.ReadAll(rr.Body)
-		require.NoError(t, err)
-
-		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankReferenceID), string(resp))
-	})
-	t.Run("Response writer fails while writing blank reference ID error", func(t *testing.T) {
-		op := New(memedvprovider.NewProvider())
-
-		op.createDataVault(&failingResponseWriter{}, &models.DataVaultConfiguration{}, "",
-			nil)
-
-		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
-			fmt.Sprintf(messages.InvalidVaultConfig+messages.FailWriteResponse,
-				messages.BlankReferenceID, errFailingResponseWriter))
-	})
-
 	t.Run("Response writer fails while writing request read error", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
 
@@ -322,7 +288,7 @@ func TestCreateDataVault(t *testing.T) {
 			nil)
 		require.Equal(t, http.StatusConflict, rr.Code)
 		require.Equal(t, "Failed to create a new data vault: failed to store data vault configuration: "+
-			"an error occurred while querying referenceIds: vault already exists.", rr.Body.String())
+			"an error occurred while querying reference IDs: vault already exists.", rr.Body.String())
 	})
 	t.Run("Other error when creating new store", func(t *testing.T) {
 		errTest := errors.New("some other create store error")
@@ -402,6 +368,62 @@ func TestCreateDataVault(t *testing.T) {
 
 		require.Equal(t, fmt.Sprintf(messages.VaultCreationFailure, errTest), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+}
+
+func testValidateIncomingDataVaultConfiguration(t *testing.T) {
+	t.Run("Invalid incoming data vault configuration - missing controller", func(t *testing.T) {
+		config := getDataVaultConfig("", testValidURI, testKEKType, testValidURI,
+			testHMACType, []string{}, []string{})
+		createDataVaultExpectError(t, config, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankController))
+	})
+	t.Run("Invalid incoming data vault configuration - missing KEK ID", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, "", testKEKType, testValidURI,
+			testHMACType, []string{}, []string{})
+		createDataVaultExpectError(t, config, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankKEKID))
+	})
+	t.Run("Invalid incoming data vault configuration - missing KEK type", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, testValidURI, "", testValidURI,
+			testHMACType, []string{}, []string{})
+		createDataVaultExpectError(t, config, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankKEKType))
+	})
+	t.Run("Invalid incoming data vault configuration - missing HMAC ID", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, testValidURI, testKEKType, "",
+			testHMACType, []string{}, []string{})
+		createDataVaultExpectError(t, config, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankHMACID))
+	})
+	t.Run("Invalid incoming data vault configuration - missing HMAC type", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, testValidURI, testKEKType, testValidURI,
+			"", []string{}, []string{})
+		createDataVaultExpectError(t, config, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankHMACType))
+	})
+	t.Run("Invalid incoming data vault configuration - controller is an invalid URI", func(t *testing.T) {
+		config := getDataVaultConfig(testInvalidURI, testValidURI, testKEKType, testValidURI,
+			testHMACType, []string{}, []string{})
+		createDataVaultExpectError(t, config,
+			fmt.Sprintf(messages.InvalidVaultConfig, fmt.Errorf(messages.InvalidControllerString,
+				fmt.Errorf(messages.InvalidURI, testInvalidURI))))
+	})
+	t.Run("Invalid incoming data vault configuration - KEK id is an invalid URI", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, testInvalidURI, testKEKType, testValidURI,
+			testHMACType, []string{}, []string{})
+		createDataVaultExpectError(t, config,
+			fmt.Sprintf(messages.InvalidVaultConfig, fmt.Errorf(messages.InvalidKEKIDString,
+				fmt.Errorf(messages.InvalidURI, testInvalidURI))))
+	})
+	t.Run("Invalid incoming data vault configuration - invoker contains invalid URIs", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, testValidURI, testKEKType, testValidURI,
+			testHMACType, []string{}, []string{testInvalidURI})
+		createDataVaultExpectError(t, config,
+			fmt.Sprintf(messages.InvalidVaultConfig, fmt.Errorf(messages.InvalidInvokerStringArray,
+				fmt.Errorf(messages.InvalidURI, testInvalidURI))))
+	})
+	t.Run("Invalid incoming data vault configuration - delegator contains invalid URIs", func(t *testing.T) {
+		config := getDataVaultConfig(testValidURI, testValidURI, testKEKType, testValidURI,
+			testHMACType, []string{testInvalidURI}, []string{})
+		createDataVaultExpectError(t, config,
+			fmt.Sprintf(messages.InvalidVaultConfig, fmt.Errorf(messages.InvalidDelegatorStringArray,
+				fmt.Errorf(messages.InvalidURI, testInvalidURI))))
 	})
 }
 
@@ -611,6 +633,7 @@ func TestCreateDocument(t *testing.T) {
 		vaultID := createDataVaultExpectSuccess(t, op)
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
+		storeEncryptedDocumentExpectSuccess(t, op, testDocID2, testEncryptedDocument2, vaultID)
 	})
 	t.Run("Invalid encrypted document JSON", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -658,7 +681,7 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.CreateDocumentFailure, vaultID, messages.ErrNotBase58Encoded),
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID, messages.ErrNotBase58Encoded),
 			rr.Body.String())
 	})
 	t.Run("Document ID was not 128 bits long before being base58 encoded", func(t *testing.T) {
@@ -684,8 +707,34 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.CreateDocumentFailure, vaultID, messages.ErrNot128BitValue),
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID, messages.ErrNot128BitValue),
 			rr.Body.String())
+	})
+	t.Run("Empty JWE", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+
+		createConfigStoreExpectSuccess(t, op)
+
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		req, err := http.NewRequest("POST", "",
+			bytes.NewBuffer([]byte(testEncryptedDocumentWithNoJWE)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+
+		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID,
+			fmt.Sprintf(messages.InvalidRawJWE, messages.BlankJWE)), rr.Body.String())
 	})
 	t.Run("Duplicate document", func(t *testing.T) {
 		op := New(memedvprovider.NewProvider())
@@ -1176,6 +1225,24 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation) string {
 	return vaultID
 }
 
+func createDataVaultExpectError(t *testing.T, request *models.DataVaultConfiguration, expectedError string) {
+	op := New(memedvprovider.NewProvider())
+
+	configBytes, err := json.Marshal(request)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer(configBytes))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	require.Equal(t, expectedError, rr.Body.String())
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
 func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation, testDocID, encryptedDoc, vaultID string) {
 	req, err := http.NewRequest("POST", "",
 		bytes.NewBuffer([]byte(encryptedDoc)))
@@ -1250,6 +1317,27 @@ func getVaultIDFromURL(vaultLocationURL string) string {
 	vaultLocationSplitUp := strings.Split(vaultLocationURL, "/")
 
 	return vaultLocationSplitUp[len(vaultLocationSplitUp)-1]
+}
+
+func getDataVaultConfig(controller, kekID, kekType, hmacID, hmacType string,
+	delegator, invoker []string) *models.DataVaultConfiguration {
+	config := &models.DataVaultConfiguration{
+		Sequence:    0,
+		Controller:  controller,
+		Invoker:     invoker,
+		Delegator:   delegator,
+		ReferenceID: testReferenceID,
+		KEK: models.IDTypePair{
+			ID:   kekID,
+			Type: kekType,
+		},
+		HMAC: models.IDTypePair{
+			ID:   hmacID,
+			Type: hmacType,
+		},
+	}
+
+	return config
 }
 
 func getMapWithValidVaultIDAndDocID(testVaultID string) map[string]string {

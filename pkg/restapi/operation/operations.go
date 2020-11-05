@@ -113,7 +113,13 @@ Request body: %s`, string(requestBody))
 
 	err = json.Unmarshal(requestBody, &config)
 	if err != nil {
-		writeCreateDataVaultUnmarshalFailure(rw, err, requestBody)
+		writeCreateDataVaultInvalidRequest(rw, err, requestBody)
+		return
+	}
+
+	err = validateDataVaultConfiguration(&config)
+	if err != nil {
+		writeCreateDataVaultInvalidRequest(rw, err, requestBody)
 		return
 	}
 
@@ -135,11 +141,6 @@ Request body: %s`, string(requestBody))
 
 func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataVaultConfiguration, hostURL string,
 	configBytesForLog []byte) {
-	if config.ReferenceID == "" {
-		writeBlankReferenceIDErrMsg(rw, configBytesForLog)
-		return
-	}
-
 	vaultID, err := edvutils.GenerateEDVCompatibleID()
 	if err != nil {
 		writeCreateDataVaultFailure(rw, err, configBytesForLog)
@@ -371,6 +372,12 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 		}
 	}
 
+	if err = validateEncryptedDocument(incomingDocument); err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err,
+			vaultID, requestBody)
+		return
+	}
+
 	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
 	if err != nil {
 		writeCreateDocumentFailure(rw, err, vaultID, docBytesForLog)
@@ -388,10 +395,6 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 		}
 
 		return err
-	}
-
-	if encodingErr := edvutils.CheckIfBase58Encoded128BitValue(document.ID); encodingErr != nil {
-		return encodingErr
 	}
 
 	// The Create Document API call should not overwrite an existing document.
@@ -460,4 +463,77 @@ func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]st
 	}
 
 	return store.Query(query)
+}
+
+func validateDataVaultConfiguration(dataVaultConfig *models.DataVaultConfiguration) error {
+	if err := checkConfigRequiredFields(dataVaultConfig); err != nil {
+		return err
+	}
+
+	if err := edvutils.CheckIfURI(dataVaultConfig.Controller); err != nil {
+		return fmt.Errorf(messages.InvalidControllerString, err)
+	}
+
+	if err := checkFieldsWithURIArray(dataVaultConfig.Invoker); err != nil {
+		return fmt.Errorf(messages.InvalidInvokerStringArray, err)
+	}
+
+	if err := checkFieldsWithURIArray(dataVaultConfig.Delegator); err != nil {
+		return fmt.Errorf(messages.InvalidDelegatorStringArray, err)
+	}
+
+	if err := edvutils.CheckIfURI(dataVaultConfig.KEK.ID); err != nil {
+		return fmt.Errorf(messages.InvalidKEKIDString, err)
+	}
+
+	return nil
+}
+
+func checkConfigRequiredFields(config *models.DataVaultConfiguration) error {
+	if config.Controller == "" {
+		return errors.New(messages.BlankController)
+	}
+
+	if config.KEK.ID == "" {
+		return errors.New(messages.BlankKEKID)
+	}
+
+	if config.KEK.Type == "" {
+		return errors.New(messages.BlankKEKType)
+	}
+
+	if config.HMAC.ID == "" {
+		return errors.New(messages.BlankHMACID)
+	}
+
+	if config.HMAC.Type == "" {
+		return errors.New(messages.BlankHMACType)
+	}
+
+	return nil
+}
+
+// Check if every string in the array is a valid URI.
+func checkFieldsWithURIArray(arr []string) error {
+	if len(arr) == 0 {
+		return nil
+	}
+
+	if err := edvutils.CheckIfArrayIsURI(arr); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateEncryptedDocument(doc models.EncryptedDocument) error {
+	if encodingErr := edvutils.CheckIfBase58Encoded128BitValue(doc.ID); encodingErr != nil {
+		return encodingErr
+	}
+
+	if err := edvutils.ValidateJWE(doc.JWE); err != nil {
+		return fmt.Errorf(messages.InvalidRawJWE, err.Error())
+	}
+
+	return nil
 }
