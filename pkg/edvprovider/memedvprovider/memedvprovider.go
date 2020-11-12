@@ -88,8 +88,18 @@ func (m MemEDVStore) Get(k string) ([]byte, error) {
 	return m.coreStore.Get(k)
 }
 
+// Update updates the given document
+func (m MemEDVStore) Update(newDoc models.EncryptedDocument) error {
+	return m.Put(newDoc)
+}
+
 // CreateEDVIndex is not supported in memstore, and calling it will always return an error.
 func (m MemEDVStore) CreateEDVIndex() error {
+	return edvprovider.ErrIndexingNotSupported
+}
+
+// CreateEncryptedDocIDIndex is not supported in memstore, and calling it will always return an error.
+func (m MemEDVStore) CreateEncryptedDocIDIndex() error {
 	return edvprovider.ErrIndexingNotSupported
 }
 

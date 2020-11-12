@@ -149,9 +149,60 @@ func TestMemEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 	})
 }
 
+func TestMemEDVStore_Update(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		store := createAndOpenStoreExpectSuccess(t)
+		origDoc := models.EncryptedDocument{
+			ID:       "Doc1",
+			Sequence: 0,
+			IndexedAttributeCollections: []models.IndexedAttributeCollection{
+				{Sequence: 0, IndexedAttributes: []models.IndexedAttribute{
+					{Name: "IndexName1", Value: "TestVal", Unique: true},
+				}},
+			},
+			JWE: []byte(`{"SomeJWEKey1":"SomeJWEValue1"}`),
+		}
+
+		err := store.Put(origDoc)
+		require.NoError(t, err)
+
+		newDoc := models.EncryptedDocument{
+			ID:       "Doc1",
+			Sequence: 0,
+			IndexedAttributeCollections: []models.IndexedAttributeCollection{
+				{Sequence: 0, IndexedAttributes: []models.IndexedAttribute{
+					{Name: "IndexName2", Value: "TestVal", Unique: true},
+				}},
+			},
+			JWE: []byte(`{"SomeJWEKey2":"SomeJWEValue2"}`),
+		}
+
+		err = store.Update(newDoc)
+		require.NoError(t, err)
+
+		docBytes, err := store.Get("Doc1")
+		require.NoError(t, err)
+
+		updatedDoc := &models.EncryptedDocument{}
+		err = json.Unmarshal(docBytes, updatedDoc)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(updatedDoc.IndexedAttributeCollections))
+		require.Equal(t, 1, len(updatedDoc.IndexedAttributeCollections[0].IndexedAttributes))
+		require.Equal(t, "IndexName2", updatedDoc.IndexedAttributeCollections[0].IndexedAttributes[0].Name)
+		require.Equal(t, json.RawMessage(`{"SomeJWEKey2":"SomeJWEValue2"}`), updatedDoc.JWE)
+	})
+}
+
 func TestMemEDVStore_CreateReferenceIDIndex(t *testing.T) {
 	store := createAndOpenStoreExpectSuccess(t)
 	err := store.CreateReferenceIDIndex()
+	require.Equal(t, edvprovider.ErrIndexingNotSupported, err)
+}
+
+func TestMemEDVStore_CreateEncryptedDocIDIndex(t *testing.T) {
+	store := createAndOpenStoreExpectSuccess(t)
+	err := store.CreateEncryptedDocIDIndex()
 	require.Equal(t, edvprovider.ErrIndexingNotSupported, err)
 }
 

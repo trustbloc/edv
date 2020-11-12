@@ -108,10 +108,31 @@ const (
         "tag": "pfZO0JulJcrc3trOZy8rjA"
     }
 }`
+	testJWE = `{
+	"protected": "eyJlbmMiOiJDMjBQIn0",
+	"recipients": [{
+		"header": {
+		"alg": "A256KW",
+		"kid": "https://example.com/kms/z7BgF536GaR"
+		},
+	"encrypted_key": "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"
+	}],
+	"iv": "i8Nins2vTI3PlrYW",
+	"ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+	"tag": "pfZO0JulJcrc3trOZy8rjA"
+}`
 
 	testQuery       = `{"IndexName":"","MatchingEncryptedDocID":"` + testDocID1 + `"}`
 	testReferenceID = "referenceID"
 	testVaultID     = "9ANbuHxeBcicymvRZfcKB2"
+
+	testIndexName1      = "indexName1"
+	testIndexName2      = "indexName2"
+	testIndexName3      = "indexName3"
+	testMappingDocName1 = "mappingDocumentName1"
+	testMappingDocName2 = "mappingDocumentName2"
+
+	testError = "test error"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -243,7 +264,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 		IndexedAttributes: []models.IndexedAttribute{firstDocumentIndexedAttribute},
 	}
 
-	testDoc1 := models.EncryptedDocument{ID: "someID",
+	testDoc1 := models.EncryptedDocument{ID: "someID1",
 		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection1}}
 
 	err := store.Put(testDoc1)
@@ -251,7 +272,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 
 	mappingDoc := couchDBIndexMappingDocument{
 		IndexName:              "indexName1",
-		MatchingEncryptedDocID: "someID",
+		MatchingEncryptedDocID: "someID1",
 	}
 
 	marshalledMappingDoc, err := json.Marshal(mappingDoc)
@@ -268,7 +289,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 		IndexedAttributes: []models.IndexedAttribute{secondDocumentIndexedAttribute},
 	}
 
-	testDoc2 := models.EncryptedDocument{ID: "someID",
+	testDoc2 := models.EncryptedDocument{ID: "someID2",
 		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection2}}
 
 	return store.Put(testDoc2)
@@ -375,6 +396,14 @@ func TestCouchDBEDVStore_CreateReferenceIDIndex(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCouchDBEDVStore_CreateEncryptedDocIDIndex(t *testing.T) {
+	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+	err := store.CreateEncryptedDocIDIndex()
+	require.NoError(t, err)
+}
+
 type mockIterator struct {
 	timesNextCalled         int
 	maxTimesNextCanBeCalled int
@@ -400,6 +429,7 @@ func (m *mockIterator) Next() (bool, error) {
 }
 
 func (m *mockIterator) Release() error {
+	m.timesNextCalled = 0
 	return m.errRelease
 }
 
@@ -634,4 +664,256 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 		err := store.StoreDataVaultConfiguration(&testConfig, testVaultID)
 		require.Equal(t, errTest, err)
 	})
+}
+
+func TestCouchDBEDVStore_Update(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName2, testDocID1, testMappingDocName1)
+
+		documentIndexedAttribute2 := buildIndexedAttribute(testIndexName2, true)
+		documentIndexedAttribute3 := buildIndexedAttribute(testIndexName3, true)
+		indexedAttributeCollection2 := models.IndexedAttributeCollection{
+			Sequence:          0,
+			HMAC:              models.IDTypePair{},
+			IndexedAttributes: []models.IndexedAttribute{documentIndexedAttribute2, documentIndexedAttribute3},
+		}
+
+		newDoc := buildEncryptedDoc(testDocID1, indexedAttributeCollection2)
+
+		err := store.Update(newDoc)
+		require.NoError(t, err)
+
+		updatedDocBytes, err := store.Get(testDocID1)
+		require.NoError(t, err)
+
+		updatedDoc := &models.EncryptedDocument{}
+		err = json.Unmarshal(updatedDocBytes, updatedDoc)
+		require.NoError(t, err)
+
+		updated := false
+
+		if (updatedDoc.IndexedAttributeCollections[0].IndexedAttributes[0].Name == testIndexName2 &&
+			updatedDoc.IndexedAttributeCollections[0].IndexedAttributes[1].Name == testIndexName3) ||
+			(updatedDoc.IndexedAttributeCollections[0].IndexedAttributes[0].Name == testIndexName3 &&
+				updatedDoc.IndexedAttributeCollections[0].IndexedAttributes[1].Name == testIndexName2) {
+			updated = true
+		}
+
+		require.True(t, updated)
+	})
+	t.Run("Failure - unable to store document since it contains an index name and value that are already "+
+		"declared as unique in an existing document", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName2, testDocID2, testMappingDocName2)
+
+		documentIndexedAttribute2 := buildIndexedAttribute(testIndexName2, false)
+		indexedAttributeCollection2 := models.IndexedAttributeCollection{
+			Sequence:          0,
+			HMAC:              models.IDTypePair{},
+			IndexedAttributes: []models.IndexedAttribute{documentIndexedAttribute2},
+		}
+
+		newDoc := buildEncryptedDoc(testDocID1, indexedAttributeCollection2)
+
+		err := store.Update(newDoc)
+		require.Equal(t, edvprovider.ErrIndexNameAndValueAlreadyDeclaredUnique, err)
+	})
+	t.Run("Failure - error deleting old mapping documents", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrDelete: errors.New(testError),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
+
+		documentIndexedAttribute2 := buildIndexedAttribute(testIndexName2, true)
+		indexedAttributeCollection2 := models.IndexedAttributeCollection{
+			Sequence:          0,
+			HMAC:              models.IDTypePair{},
+			IndexedAttributes: []models.IndexedAttribute{documentIndexedAttribute2},
+		}
+
+		newDoc := buildEncryptedDoc(testDocID1, indexedAttributeCollection2)
+		err := store.Update(newDoc)
+		require.NotNil(t, err)
+		require.Equal(t, fmt.Errorf(messages.UpdateMappingDocumentFailure, testDocID1, testError), err)
+	})
+}
+
+func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.NoError(t, err)
+		require.NotEmpty(t, mappingDocNamesAndIndexNames)
+		require.NotEmpty(t, mappingDocNamesAndIndexNames[testMappingDocName1])
+		require.Equal(t, testIndexName1, mappingDocNamesAndIndexNames[testMappingDocName1])
+	})
+	t.Run("Failure - error making query in coreStore", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrQuery: errors.New(testError),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.Nil(t, mappingDocNamesAndIndexNames)
+		require.NotNil(t, err)
+		require.Error(t, err, testError)
+	})
+	t.Run("Failure - error in iterator Next()", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errors.New(testError)}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.Nil(t, mappingDocNamesAndIndexNames)
+		require.NotNil(t, err)
+		require.Error(t, err, testError)
+	})
+	t.Run("Failure - error in iterator Value()", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		mappingDoc := buildIndexMappingDocument(testIndexName1, testDocID1, testMappingDocName1)
+
+		marshalledMappingDoc, err := json.Marshal(mappingDoc)
+		require.NoError(t, err)
+
+		mockCoreStore.ResultsIteratorToReturn = &mockIterator{
+			maxTimesNextCanBeCalled: 1,
+			errValue:                errors.New(testError),
+			valueReturn:             marshalledMappingDoc,
+		}
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.Nil(t, mappingDocNamesAndIndexNames)
+		require.NotNil(t, err)
+		require.Error(t, err, testError)
+	})
+	t.Run("Failure - error in iterator Next() while traversing query results", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		mappingDoc := buildIndexMappingDocument(testIndexName1, testDocID1, testMappingDocName1)
+
+		marshalledMappingDoc, err := json.Marshal(mappingDoc)
+		require.NoError(t, err)
+
+		mockCoreStore.ResultsIteratorToReturn = &mockIterator{
+			maxTimesNextCanBeCalled: 1,
+			errNext:                 errors.New(testError),
+			valueReturn:             marshalledMappingDoc,
+		}
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.Nil(t, mappingDocNamesAndIndexNames)
+		require.NotNil(t, err)
+		require.Error(t, err, testError)
+	})
+	t.Run("Failure - error unmarshalling queried rawDoc", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		mockCoreStore.ResultsIteratorToReturn = &mockIterator{
+			maxTimesNextCanBeCalled: 1,
+			valueReturn:             []byte("notAMappingDocument"),
+		}
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.Nil(t, mappingDocNamesAndIndexNames)
+		require.NotNil(t, err)
+		require.Contains(t, err.Error(), "error unmarshalling rawDoc")
+	})
+	t.Run("Failure - error in iterator Release()", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		mappingDoc := buildIndexMappingDocument(testIndexName1, testDocID1, testMappingDocName1)
+
+		marshalledMappingDoc, err := json.Marshal(mappingDoc)
+		require.NoError(t, err)
+
+		mockCoreStore.ResultsIteratorToReturn = &mockIterator{
+			maxTimesNextCanBeCalled: 1,
+			errRelease:              errors.New(testError),
+			valueReturn:             marshalledMappingDoc,
+		}
+
+		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		require.Nil(t, mappingDocNamesAndIndexNames)
+		require.NotNil(t, err)
+		require.Error(t, err, testError)
+	})
+}
+
+func storeOriginalDocumentBeforeUpdate(t *testing.T, store CouchDBEDVStore, mockCoreStore *mockstore.MockStore,
+	indexName, encryptedDocID, mappingDocumentID string) {
+	documentIndexedAttribute1 := buildIndexedAttribute(indexName, true)
+	indexedAttributeCollection1 := models.IndexedAttributeCollection{
+		Sequence:          0,
+		HMAC:              models.IDTypePair{},
+		IndexedAttributes: []models.IndexedAttribute{documentIndexedAttribute1},
+	}
+
+	originalDoc := buildEncryptedDoc(encryptedDocID, indexedAttributeCollection1)
+
+	err := store.Put(originalDoc)
+	require.NoError(t, err)
+
+	mappingDoc := buildIndexMappingDocument(indexName, encryptedDocID, mappingDocumentID)
+
+	marshalledMappingDoc, err := json.Marshal(mappingDoc)
+	require.NoError(t, err)
+
+	mockCoreStore.ResultsIteratorToReturn = &mockIterator{
+		maxTimesNextCanBeCalled: 1,
+		valueReturn:             marshalledMappingDoc,
+	}
+}
+
+func buildIndexedAttribute(name string, unique bool) models.IndexedAttribute {
+	docIndexedAttribute := models.IndexedAttribute{
+		Name:   name,
+		Value:  "some value",
+		Unique: unique,
+	}
+
+	return docIndexedAttribute
+}
+
+func buildEncryptedDoc(id string, indexedAttributeCol models.IndexedAttributeCollection) models.EncryptedDocument {
+	doc := models.EncryptedDocument{
+		ID:                          id,
+		Sequence:                    0,
+		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCol},
+		JWE:                         json.RawMessage(testJWE),
+	}
+
+	return doc
+}
+
+func buildIndexMappingDocument(indexName, encryptedDocID, mappingDocumentID string) *couchDBIndexMappingDocument {
+	mappingDoc := couchDBIndexMappingDocument{
+		IndexName:              indexName,
+		MatchingEncryptedDocID: encryptedDocID,
+		MappingDocumentName:    mappingDocumentID,
+	}
+
+	return &mappingDoc
 }

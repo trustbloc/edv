@@ -14,3 +14,5 @@ Feature: Demonstrating TrustBloc's EDV REST API interoperability with Transmute'
     Then  Attempt to create the same data vault again, resulting in a 409 error
     Then  Create a new document
     Then  Retrieve that newly created document
+    Then  Update the document
+    Then  Retrieve that updated document

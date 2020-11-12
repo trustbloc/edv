@@ -109,3 +109,23 @@ type readDocumentRes struct { // nolint: unused,deadcode
 	// in: body
 	RetrievedDocument string
 }
+
+// updateDocumentReq model
+//
+// swagger:parameters updateDocumentReq
+type updateDocumentReq struct { // nolint: unused,deadcode
+	// in: path
+	// required: true
+	VaultID string `json:"vaultID"`
+	// in: path
+	// required: true
+	DocID string `json:"docID"`
+	// in: body
+	Document models.EncryptedDocument
+}
+
+// emptyRes model
+//
+// swagger:response emptyRes
+type emptyRes struct { // nolint: unused,deadcode
+}

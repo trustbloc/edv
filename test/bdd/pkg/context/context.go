@@ -18,8 +18,9 @@ import (
 )
 
 const (
+	sampleDocID        = "VJYHHJx4C8J9Fsgz7rZqSp"
 	sampleEncryptedDoc = `{
-    "id": "VJYHHJx4C8J9Fsgz7rZqSp",
+    "id": "` + sampleDocID + `",
     "indexed": [
         {
             "attributes": [
@@ -52,6 +53,46 @@ const (
         "recipients": [
             {
                 "encrypted_key": "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug",
+                "header": {
+                    "alg": "A256KW",
+                    "kid": "https://example.com/kms/z7BgF536GaR"
+                }
+            }
+        ],
+        "tag": "pfZO0JulJcrc3trOZy8rjA"
+    },
+    "sequence": 0
+}`
+
+	sampleUpdateEncryptedDoc = `{
+    "id": "` + sampleDocID + `",
+    "indexed": [
+        {
+            "attributes": [
+                {
+                    "name": "DUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+                    "value": "QV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+                },
+                {
+                    "name": "EUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+                    "unique": true,
+                    "value": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+                }
+            ],
+            "hmac": {
+                "id": "https://example.com/kms/z7BgF536GaR",
+                "type": "Sha256HmacKey2019"
+            },
+            "sequence": 0
+        }
+    ],
+    "jwe": {
+        "ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+        "iv": "i8Nins2vTI3PlrYW",
+        "protected": "eyJlbmMiOiJDMjBQIn0",
+        "recipients": [
+            {
+                "encrypted_key": "BR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug",
                 "header": {
                     "alg": "A256KW",
                     "kid": "https://example.com/kms/z7BgF536GaR"
@@ -109,6 +150,7 @@ type BDDInteropContext struct {
 	TransmuteDataVaultLocation string
 	DataVaultConfig            *models.DataVaultConfiguration
 	SampleDocToStore           *models.EncryptedDocument
+	SampleDocForUpdate         *models.EncryptedDocument
 }
 
 // NewBDDInteropContext creates a new BDDInteropContext.
@@ -129,12 +171,20 @@ func NewBDDInteropContext() (*BDDInteropContext, error) {
 		return nil, err
 	}
 
+	var sampleDocForUpdate models.EncryptedDocument
+
+	err = json.Unmarshal([]byte(sampleUpdateEncryptedDoc), &sampleDocForUpdate)
+	if err != nil {
+		return nil, err
+	}
+
 	return &BDDInteropContext{
 		TrustBlocEDVHostURL: trustBlocEDVHostURL,
 		TrustBlocEDVClient:  trustBlocEDVClient,
 		TransmuteEDVHostURL: transmuteEDVURL,
 		TransmuteEDVClient:  transmuteEDVClient,
 		SampleDocToStore:    &sampleDocToStore,
+		SampleDocForUpdate:  &sampleDocForUpdate,
 	}, nil
 }
 
