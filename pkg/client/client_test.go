@@ -134,7 +134,7 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
 
-	location, err := client.CreateDocument(vaultID, getTestValidEncryptedDocument())
+	location, err := client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
 	require.NoError(t, err)
 	require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, location)
 
@@ -151,7 +151,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	location, err := client.CreateDocument(testVaultIDNonExistent, getTestValidEncryptedDocument())
+	location, err := client.CreateDocument(testVaultIDNonExistent, getTestValidEncryptedDocument(testJWE))
 	require.Empty(t, location)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
@@ -190,7 +190,7 @@ func TestClient_ReadAllDocuments(t *testing.T) {
 
 		vaultID := getVaultIDFromURL(vaultLocationURL)
 
-		testEncryptedDoc1 := getTestValidEncryptedDocument()
+		testEncryptedDoc1 := getTestValidEncryptedDocument(testJWE)
 
 		_, err = client.CreateDocument(vaultID, testEncryptedDoc1)
 		require.NoError(t, err)
@@ -308,7 +308,7 @@ func TestClient_ReadDocument(t *testing.T) {
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
 
-	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument())
+	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
 	require.NoError(t, err)
 
 	document, err := client.ReadDocument(vaultID, testDocumentID)
@@ -358,7 +358,7 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
 
-	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument())
+	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
 	require.NoError(t, err)
 
 	document, err := client.ReadDocument("wrongvault", testDocumentID)
@@ -420,6 +420,66 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 
 	err = srv.Shutdown(context.Background())
 	require.NoError(t, err)
+}
+
+func TestClient_UpdateDocument(t *testing.T) {
+	srvAddr := randomURL()
+
+	srv := startEDVServer(t, srvAddr)
+
+	waitForServerToStart(t, srvAddr)
+
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+	validConfig := getTestValidDataVaultConfiguration()
+	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	require.NoError(t, err)
+
+	vaultID := getVaultIDFromURL(vaultLocationURL)
+
+	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
+	require.NoError(t, err)
+
+	err = client.UpdateDocument(vaultID, testDocumentID, getTestValidEncryptedDocument(testJWE2))
+	require.NoError(t, err)
+
+	document, err := client.ReadDocument(vaultID, testDocumentID)
+	require.NoError(t, err)
+
+	require.Equal(t, testJWE2, string(document.JWE))
+
+	err = srv.Shutdown(context.Background())
+	require.NoError(t, err)
+}
+
+func TestClient_UpdateDocument_VaultNotFound(t *testing.T) {
+	srvAddr := randomURL()
+
+	srv := startEDVServer(t, srvAddr)
+
+	waitForServerToStart(t, srvAddr)
+
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+	err := client.UpdateDocument(testVaultIDNonExistent, testDocumentID,
+		getTestValidEncryptedDocument(testJWE))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
+	require.Contains(t, err.Error(), "status code 404")
+
+	err = srv.Shutdown(context.Background())
+	require.NoError(t, err)
+}
+
+func TestClient_UpdateDocument_ServerUnreachable(t *testing.T) {
+	srvAddr := randomURL()
+
+	client := New("http://" + srvAddr)
+
+	err := client.UpdateDocument(testVaultIDNonExistent, testDocumentID, &models.EncryptedDocument{})
+
+	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
+	require.True(t, testPassed)
 }
 
 func TestClient_QueryVault(t *testing.T) {
@@ -523,7 +583,7 @@ func getTestValidDataVaultConfiguration() models.DataVaultConfiguration {
 	return testDataVaultConfiguration
 }
 
-func getTestValidEncryptedDocument() *models.EncryptedDocument {
+func getTestValidEncryptedDocument(testJWE string) *models.EncryptedDocument {
 	return &models.EncryptedDocument{
 		ID:       testDocumentID,
 		Sequence: 0,

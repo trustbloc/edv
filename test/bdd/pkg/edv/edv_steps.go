@@ -66,6 +66,15 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 	s.Step(`^Client queries the vault to find the previously created document `+
 		`with an encrypted index named "([^"]*)" with associated value "([^"]*)"$`,
 		e.queryVault)
+	s.Step(`^Client changes the Structured Document with id "([^"]*)" in order to update the`+
+		` Encrypted Document in the data vault$`, e.clientReconstructsAStructuredDocument)
+	s.Step(`^Client encrypts the new Structured Document and uses it to construct an `+
+		`Encrypted Document$`, e.clientEncryptsTheStructuredDocument)
+	s.Step(`^Client updates Structured Document with id "([^"]*)" in the data vault$`, e.updateDocumentInVault)
+	s.Step(`^Client sends request to retrieve the updated Encrypted Document with id "([^"]*)" in the data `+
+		`vault and receives the updated Encrypted Document in response$`, e.retrieveDocument)
+	s.Step(`^Client decrypts the Encrypted Document it received`+
+		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
 }
 
 func (e *Steps) createDataVault() error {
@@ -226,6 +235,28 @@ func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
 	}
 
 	return nil
+}
+
+func (e *Steps) clientReconstructsAStructuredDocument(docID string) error {
+	meta := make(map[string]interface{})
+	meta["created"] = "2020-01-10"
+
+	content := make(map[string]interface{})
+	content["message"] = "Message updated"
+
+	e.bddContext.StructuredDocToBeEncrypted = &models.StructuredDocument{
+		ID:      docID,
+		Meta:    meta,
+		Content: content,
+	}
+
+	return nil
+}
+
+func (e *Steps) updateDocumentInVault(docID string) error {
+	err := e.bddContext.EDVClient.UpdateDocument(e.bddContext.VaultID, docID, e.bddContext.EncryptedDocToStore)
+
+	return err
 }
 
 func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,

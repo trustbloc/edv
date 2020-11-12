@@ -185,6 +185,18 @@ func writeErrorWithVaultIDAndReceivedData(rw http.ResponseWriter, statusCode int
 	}
 }
 
+func writeErrorWithVaultIDAndDocID(rw http.ResponseWriter, statusCode int, message string, err error,
+	docID, vaultID string) {
+	logger.Errorf(message, docID, vaultID, err)
+
+	rw.WriteHeader(statusCode)
+
+	_, errWrite := rw.Write([]byte(fmt.Sprintf(message, docID, vaultID, err)))
+	if errWrite != nil {
+		logger.Errorf(message+messages.FailWriteResponse, docID, vaultID, err, errWrite)
+	}
+}
+
 func writeReadAllDocumentsFailure(rw http.ResponseWriter, errReadDoc error, vaultID string) {
 	logger.Infof(messages.ReadAllDocumentsFailure, vaultID, errReadDoc)
 
@@ -246,5 +258,20 @@ func writeReadDocumentSuccess(rw http.ResponseWriter, documentBytes []byte, docI
 		logger.Debugf(messages.DebugLogEvent,
 			fmt.Sprintf(messages.ReadDocumentSuccessWithRetrievedDoc+messages.FailWriteResponse,
 				docID, vaultID, errWrite, documentBytes))
+	}
+}
+
+func writeUpdateDocumentFailure(rw http.ResponseWriter, errUpdateDoc error, docID, vaultID string) {
+	logger.Infof(messages.UpdateDocumentFailure, docID, vaultID, errUpdateDoc)
+
+	if errUpdateDoc == messages.ErrDocumentNotFound || errUpdateDoc == messages.ErrVaultNotFound {
+		rw.WriteHeader(http.StatusNotFound)
+	} else {
+		rw.WriteHeader(http.StatusBadRequest)
+	}
+
+	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.UpdateDocumentFailure, docID, vaultID, errUpdateDoc)))
+	if errWrite != nil {
+		logger.Errorf(messages.UpdateDocumentFailure+messages.FailWriteResponse, docID, vaultID, errUpdateDoc, errWrite)
 	}
 }

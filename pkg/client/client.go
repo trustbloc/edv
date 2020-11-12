@@ -209,6 +209,19 @@ Response body: %s`, endpoint, jsonToSend, resp.StatusCode, respBytes)
 		resp.StatusCode, respBytes)
 }
 
+// UpdateDocument sends the EDV server a request to update the specified document.
+func (c *Client) UpdateDocument(vaultID, docID string, document *models.EncryptedDocument) error {
+	jsonToSend, err := c.marshal(document)
+	if err != nil {
+		return fmt.Errorf("failed to marshal document: %w", err)
+	}
+
+	logger.Debugf("Sending request to update the following document: %s", jsonToSend)
+
+	return c.sendPOSTRequest(jsonToSend,
+		fmt.Sprintf("/%s/documents/%s", url.PathEscape(vaultID), url.PathEscape(docID)))
+}
+
 func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, endpointPathToAppend string) (string, error) {
 	fullEndpoint := c.edvServerURL + endpointPathToAppend
 
@@ -236,6 +249,36 @@ Response body: %s`, fullEndpoint, jsonToSend, resp.StatusCode, respBytes)
 	}
 
 	return "", fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+		resp.StatusCode, respBytes)
+}
+
+func (c *Client) sendPOSTRequest(jsonToSend []byte, endpointPathToAppend string) error {
+	fullEndpoint := c.edvServerURL + endpointPathToAppend
+
+	resp, err := c.httpClient.Post(fullEndpoint, "application/json", //nolint: bodyclose
+		bytes.NewBuffer(jsonToSend))
+	if err != nil {
+		return fmt.Errorf("failed to send POST request: %w", err)
+	}
+
+	defer closeReadCloser(resp.Body)
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	logger.Debugf(`Sent POST request to %s.
+Request body: %s
+
+Response status code: %d
+Response body: %s`, fullEndpoint, jsonToSend, resp.StatusCode, respBytes)
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	return fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
 		resp.StatusCode, respBytes)
 }
 

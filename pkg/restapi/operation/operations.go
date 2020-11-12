@@ -42,6 +42,8 @@ const (
 	readAllDocumentsEndpoint = createDocumentEndpoint
 	readDocumentEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
+	updateDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
+		docIDPathVariable + "}"
 )
 
 var logger = log.New(logModuleName)
@@ -84,6 +86,7 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
+		support.NewHTTPHandler(updateDocumentEndpoint, http.MethodPost, c.updateDocumentHandler),
 	}
 }
 
@@ -303,6 +306,36 @@ func (c *Operation) readDocumentHandler(rw http.ResponseWriter, req *http.Reques
 	writeReadDocumentSuccess(rw, documentBytes, docID, vaultID)
 }
 
+// Update Document swagger:route POST /encrypted-data-vaults/{vaultID}/documents/{docID} updateDocumentReq
+//
+// Update an encrypted document.
+//
+// Responses:
+//		default: genericError
+// 			200: emptyRes
+func (c *Operation) updateDocumentHandler(rw http.ResponseWriter, req *http.Request) {
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	docID, success := unescapePathVar(docIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.UpdateDocumentReceiveRequest, docID, vaultID))
+
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		writeErrorWithVaultIDAndDocID(rw, http.StatusInternalServerError,
+			messages.UpdateDocumentFailReadRequestBody, err, docID, vaultID)
+		return
+	}
+
+	c.updateDocument(rw, requestBody, docID, vaultID)
+}
+
 func (vc *VaultCollection) createDataVault(vaultID string) error {
 	err := vc.provider.CreateStore(vaultID)
 	if err != nil {
@@ -318,7 +351,25 @@ func (vc *VaultCollection) createDataVault(vaultID string) error {
 		return err
 	}
 
-	err = store.CreateEDVIndex()
+	err = vc.createIndices(store)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (vc *VaultCollection) createIndices(store edvprovider.EDVStore) error {
+	err := store.CreateEDVIndex()
+	if err != nil {
+		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
+			return nil
+		}
+
+		return err
+	}
+
+	err = store.CreateEncryptedDocIDIndex()
 	if err != nil {
 		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
 			return nil
@@ -354,7 +405,7 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 
 	err := json.Unmarshal(requestBody, &incomingDocument)
 	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err,
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocumentForDocCreation, err,
 			vaultID, requestBody)
 		return
 	}
@@ -373,7 +424,7 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 	}
 
 	if err = validateEncryptedDocument(incomingDocument); err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocument, err,
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocumentForDocCreation, err,
 			vaultID, requestBody)
 		return
 	}
@@ -463,6 +514,57 @@ func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]st
 	}
 
 	return store.Query(query)
+}
+
+func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, docID, vaultID string) {
+	var incomingDocument models.EncryptedDocument
+
+	err := json.Unmarshal(requestBody, &incomingDocument)
+	if err != nil {
+		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate, err, docID, vaultID)
+		return
+	}
+
+	if incomingDocument.ID != docID {
+		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate,
+			errors.New(messages.UnmatchedDocIDs), docID, vaultID)
+		return
+	}
+
+	if err = validateEncryptedDocument(incomingDocument); err != nil {
+		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate, err, docID, vaultID)
+		return
+	}
+
+	err = c.vaultCollection.updateDocument(docID, vaultID, incomingDocument)
+	if err != nil {
+		writeUpdateDocumentFailure(rw, err, docID, vaultID)
+		return
+	}
+
+	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.UpdateDocumentSuccess, docID, vaultID))
+}
+
+func (vc *VaultCollection) updateDocument(docID, vaultID string, document models.EncryptedDocument) error {
+	store, err := vc.provider.OpenStore(vaultID)
+	if err != nil {
+		if errors.Is(err, storage.ErrStoreNotFound) {
+			return messages.ErrVaultNotFound
+		}
+
+		return err
+	}
+
+	_, err = store.Get(docID)
+	if err != nil {
+		if errors.Is(err, storage.ErrValueNotFound) {
+			return messages.ErrDocumentNotFound
+		}
+
+		return err
+	}
+
+	return store.Update(document)
 }
 
 func validateDataVaultConfiguration(dataVaultConfig *models.DataVaultConfiguration) error {

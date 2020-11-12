@@ -37,6 +37,8 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 	s.Step(`^Attempt to create the same data vault again, resulting in a 409 error$`, e.createDataVaultAgain)
 	s.Step(`^Create a new document$`, e.createDocument)
 	s.Step(`^Retrieve that newly created document$`, e.retrieveDocument)
+	s.Step(`^Update the document$`, e.updateDocument)
+	s.Step(`^Retrieve that updated document$`, e.retrieveDocument)
 }
 
 func (e *Steps) createDataVault() error {
@@ -182,6 +184,22 @@ func (e *Steps) retrieveDocument() error {
 		return errors.New("expected the documents returned from both EDV implementations to be the same, but " +
 			"they're not. The document from the TrustBloc EDV is " + string(marshalledRetrievedDocFromTrustBlocEDV) +
 			" and the document from the Transmute EDV is " + string(marshalledRetrievedDocFromTransmuteEDV))
+	}
+
+	return nil
+}
+
+func (e *Steps) updateDocument() error {
+	err := e.bddInteropContext.TrustBlocEDVClient.UpdateDocument(e.bddInteropContext.TrustBlocEDVDataVaultID,
+		e.bddInteropContext.SampleDocForUpdate.ID, e.bddInteropContext.SampleDocForUpdate)
+	if err != nil {
+		return err
+	}
+
+	err = e.bddInteropContext.TransmuteEDVClient.UpdateDocument(e.bddInteropContext.TransmuteDataVaultID,
+		e.bddInteropContext.SampleDocForUpdate.ID, e.bddInteropContext.SampleDocForUpdate)
+	if err != nil {
+		return err
 	}
 
 	return nil

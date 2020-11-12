@@ -49,8 +49,14 @@ type EDVStore interface {
 	// Get fetches the document associated with the given key.
 	Get(k string) ([]byte, error)
 
+	// Update updates the given document
+	Update(document models.EncryptedDocument) error
+
 	// CreateEDVIndex creates the index which will allow for encrypted indices to work.
 	CreateEDVIndex() error
+
+	// CreateEncryptedDocIDIndex creates index for the MatchingEncryptedDocID field in mapping documents.
+	CreateEncryptedDocIDIndex() error
 
 	// Query does an EDV encrypted index query.
 	Query(query *models.Query) ([]string, error)

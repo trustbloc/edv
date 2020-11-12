@@ -57,8 +57,11 @@ const (
   "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
 }`
 
-	testDocID  = "VJYHHJx4C8J9Fsgz7rZqSp"
-	testDocID2 = "AJYHHJx4C8J9Fsgz7rZqSp"
+	testDocID      = "VJYHHJx4C8J9Fsgz7rZqSp"
+	testDocID2     = "AJYHHJx4C8J9Fsgz7rZqSp"
+	testIndexName1 = "indexName1"
+	testIndexName2 = "indexName2"
+	testIndexName3 = "indexName3"
 
 	testJWE1 = `{"protected":"eyJlbmMiOiJDMjBQIn0","recipients":[{"header":{"alg":"A256KW","kid":"https://exam` +
 		`ple.com/kms/z7BgF536GaR"},"encrypted_key":"OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"}],` +
@@ -69,6 +72,13 @@ const (
 		`X7XWRxv2322i-vDxRfqNzo_tETKzpVLzfiwQyeyPGLBIO56YJ7eObdv0je81860ppamavo35UgoRdbYaBcoh9QcfylQr66oc6vFWX` +
 		`RcZ_ZT2LawVCWTIy3brGPi6UklfCpIMfIjf7iGdXKHzg","iv":"48V1_ALb6US04U3b","ciphertext":"5eym8TW_c8SuK0ltJ` +
 		`3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tX_EFShS8iB7j6jiSdiwkIr3ajwQzaBtQD_A","tag":"XFBoMYUZodetZdvTiFvSkQ"}`
+
+	testIndexedAttributeCollections1 = `[{"sequence":0,"hmac":{"id":"","type":""},"attributes":[{"name":"` +
+		testIndexName1 + `","value":"testVal","unique":true},{"name":"` + testIndexName2 +
+		`","value":"testVal","unique":true}]}]`
+	testIndexedAttributeCollections2 = `[{"sequence":0,"hmac":{"id":"","type":""},"attributes":[{"name":"` +
+		testIndexName2 + `","value":"testVal","unique":true},{"name":"` + testIndexName3 +
+		`","value":"testVal","unique":true}]}]`
 
 	testEncryptedDocument = `{"id":"` + testDocID + `","sequence":0,"indexed":null,` +
 		`"jwe":` + testJWE1 + `}`
@@ -199,8 +209,16 @@ func (m *mockEDVStore) Query(*models.Query) ([]string, error) {
 	return []string{"docID1", "docID2"}, nil
 }
 
+func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
+	return nil
+}
+
 func (m *mockEDVStore) CreateReferenceIDIndex() error {
 	panic("implement me")
+}
+
+func (m *mockEDVStore) CreateEncryptedDocIDIndex() error {
+	return nil
 }
 
 func (m *mockEDVStore) StoreDataVaultConfiguration(*models.DataVaultConfiguration, string) error {
@@ -656,7 +674,7 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, testVaultID, "unexpected end of JSON input"),
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocumentForDocCreation, testVaultID, "unexpected end of JSON input"),
 			rr.Body.String())
 	})
 	t.Run("Document ID is not base58 encoded", func(t *testing.T) {
@@ -681,7 +699,7 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID, messages.ErrNotBase58Encoded),
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocumentForDocCreation, vaultID, messages.ErrNotBase58Encoded),
 			rr.Body.String())
 	})
 	t.Run("Document ID was not 128 bits long before being base58 encoded", func(t *testing.T) {
@@ -707,7 +725,7 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID, messages.ErrNot128BitValue),
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocumentForDocCreation, vaultID, messages.ErrNot128BitValue),
 			rr.Body.String())
 	})
 	t.Run("Empty JWE", func(t *testing.T) {
@@ -733,7 +751,7 @@ func TestCreateDocument(t *testing.T) {
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.InvalidDocument, vaultID,
+		require.Equal(t, fmt.Sprintf(messages.InvalidDocumentForDocCreation, vaultID,
 			fmt.Sprintf(messages.InvalidRawJWE, messages.BlankJWE)), rr.Body.String())
 	})
 	t.Run("Duplicate document", func(t *testing.T) {
@@ -1191,6 +1209,152 @@ func Test_writeReadAllDocumentsSuccess(t *testing.T) {
 			"MarshalJSON for type json.RawMessage: invalid character 'N' looking for beginning of value"),
 			rr.Body.String())
 	})
+}
+
+func TestUpdateDocument(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		originalEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections1 +
+			`,` + `"jwe":` + testJWE1 + `}`
+		storeEncryptedDocumentExpectSuccess(t, op, testDocID, originalEncryptedDoc, vaultID)
+
+		newEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections2 +
+			`,` + `"jwe":` + testJWE1 + `}`
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(newEncryptedDoc)))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+		urlVars[docIDPathVariable] = testDocID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
+
+		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		getDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		getDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Equal(t, newEncryptedDoc, rr.Body.String())
+	})
+	t.Run("Failure - error while unmarshalling incoming document", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("notAnEncryptedDocument")))
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+		urlVars[docIDPathVariable] = testDocID
+
+		req = mux.SetURLVars(req, urlVars)
+		createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
+
+		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "Received a request to update document "+testDocID+
+			" in vault "+vaultID+", but the document is invalid:")
+	})
+	t.Run("Failure - IDs from path variable and incoming document don't match", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		updateDocumentExpectError(t, op, []byte(testEncryptedDocument), vaultID, testDocID2,
+			fmt.Sprintf(messages.InvalidDocumentForDocUpdate, testDocID2, vaultID, messages.UnmatchedDocIDs),
+			http.StatusBadRequest)
+	})
+	t.Run("Failure - invalid incoming document", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		testInvalidDoc := models.EncryptedDocument{ID: testDocID, JWE: nil}
+
+		testValidDocBytes, err := json.Marshal(testInvalidDoc)
+		require.NoError(t, err)
+
+		updateDocumentExpectError(t, op, testValidDocBytes, vaultID, testDocID,
+			fmt.Sprintf(messages.InvalidDocumentForDocUpdate, testDocID, vaultID,
+				fmt.Sprintf(messages.InvalidRawJWE, messages.BlankJWEAlg)), http.StatusBadRequest)
+	})
+	t.Run("Failure - vault not found", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		updateDocumentExpectError(t, op, []byte(testEncryptedDocument), testVaultID, testDocID,
+			fmt.Sprintf(messages.UpdateDocumentFailure, testDocID, testVaultID, messages.ErrVaultNotFound),
+			http.StatusNotFound)
+	})
+	t.Run("Failure - other error while opening store", func(t *testing.T) {
+		op := New(&mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 2, errOpenStore: errors.New("test error")})
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		newEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections2 +
+			`,` + `"jwe":` + testJWE1 + `}`
+
+		updateDocumentExpectError(t, op, []byte(newEncryptedDoc), vaultID, testDocID,
+			fmt.Sprintf(messages.UpdateDocumentFailure, testDocID, vaultID, "test error"), http.StatusBadRequest)
+	})
+	t.Run("Failure - document to be updated does not exist", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		newEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections2 +
+			`,` + `"jwe":` + testJWE1 + `}`
+
+		updateDocumentExpectError(t, op, []byte(newEncryptedDoc), vaultID, testDocID,
+			fmt.Sprintf(messages.UpdateDocumentFailure, testDocID, vaultID, messages.ErrDocumentNotFound),
+			http.StatusNotFound)
+	})
+	t.Run("Response writer fails while writing request read error", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+
+		op.updateDocumentHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
+
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, errFailingReadCloser.Error())
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, errFailingResponseWriter.Error())
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, "Failed to read request body:")
+	})
+	t.Run("Response writer fails while writing vault not found error", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+
+		op.updateDocument(&failingResponseWriter{}, []byte(testEncryptedDocument), testDocID, testVaultID)
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, "Failed to update document "+
+			testDocID+" in vault "+testVaultID+": specified vault does not exist.")
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, errFailingResponseWriter.Error())
+	})
+}
+
+func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, pathVarVaultID,
+	pathVarDocID, expectedErrorString string, expectedErrorCode int) {
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer(requestBody))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = pathVarVaultID
+	urlVars[docIDPathVariable] = pathVarDocID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
+	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+	require.Equal(t, expectedErrorCode, rr.Code)
+	require.Equal(t, expectedErrorString, rr.Body.String())
 }
 
 func createConfigStoreExpectSuccess(t *testing.T, op *Operation) {

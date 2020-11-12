@@ -109,11 +109,8 @@ Received data: %s`
 	// This should not happen during normal operation.
 	CreateDocumentFailReadRequestBody = CreateDocumentReceiveRequest +
 		` Failed to read request body: %s.`
-	// GetCouchDBVaultNameFromVaultIDFailure is used when an error occurs while fetching the vault name in couchdb
-	// that is mapped to the vaultID.
-	GetCouchDBVaultNameFromVaultIDFailure = "Failed to obtain vault name associated with vaultID %s: %s"
-	// InvalidDocument is used when an invalid document is received.
-	InvalidDocument = `Received a request to create a document in vault %s, ` +
+	// InvalidDocumentForDocCreation is used when an invalid document is received while creating a document.
+	InvalidDocumentForDocCreation = `Received a request to create a document in vault %s, ` +
 		"but the document is invalid: %s."
 	// InvalidRawJWE is used when the JWE in a document is invalid.
 	InvalidRawJWE = "invalid raw JWE: %s"
@@ -157,6 +154,24 @@ Received data: %s`
 	// ReadDocumentSuccessWithRetrievedDoc is used when a request document is successfully read.
 	// Includes the retrieved document contents.
 	ReadDocumentSuccessWithRetrievedDoc = "Successfully retrieved document %s in vault %s. Retrieved doc: %s"
+
+	// UpdateDocumentReceiveRequest is used for logging update document requests.
+	UpdateDocumentReceiveRequest = "Received request to update document %s from data vault %s."
+	// UpdateDocumentFailReadRequestBody is used when the incoming request body can't be read.
+	// This should not happen during normal operation.
+	UpdateDocumentFailReadRequestBody = UpdateDocumentReceiveRequest + ` Failed to read request body: %s.`
+	// UnmatchedDocIDs is used when docIDs obtained from the path variable and the request body are different.
+	UnmatchedDocIDs = "document IDs from the path variable and the request body have to be the same"
+	// InvalidDocumentForDocUpdate is used when an invalid document is received while updating a document.
+	InvalidDocumentForDocUpdate = `Received a request to update document %s in vault %s, ` +
+		"but the document is invalid: %s."
+	// UpdateMappingDocumentFailure is used when an error occurs while updating the mapping document
+	// for the given document.
+	UpdateMappingDocumentFailure = "failed to update mapping document for document %s: %s"
+	// UpdateDocumentFailure is used when an error occurs while updating a document.
+	UpdateDocumentFailure = `Failed to update document %s in vault %s: %s.`
+	// UpdateDocumentSuccess is used when a request document is successfully updated.
+	UpdateDocumentSuccess = "Successfully updated document %s in vault %s."
 
 	// PutLogSpecFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.

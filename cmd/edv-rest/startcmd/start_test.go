@@ -75,6 +75,14 @@ func (m *mockEDVStore) StoreDataVaultConfiguration(*models.DataVaultConfiguratio
 	return nil
 }
 
+func (m *mockEDVStore) CreateEncryptedDocIDIndex() error {
+	return nil
+}
+
+func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
+	return nil
+}
+
 func TestStartCmdContents(t *testing.T) {
 	startCmd := GetStartCmd(&mockServer{})
 
