@@ -10,6 +10,12 @@ Feature: Using EDV REST API
 
   @e2e
   Scenario: Full end-to-end flow. Create a data vault, store an encrypted document, and then retrieve the encrypted document. Query using an encrypted index. Update an encrypted document, and then retrieve the encrypted document.
+    Given the wallet is registered as an OIDC client
+    When the wallet redirects the user to authenticate at hub-auth
+    And the user picks their third party OIDC provider
+    And the user authenticates with the third party OIDC provider
+    Then the user is redirected back to the wallet
+    And the user has authenticated to the wallet
     Then  Client sends request to create a new data vault and receives the vault location
     Then  Client constructs a Structured Document with id "VJYHHJx4C8J9Fsgz7rZqSp"
     Then  Client encrypts the Structured Document and uses it to construct an Encrypted Document

@@ -20,7 +20,9 @@ keyUsage = Digital Signature, Key Encipherment
 subjectAltName = @alt_names
 [alt_names]
 DNS.1 = localhost
-DNS.2 = edv.example.com" >> "$tmp"
+DNS.2 = edv.example.com
+DNS.3 = third.party.oidc.provider.example.com
+DNS.4 = auth.rest.hydra.example.com" >> "$tmp"
 
 CERT_CA="test/bdd/fixtures/keys/tls/ec-cacert.pem"
 if [ ! -f "$CERT_CA" ]; then
