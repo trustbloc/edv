@@ -109,8 +109,8 @@ func (c *Operation) createDataVaultHandler(rw http.ResponseWriter, req *http.Req
 		return
 	}
 
-	logger.Infof(`Received request to create a new data vault.
-Request body: %s`, string(requestBody))
+	logger.Infof(`Received request to create a new data vault. X-User header: %s,Request body: %s`,
+		req.Header.Get("X-User"), string(requestBody))
 
 	var config models.DataVaultConfiguration
 

@@ -157,7 +157,7 @@ func FeatureContext(s *godog.Suite) {
 		panic(fmt.Sprintf("Failed to create a new NewBDDInteropContext: %s", err))
 	}
 
-	edv.NewSteps(bddContext).RegisterSteps(s)
+	edv.NewSteps(bddContext, loginBDDContext).RegisterSteps(s)
 	common.NewSteps(bddContext).RegisterSteps(s)
 	interop.NewSteps(bddInteropContext).RegisterSteps(s)
 	authloginbdd.NewSteps(loginBDDContext).RegisterSteps(s)
