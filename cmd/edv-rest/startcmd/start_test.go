@@ -83,6 +83,10 @@ func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
 	return nil
 }
 
+func (m *mockEDVStore) Delete(docID string) error {
+	return nil
+}
+
 func TestStartCmdContents(t *testing.T) {
 	startCmd := GetStartCmd(&mockServer{})
 

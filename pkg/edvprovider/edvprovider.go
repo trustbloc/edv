@@ -52,6 +52,9 @@ type EDVStore interface {
 	// Update updates the given document
 	Update(document models.EncryptedDocument) error
 
+	// Delete deletes the given document
+	Delete(docID string) error
+
 	// CreateEDVIndex creates the index which will allow for encrypted indices to work.
 	CreateEDVIndex() error
 

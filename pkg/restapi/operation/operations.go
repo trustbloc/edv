@@ -44,6 +44,8 @@ const (
 		docIDPathVariable + "}"
 	updateDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
+	deleteDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
+		docIDPathVariable + "}"
 )
 
 var logger = log.New(logModuleName)
@@ -87,6 +89,7 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 		support.NewHTTPHandler(updateDocumentEndpoint, http.MethodPost, c.updateDocumentHandler),
+		support.NewHTTPHandler(deleteDocumentEndpoint, http.MethodDelete, c.deleteDocumentHandler),
 	}
 }
 
@@ -336,6 +339,34 @@ func (c *Operation) updateDocumentHandler(rw http.ResponseWriter, req *http.Requ
 	c.updateDocument(rw, requestBody, docID, vaultID)
 }
 
+// Delete Document swagger:route DELETE /encrypted-data-vaults/{vaultID}/documents/{docID} deleteDocumentReq
+//
+// Delete an encrypted document.
+//
+// Responses:
+//		default: genericError
+// 			200: emptyRes
+//			400: emptyRes
+// 			404: emptyRes
+func (c *Operation) deleteDocumentHandler(rw http.ResponseWriter, req *http.Request) {
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	docID, success := unescapePathVar(docIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.DeleteDocumentReceiveRequest, docID, vaultID))
+
+	err := c.vaultCollection.deleteDocument(docID, vaultID)
+	if err != nil {
+		writeDeleteDocumentFailure(rw, err, docID, vaultID)
+	}
+}
+
 func (vc *VaultCollection) createDataVault(vaultID string) error {
 	err := vc.provider.CreateStore(vaultID)
 	if err != nil {
@@ -565,6 +596,28 @@ func (vc *VaultCollection) updateDocument(docID, vaultID string, document models
 	}
 
 	return store.Update(document)
+}
+
+func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
+	store, err := vc.provider.OpenStore(vaultID)
+	if err != nil {
+		if errors.Is(err, storage.ErrStoreNotFound) {
+			return messages.ErrVaultNotFound
+		}
+
+		return err
+	}
+
+	_, err = store.Get(docID)
+	if err != nil {
+		if errors.Is(err, storage.ErrValueNotFound) {
+			return messages.ErrDocumentNotFound
+		}
+
+		return err
+	}
+
+	return store.Delete(docID)
 }
 
 func validateDataVaultConfiguration(dataVaultConfig *models.DataVaultConfiguration) error {

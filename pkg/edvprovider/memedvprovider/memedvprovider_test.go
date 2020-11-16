@@ -17,6 +17,7 @@ import (
 	"github.com/trustbloc/edv/pkg/restapi/models"
 
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/edge-core/pkg/storage"
 	"github.com/trustbloc/edge-core/pkg/storage/mockstore"
 )
 
@@ -191,6 +192,26 @@ func TestMemEDVStore_Update(t *testing.T) {
 		require.Equal(t, 1, len(updatedDoc.IndexedAttributeCollections[0].IndexedAttributes))
 		require.Equal(t, "IndexName2", updatedDoc.IndexedAttributeCollections[0].IndexedAttributes[0].Name)
 		require.Equal(t, json.RawMessage(`{"SomeJWEKey2":"SomeJWEValue2"}`), updatedDoc.JWE)
+	})
+}
+
+func TestMemEDVStore_Delete(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		store := createAndOpenStoreExpectSuccess(t)
+		origDoc := models.EncryptedDocument{
+			ID:       "Doc1",
+			Sequence: 0,
+			JWE:      []byte(`{"SomeJWEKey1":"SomeJWEValue1"}`),
+		}
+
+		err := store.Put(origDoc)
+		require.NoError(t, err)
+
+		err = store.Delete("Doc1")
+		require.NoError(t, err)
+
+		_, err = store.Get("Doc1")
+		require.Error(t, err, storage.ErrValueNotFound)
 	})
 }
 

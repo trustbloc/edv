@@ -862,6 +862,60 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 	})
 }
 
+func TestCouchDBEDVStore_Delete(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
+
+		err := store.Delete(testDocID1)
+		require.NoError(t, err)
+
+		_, err = store.Get(testDocID1)
+		require.NotNil(t, err)
+		require.Equal(t, storage.ErrValueNotFound, err)
+
+		mockCoreStore.ResultsIteratorToReturn = &mockIterator{}
+
+		documentIndexedAttribute1 := buildIndexedAttribute(testIndexName1, true)
+		indexedAttributeCollection1 := models.IndexedAttributeCollection{
+			Sequence:          0,
+			HMAC:              models.IDTypePair{},
+			IndexedAttributes: []models.IndexedAttribute{documentIndexedAttribute1},
+		}
+
+		doc := buildEncryptedDoc(testDocID1, indexedAttributeCollection1)
+
+		err = store.Put(doc)
+		require.NoError(t, err)
+	})
+	t.Run("Failure - error finding matching document names for the document", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
+			ResultsIteratorToReturn: &mockIterator{errNext: errors.New(testError)}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		doc := buildEncryptedDoc(testDocID1, models.IndexedAttributeCollection{})
+
+		err := store.Put(doc)
+		require.NoError(t, err)
+
+		err = store.Delete(testDocID1)
+		require.Error(t, err, testError)
+	})
+	t.Run("Failure - error deleting mapping documents", func(t *testing.T) {
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrDelete: errors.New(testError),
+			ResultsIteratorToReturn: &mockIterator{}}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
+
+		err := store.Delete(testDocID1)
+		require.Error(t, err, fmt.Sprintf(messages.DeleteMappingDocumentFailure, testError))
+	})
+}
+
 func storeOriginalDocumentBeforeUpdate(t *testing.T, store CouchDBEDVStore, mockCoreStore *mockstore.MockStore,
 	indexName, encryptedDocID, mappingDocumentID string) {
 	documentIndexedAttribute1 := buildIndexedAttribute(indexName, true)

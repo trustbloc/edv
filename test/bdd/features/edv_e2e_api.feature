@@ -33,3 +33,5 @@ Feature: Using EDV REST API
     Then  Client updates Structured Document with id "VJYHHJx4C8J9Fsgz7rZqSp" in the data vault
     Then  Client sends request to retrieve the updated Encrypted Document with id "VJYHHJx4C8J9Fsgz7rZqSp" in the data vault and receives the updated Encrypted Document in response
     Then  Client decrypts the Encrypted Document it received in order to reconstruct the original Structured Document
+    Then  Client deletes the Encrypted Document with id "VJYHHJx4C8J9Fsgz7rZqSp" from the vault
+    Then  Client stores the Encrypted Document again

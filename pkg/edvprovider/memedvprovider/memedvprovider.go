@@ -93,6 +93,11 @@ func (m MemEDVStore) Update(newDoc models.EncryptedDocument) error {
 	return m.Put(newDoc)
 }
 
+// Delete deletes the given document
+func (m MemEDVStore) Delete(docID string) error {
+	return m.coreStore.Delete(docID)
+}
+
 // CreateEDVIndex is not supported in memstore, and calling it will always return an error.
 func (m MemEDVStore) CreateEDVIndex() error {
 	return edvprovider.ErrIndexingNotSupported

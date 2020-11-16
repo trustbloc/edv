@@ -275,3 +275,18 @@ func writeUpdateDocumentFailure(rw http.ResponseWriter, errUpdateDoc error, docI
 		logger.Errorf(messages.UpdateDocumentFailure+messages.FailWriteResponse, docID, vaultID, errUpdateDoc, errWrite)
 	}
 }
+
+func writeDeleteDocumentFailure(rw http.ResponseWriter, errDeleteDoc error, docID, vaultID string) {
+	logger.Infof(messages.DeleteDocumentFailure, docID, vaultID, errDeleteDoc)
+
+	if errDeleteDoc == messages.ErrDocumentNotFound || errDeleteDoc == messages.ErrVaultNotFound {
+		rw.WriteHeader(http.StatusNotFound)
+	} else {
+		rw.WriteHeader(http.StatusBadRequest)
+	}
+
+	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.DeleteDocumentFailure, docID, vaultID, errDeleteDoc)))
+	if errWrite != nil {
+		logger.Errorf(messages.DeleteDocumentFailure+messages.FailWriteResponse, docID, vaultID, errDeleteDoc, errWrite)
+	}
+}

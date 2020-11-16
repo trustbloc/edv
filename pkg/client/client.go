@@ -314,6 +314,43 @@ Response body: %s`, fullEndpoint, jsonToSend, resp.StatusCode, respBytes)
 		resp.StatusCode, respBytes)
 }
 
+// DeleteDocument sends the EDV server a request to delete the specified document.
+func (c *Client) DeleteDocument(vaultID, docID string) error {
+	return c.sendDELETERequest(fmt.Sprintf("/%s/documents/%s", url.PathEscape(vaultID), url.PathEscape(docID)))
+}
+
+func (c *Client) sendDELETERequest(endpointPathToAppend string) error {
+	fullEndpoint := c.edvServerURL + endpointPathToAppend
+
+	req, err := http.NewRequest(http.MethodDelete, fullEndpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create new DELETE request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req) //nolint: bodyclose
+	if err != nil {
+		return fmt.Errorf("failed to send DELETE request: %w", err)
+	}
+
+	defer closeReadCloser(resp.Body)
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	logger.Debugf(`Sent DELETE request to %s.
+Response status code: %d
+Response body: %s`, fullEndpoint, resp.StatusCode, respBytes)
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	return fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+		resp.StatusCode, respBytes)
+}
+
 func closeReadCloser(respBody io.ReadCloser) {
 	err := respBody.Close()
 	if err != nil {

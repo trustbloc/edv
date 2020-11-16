@@ -482,6 +482,64 @@ func TestClient_UpdateDocument_ServerUnreachable(t *testing.T) {
 	require.True(t, testPassed)
 }
 
+func TestClient_DeleteDocument(t *testing.T) {
+	srvAddr := randomURL()
+
+	srv := startEDVServer(t, srvAddr)
+
+	waitForServerToStart(t, srvAddr)
+
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+	validConfig := getTestValidDataVaultConfiguration()
+	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	require.NoError(t, err)
+
+	vaultID := getVaultIDFromURL(vaultLocationURL)
+
+	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
+	require.NoError(t, err)
+
+	err = client.DeleteDocument(vaultID, testDocumentID)
+	require.NoError(t, err)
+
+	receivedDoc, err := client.ReadDocument(vaultID, testDocumentID)
+	require.Nil(t, receivedDoc)
+	require.Error(t, err, fmt.Sprintf(messages.ReadDocumentFailure, testDocumentID, vaultID, messages.ErrDocumentNotFound))
+
+	err = srv.Shutdown(context.Background())
+	require.NoError(t, err)
+}
+
+func TestClient_DeleteDocument_VaultNotFound(t *testing.T) {
+	srvAddr := randomURL()
+
+	srv := startEDVServer(t, srvAddr)
+
+	waitForServerToStart(t, srvAddr)
+
+	client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+	err := client.DeleteDocument(testVaultIDNonExistent, testDocumentID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
+	require.Contains(t, err.Error(), "status code 404")
+
+	err = srv.Shutdown(context.Background())
+	require.NoError(t, err)
+}
+
+func TestClient_DeleteDocument_ServerUnreachable(t *testing.T) {
+	srvAddr := randomURL()
+
+	client := New("http://" + srvAddr)
+
+	err := client.DeleteDocument(testVaultIDNonExistent, testDocumentID)
+
+	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
+	require.True(t, testPassed)
+}
+
 func TestClient_QueryVault(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		srvAddr := randomURL()
