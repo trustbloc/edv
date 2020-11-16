@@ -343,7 +343,7 @@ func (c *Client) sendDELETERequest(endpointPathToAppend string) error {
 Response status code: %d
 Response body: %s`, fullEndpoint, resp.StatusCode, respBytes)
 
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
 
