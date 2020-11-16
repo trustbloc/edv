@@ -45,9 +45,16 @@ edv-rest-docker:
 	--build-arg ALPINE_VER=$(ALPINE_VER) .
 
 .PHONY: bdd-test
-bdd-test: edv-rest-docker generate-test-keys
+bdd-test: edv-rest-docker generate-test-keys mock-login-consent-docker
 	@rm -Rf ./test/bdd/*.log
 	@scripts/check_integration.sh
+
+
+.PHONY: mock-login-consent-docker
+mock-login-consent-docker:
+	@echo "Building mock login consent server for BDD tests..."
+	@cd test/bdd/mock/loginconsent && docker build -f image/Dockerfile --build-arg GO_VER=$(GO_VER) --build-arg ALPINE_VER=$(ALPINE_VER) -t mockloginconsent:latest .
+
 
 unit-test:
 	@scripts/check_unit.sh
