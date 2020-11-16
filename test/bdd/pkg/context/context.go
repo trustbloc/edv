@@ -104,12 +104,14 @@ const (
     "sequence": 0
 }`
 
+	proxyHostURL        = "localhost:4455/encrypted-data-vaults"
 	trustBlocEDVHostURL = "localhost:8080/encrypted-data-vaults"
 )
 
 // BDDContext is a global context shared between different test suites in bddtests
 type BDDContext struct {
 	EDVClient                  *edvclient.Client
+	ProxyEDVClient             *edvclient.Client
 	VaultID                    string
 	JWEDecrypter               *jose.JWEDecrypt
 	StructuredDocToBeEncrypted *models.StructuredDocument
@@ -130,9 +132,15 @@ func NewBDDContext(caCertPaths ...string) (*BDDContext, error) {
 		return nil, err
 	}
 
+	proxyEDVClient, err := createProxyEDVClient()
+	if err != nil {
+		return nil, err
+	}
+
 	instance := BDDContext{
-		TLSConfig: &tls.Config{RootCAs: rootCAs},
-		EDVClient: trustBlocEDVClient,
+		TLSConfig:      &tls.Config{RootCAs: rootCAs},
+		EDVClient:      trustBlocEDVClient,
+		ProxyEDVClient: proxyEDVClient,
 	}
 
 	return &instance, nil
@@ -195,4 +203,13 @@ func createTrustBlocEDVClient() (*edvclient.Client, error) {
 	}
 
 	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs})), nil
+}
+
+func createProxyEDVClient() (*edvclient.Client, error) {
+	rootCAs, err := tlsutils.GetCertPool(false, []string{"fixtures/keys/tls/ec-cacert.pem"})
+	if err != nil {
+		return nil, err
+	}
+
+	return edvclient.New("http://"+proxyHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs})), nil
 }

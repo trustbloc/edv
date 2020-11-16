@@ -49,6 +49,21 @@ func WithTLSConfig(tlsConfig *tls.Config) Option {
 	}
 }
 
+// Opts is used to interact with an EDV operation.
+type Opts struct {
+	httpHeader map[string]string
+}
+
+// EDVOption configures the edv operation
+type EDVOption func(opts *Opts)
+
+// WithHTTPHeader option is
+func WithHTTPHeader(key, value string) EDVOption {
+	return func(opts *Opts) {
+		opts.httpHeader[key] = value
+	}
+}
+
 // New returns a new instance of an EDV client.
 func New(edvServerURL string, opts ...Option) *Client {
 	c := &Client{edvServerURL: edvServerURL, httpClient: &http.Client{}, marshal: json.Marshal}
@@ -62,7 +77,13 @@ func New(edvServerURL string, opts ...Option) *Client {
 
 // CreateDataVault sends the EDV server a request to create a new data vault.
 // The location of the newly created data vault is returned.
-func (c *Client) CreateDataVault(config *models.DataVaultConfiguration) (string, error) {
+func (c *Client) CreateDataVault(config *models.DataVaultConfiguration, opts ...EDVOption) (string, error) {
+	opt := &Opts{httpHeader: make(map[string]string)}
+
+	for _, o := range opts {
+		o(opt)
+	}
+
 	jsonToSend, err := c.marshal(config)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal data vault configuration: %w", err)
@@ -71,7 +92,7 @@ func (c *Client) CreateDataVault(config *models.DataVaultConfiguration) (string,
 	logger.Debugf("Sending request to create a new data vault with the following data vault configuration: %s",
 		jsonToSend)
 
-	return c.sendPOSTCreateRequest(jsonToSend, "")
+	return c.sendPOSTCreateRequest(jsonToSend, opt.httpHeader, "")
 }
 
 // CreateDocument sends the EDV server a request to store the specified document.
@@ -84,7 +105,7 @@ func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocume
 
 	logger.Debugf("Sending request to create the following document: %s", jsonToSend)
 
-	return c.sendPOSTCreateRequest(jsonToSend, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
+	return c.sendPOSTCreateRequest(jsonToSend, nil, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
 }
 
 // ReadAllDocuments sends the EDV server a request to retrieve all the documents within the specified vault.
@@ -222,11 +243,22 @@ func (c *Client) UpdateDocument(vaultID, docID string, document *models.Encrypte
 		fmt.Sprintf("/%s/documents/%s", url.PathEscape(vaultID), url.PathEscape(docID)))
 }
 
-func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, endpointPathToAppend string) (string, error) {
+func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, httpHeader map[string]string,
+	endpointPathToAppend string) (string, error) {
 	fullEndpoint := c.edvServerURL + endpointPathToAppend
 
-	resp, err := c.httpClient.Post(fullEndpoint, "application/json", //nolint: bodyclose
-		bytes.NewBuffer(jsonToSend))
+	req, err := http.NewRequest(http.MethodPost, fullEndpoint, bytes.NewBuffer(jsonToSend))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	for k, v := range httpHeader {
+		req.Header.Add(k, v)
+	}
+
+	resp, err := c.httpClient.Do(req) //nolint: bodyclose
 	if err != nil {
 		return "", fmt.Errorf("failed to send POST request: %w", err)
 	}

@@ -17,6 +17,6 @@ require (
 	github.com/tidwall/gjson v1.6.0
 	github.com/trustbloc/edge-core v0.1.5-0.20201023140820-2a85df5bc1aa
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
-	github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201113142105-250d3c419232
+	github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201116135852-764f60b8417b
 	gotest.tools/v3 v3.0.3 // indirect
 )

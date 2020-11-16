@@ -75,7 +75,7 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	location, err := client.CreateDataVault(&validConfig)
+	location, err := client.CreateDataVault(&validConfig, WithHTTPHeader("h1", "v1"))
 	require.NoError(t, err)
 	require.Contains(t, location, srvAddr+"/encrypted-data-vaults/")
 
