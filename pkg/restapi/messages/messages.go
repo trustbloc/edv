@@ -173,6 +173,13 @@ Received data: %s`
 	// UpdateDocumentSuccess is used when a request document is successfully updated.
 	UpdateDocumentSuccess = "Successfully updated document %s in vault %s."
 
+	// DeleteDocumentReceiveRequest is used for logging delete document requests.
+	DeleteDocumentReceiveRequest = "Received request to delete document %s from data vault %s."
+	// DeleteDocumentFailure is used when an error occurs while deleting a document.
+	DeleteDocumentFailure = `Failed to delete document %s in vault %s: %s.`
+	// DeleteMappingDocumentFailure is used when an error occurs while deleting a mapping document for the document.
+	DeleteMappingDocumentFailure = "failed to delete mapping document: %s"
+
 	// PutLogSpecFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.
 	PutLogSpecFailReadRequestBody = "Received request to change the log spec, " +

@@ -213,6 +213,10 @@ func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
 	return nil
 }
 
+func (m *mockEDVStore) Delete(docID string) error {
+	return nil
+}
+
 func (m *mockEDVStore) CreateReferenceIDIndex() error {
 	panic("implement me")
 }
@@ -618,7 +622,7 @@ func TestQueryVault(t *testing.T) {
 		require.Equal(t,
 			fmt.Sprintf(messages.UnescapeFailure, vaultIDPathVariable, `invalid URL escape "%"`),
 			rr.Body.String())
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("No matching documents", func(t *testing.T) {
 		rr := httptest.NewRecorder()
@@ -836,7 +840,7 @@ func TestCreateDocument(t *testing.T) {
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Equal(t, "", rr.Header().Get("Location"))
 		require.Equal(t,
 			fmt.Sprintf(messages.UnescapeFailure, vaultIDPathVariable, `invalid URL escape "%"`),
@@ -1001,7 +1005,7 @@ Actual document 2: %s`, testEncryptedDocument, testEncryptedDocument2,
 		req = mux.SetURLVars(req, urlVars)
 
 		readAllDocumentsEndpointHandler.Handle().ServeHTTP(rr, req)
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 
 		require.Equal(t, fmt.Sprintf(messages.UnescapeFailure, vaultIDPathVariable, `invalid URL escape "%"`),
 			rr.Body.String())
@@ -1091,7 +1095,7 @@ func TestReadDocument(t *testing.T) {
 
 		readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 
 		require.Equal(t, fmt.Sprintf(messages.UnescapeFailure, vaultIDPathVariable, `invalid URL escape "%"`),
 			rr.Body.String())
@@ -1120,7 +1124,7 @@ func TestReadDocument(t *testing.T) {
 
 		readDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 
 		require.Equal(t, fmt.Sprintf(messages.UnescapeFailure, docIDPathVariable, `invalid URL escape "%"`),
 			rr.Body.String())
@@ -1338,6 +1342,82 @@ func TestUpdateDocument(t *testing.T) {
 	})
 }
 
+func TestDeleteDocument(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+		urlVars[docIDPathVariable] = testDocID
+
+		req, err := http.NewRequest("DELETE", "", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		req = mux.SetURLVars(req, urlVars)
+
+		deleteDocumentEndpointHandler := getHandler(t, op, deleteDocumentEndpoint, http.MethodDelete)
+		deleteDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		req, err = http.NewRequest("GET", "", nil)
+		require.NoError(t, err)
+
+		rr = httptest.NewRecorder()
+		req = mux.SetURLVars(req, urlVars)
+
+		getDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		getDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+		require.Equal(t, http.StatusNotFound, rr.Code)
+		require.Equal(t, fmt.Sprintf(messages.ReadDocumentFailure, testDocID, vaultID, messages.ErrDocumentNotFound),
+			rr.Body.String())
+	})
+	t.Run("Failure - unable to escape vault ID path variable", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		deleteDocumentExpectError(t, op, "%", testDocID, fmt.Sprintf(messages.UnescapeFailure,
+			vaultIDPathVariable, `invalid URL escape "%"`), http.StatusBadRequest)
+	})
+	t.Run("Failure - unable to escape doc ID path variable", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		deleteDocumentExpectError(t, op, testVaultID, "%", fmt.Sprintf(messages.UnescapeFailure,
+			docIDPathVariable, `invalid URL escape "%"`), http.StatusBadRequest)
+	})
+	t.Run("Failure - vault does not exist", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+
+		deleteDocumentExpectError(t, op, testVaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
+			testVaultID, messages.ErrVaultNotFound), http.StatusNotFound)
+	})
+	t.Run("Failure - other error while opening store", func(t *testing.T) {
+		op := New(&mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 2, errOpenStore: errors.New("test error")})
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		deleteDocumentExpectError(t, op, vaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
+			vaultID, "test error"), http.StatusBadRequest)
+	})
+	t.Run("Failure - document does not exist", func(t *testing.T) {
+		op := New(memedvprovider.NewProvider())
+		createConfigStoreExpectSuccess(t, op)
+		vaultID := createDataVaultExpectSuccess(t, op)
+
+		deleteDocumentExpectError(t, op, vaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
+			vaultID, messages.ErrDocumentNotFound), http.StatusNotFound)
+	})
+	t.Run("Response writer fails while writing delete document failure", func(t *testing.T) {
+		writeDeleteDocumentFailure(failingResponseWriter{}, errors.New("test error"), testDocID, testVaultID)
+
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
+			fmt.Sprintf(messages.DeleteDocumentFailure+messages.FailWriteResponse, testDocID, testVaultID, "test error",
+				errFailingResponseWriter))
+	})
+}
+
 func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, pathVarVaultID,
 	pathVarDocID, expectedErrorString string, expectedErrorCode int) {
 	req, err := http.NewRequest("POST", "", bytes.NewBuffer(requestBody))
@@ -1353,6 +1433,24 @@ func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, 
 
 	createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+	require.Equal(t, expectedErrorCode, rr.Code)
+	require.Equal(t, expectedErrorString, rr.Body.String())
+}
+
+func deleteDocumentExpectError(t *testing.T, op *Operation, pathVarVaultID, pathVarDocID, expectedErrorString string,
+	expectedErrorCode int) {
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = pathVarVaultID
+	urlVars[docIDPathVariable] = pathVarDocID
+
+	req, err := http.NewRequest("DELETE", "", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	req = mux.SetURLVars(req, urlVars)
+
+	deleteDocumentEndpointHandler := getHandler(t, op, deleteDocumentEndpoint, http.MethodDelete)
+	deleteDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 	require.Equal(t, expectedErrorCode, rr.Code)
 	require.Equal(t, expectedErrorString, rr.Body.String())
 }

@@ -124,6 +124,18 @@ type updateDocumentReq struct { // nolint: unused,deadcode
 	Document models.EncryptedDocument
 }
 
+// deleteDocumentReq model
+//
+// swagger:parameters deleteDocumentReq
+type deleteDocumentReq struct { // nolint: unused,deadcode
+	// in: path
+	// required: true
+	VaultID string `json:"vaultID"`
+	// in: path
+	// required: true
+	DocID string `json:"docID"`
+}
+
 // emptyRes model
 //
 // swagger:response emptyRes

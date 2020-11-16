@@ -190,6 +190,23 @@ func (c *CouchDBEDVStore) Update(newDoc models.EncryptedDocument) error {
 	return c.coreStore.Put(newDoc.ID, newDocBytes)
 }
 
+// Delete deletes the given document and its mapping document(s).
+func (c *CouchDBEDVStore) Delete(docID string) error {
+	mappingDocNamesAndIndexNames, err := c.findDocMatchingQueryEncryptedDocID(docID)
+	if err != nil {
+		return err
+	}
+
+	for mappingDocName := range mappingDocNamesAndIndexNames {
+		err := c.deleteMappingDocument(mappingDocName)
+		if err != nil {
+			return fmt.Errorf(messages.DeleteMappingDocumentFailure, err)
+		}
+	}
+
+	return c.coreStore.Delete(docID)
+}
+
 // CreateEDVIndex creates the index which will allow for encrypted indices to work.
 func (c *CouchDBEDVStore) CreateEDVIndex() error {
 	createIndexRequest := storage.CreateIndexRequest{

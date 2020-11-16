@@ -21,7 +21,9 @@ import (
 func unescapePathVar(pathVar string, vars map[string]string, rw http.ResponseWriter) (string, bool) {
 	unescapedPathVar, errUnescape := url.PathUnescape(vars[pathVar])
 	if errUnescape != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
+		logger.Errorf(messages.UnescapeFailure, pathVar, errUnescape)
+
+		rw.WriteHeader(http.StatusBadRequest)
 
 		_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.UnescapeFailure, pathVar, errUnescape)))
 		if errWrite != nil {

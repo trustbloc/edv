@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/hyperledger/aries-framework-go v0.1.4
 	github.com/tidwall/gjson v1.6.0
-	github.com/trustbloc/edge-core v0.1.5-0.20201023140820-2a85df5bc1aa
+	github.com/trustbloc/edge-core v0.1.5-0.20201106164919-76ecfeca954f
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 	github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201116135852-764f60b8417b
 	gotest.tools/v3 v3.0.3 // indirect

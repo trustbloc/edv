@@ -81,6 +81,8 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 		`vault and receives the updated Encrypted Document in response$`, e.retrieveDocument)
 	s.Step(`^Client decrypts the Encrypted Document it received`+
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
+	s.Step(`^Client deletes the Encrypted Document with id "([^"]*)" from the vault$`, e.deleteDocument)
+	s.Step(`^Client stores the Encrypted Document again$`, e.storeDocumentInVault)
 }
 
 func (e *Steps) createDataVault() error {
@@ -308,6 +310,15 @@ func (e *Steps) updateDocumentInVault(docID string) error {
 	err := e.bddContext.EDVClient.UpdateDocument(e.bddContext.VaultID, docID, e.bddContext.EncryptedDocToStore)
 
 	return err
+}
+
+func (e *Steps) deleteDocument(docID string) error {
+	err := e.bddContext.EDVClient.DeleteDocument(e.bddContext.VaultID, docID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
