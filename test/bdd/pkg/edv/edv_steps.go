@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package edv
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,12 +14,16 @@ import (
 	"strings"
 
 	"github.com/cucumber/godog"
-	"github.com/google/tink/go/keyset"
 	"github.com/google/uuid"
-	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite"
-	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/ecdhes"
-	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto/primitive/composite/keyio"
+	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
+	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
+	"github.com/hyperledger/aries-framework-go/pkg/kms"
+	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
+	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
+	"github.com/hyperledger/aries-framework-go/pkg/secretlock/noop"
+	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
+	ariesmemstorage "github.com/hyperledger/aries-framework-go/pkg/storage/mem"
 	authloginctx "github.com/trustbloc/hub-auth/test/bdd/pkg/context"
 
 	edvclient "github.com/trustbloc/edv/pkg/client"
@@ -164,39 +167,39 @@ func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
 	return nil
 }
 
-func (e *Steps) clientEncryptsTheStructuredDocument() error {
+func (e *Steps) clientEncryptsTheStructuredDocument() error { //nolint: funlen
 	marshalledStructuredDoc, err := json.Marshal(e.bddContext.StructuredDocToBeEncrypted)
 	if err != nil {
 		return err
 	}
 
-	keyHandle, err := keyset.NewHandle(ecdhes.ECDHES256KWAES256GCMKeyTemplate())
+	k, err := localkms.New(
+		"local-lock://custom/master/key/",
+		kmsProvider{storageProvider: ariesmemstorage.NewProvider(), secretLockService: &noop.NoLock{}},
+	)
 	if err != nil {
 		return err
 	}
 
-	pubKH, err := keyHandle.Public()
+	_, ecPubKeyBytes, err := k.CreateAndExportPubKeyBytes(kms.ECDH256KWAES256GCMType)
 	if err != nil {
 		return err
 	}
 
-	buf := new(bytes.Buffer)
-	pubKeyWriter := keyio.NewWriter(buf)
+	ecPubKey := new(cryptoapi.PublicKey)
 
-	err = pubKH.WriteWithNoSecrets(pubKeyWriter)
+	err = json.Unmarshal(ecPubKeyBytes, ecPubKey)
 	if err != nil {
 		return err
 	}
 
-	ecPubKey := new(composite.PublicKey)
-
-	err = json.Unmarshal(buf.Bytes(), ecPubKey)
+	crypto, err := tinkcrypto.New()
 	if err != nil {
 		return err
 	}
 
-	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, composite.DIDCommEncType, "", nil,
-		[]*composite.PublicKey{ecPubKey})
+	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, jose.DIDCommEncType, "", nil,
+		[]*cryptoapi.PublicKey{ecPubKey}, crypto)
 	if err != nil {
 		return err
 	}
@@ -207,10 +210,22 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 	}
 
 	e.bddContext.EncryptedDocToStore = encryptedDocToStore
-
-	e.bddContext.JWEDecrypter = jose.NewJWEDecrypt(nil, keyHandle)
+	e.bddContext.JWEDecrypter = jose.NewJWEDecrypt(nil, crypto, k)
 
 	return nil
+}
+
+type kmsProvider struct {
+	storageProvider   ariesstorage.Provider
+	secretLockService secretlock.Service
+}
+
+func (k kmsProvider) StorageProvider() ariesstorage.Provider {
+	return k.storageProvider
+}
+
+func (k kmsProvider) SecretLock() secretlock.Service {
+	return k.secretLockService
 }
 
 func (e *Steps) storeDocumentInVault() error {

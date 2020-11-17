@@ -118,6 +118,31 @@ func TestStartCmdWithMissingArg(t *testing.T) {
 
 		require.Equal(t, fmt.Errorf("failed to connect to couchdb: %w", couchdbedvprovider.ErrMissingDatabaseURL), err)
 	})
+	t.Run("test missing kms database url arg - couchdb", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem", "--" +
+			localKMSSecretsDatabaseTypeFlagName, "couchdb", "--" + authEnableFlagName, "true", "--" +
+			databaseTimeoutFlagName, "1"}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Neither localkms-secrets-database-url (command line flag) nor "+
+			"EDV_LOCALKMS_SECRETS_DATABASE_URL (environment variable) have been set")
+	})
+
+	t.Run("test auth enable wrong value", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + authEnableFlagName, "wrong"}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "strconv.ParseBool: parsing ")
+	})
 }
 
 func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
@@ -131,7 +156,8 @@ func TestStartCmdValidArgs(t *testing.T) {
 	t.Run("database type: mem", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem"}
+		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + authEnableFlagName, "true", "--" + localKMSSecretsDatabaseTypeFlagName, "mem"}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -253,6 +279,26 @@ func TestStartCmdValidArgsEnvVar(t *testing.T) {
 	err = startCmd.Execute()
 
 	require.Nil(t, err)
+}
+
+func TestKeyManager(t *testing.T) {
+	t.Run("Error - invalid database type", func(t *testing.T) {
+		parameters := edvParameters{localKMSSecretsStorage: &storageParameters{storageType: "NotARealDatabaseType"}}
+
+		provider, err := createKeyManager(&parameters)
+		require.Nil(t, provider)
+		require.Equal(t, errInvalidDatabaseType, err)
+	})
+
+	t.Run("Error - CouchDB url is invalid", func(t *testing.T) {
+		parameters := edvParameters{localKMSSecretsStorage: &storageParameters{storageType: databaseTypeCouchDBOption,
+			storageURL: "%"}, databaseTimeout: 1}
+
+		provider, err := createKeyManager(&parameters)
+		require.Error(t, err)
+		require.Nil(t, provider)
+		require.Contains(t, err.Error(), "failed to connect to couchdb: failed to ping couchDB")
+	})
 }
 
 func TestCreateProvider(t *testing.T) {

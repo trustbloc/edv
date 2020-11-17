@@ -8,7 +8,10 @@ replace github.com/trustbloc/edv => ../..
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
+	github.com/google/tink/go v1.5.0
 	github.com/gorilla/mux v1.7.4
+	github.com/hyperledger/aries-framework-go v0.1.5-0.20201110161050-249e1c428734
+	github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20201113155502-c4ba5d2c7c0a
 	github.com/rs/cors v1.7.0
 	github.com/spf13/cobra v0.0.6
 	github.com/stretchr/testify v1.6.1
