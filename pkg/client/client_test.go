@@ -655,7 +655,7 @@ func startEDVServer(t *testing.T, srvAddr string) *http.Server {
 	err := memProv.CreateStore(dataVaultConfigurationStoreName)
 	require.NoError(t, err)
 
-	edvService, err := restapi.New(memProv)
+	edvService, err := restapi.New(&operation.Config{Provider: memProv})
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()

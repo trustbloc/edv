@@ -14,6 +14,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
@@ -54,6 +55,7 @@ var logger = log.New(logModuleName)
 type Operation struct {
 	handlers        []Handler
 	vaultCollection VaultCollection
+	keyManager      kms.KeyManager
 }
 
 // VaultCollection represents EDV storage.
@@ -68,12 +70,19 @@ type Handler interface {
 	Handle() http.HandlerFunc
 }
 
+// Config defines configuration for vcs operations
+type Config struct {
+	Provider   edvprovider.EDVProvider
+	KeyManager kms.KeyManager
+}
+
 // New returns a new EDV operations instance.
-func New(provider edvprovider.EDVProvider) *Operation {
+func New(config *Config) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
-			provider: provider,
-		}}
+			provider: config.Provider,
+		},
+		keyManager: config.KeyManager}
 	svc.registerHandler()
 
 	return svc
@@ -164,6 +173,9 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 		writeCreateDataVaultFailure(rw, err, configBytesForLog)
 		return
 	}
+
+	// Add zcap
+	// first create key
 
 	writeCreateDataVaultSuccess(rw, vaultID, hostURL, configBytesForLog)
 }

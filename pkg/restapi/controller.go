@@ -7,15 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package restapi
 
 import (
-	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/operation"
 )
 
 // New returns new controller instance.
-func New(provider edvprovider.EDVProvider) (*Controller, error) {
+func New(config *operation.Config) (*Controller, error) {
 	var allHandlers []operation.Handler
 
-	edvService := operation.New(provider)
+	edvService := operation.New(config)
 	allHandlers = append(allHandlers, edvService.GetRESTHandlers()...)
 
 	return &Controller{handlers: allHandlers}, nil

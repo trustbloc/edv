@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,7 +16,15 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
+	ariescouchdbstorage "github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
+	"github.com/hyperledger/aries-framework-go/pkg/kms"
+	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
+	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
+	"github.com/hyperledger/aries-framework-go/pkg/secretlock/local"
+	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
+	ariesmemstorage "github.com/hyperledger/aries-framework-go/pkg/storage/mem"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
@@ -27,9 +37,12 @@ import (
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/restapi"
 	"github.com/trustbloc/edv/pkg/restapi/healthcheck"
+	"github.com/trustbloc/edv/pkg/restapi/operation"
 )
 
 const (
+	commonEnvVarUsageText = "Alternatively, this can be set with the following environment variable: "
+
 	hostURLFlagName      = "host-url"
 	hostURLEnvKey        = "EDV_HOST_URL"
 	hostURLFlagShorthand = "u"
@@ -94,9 +107,37 @@ const (
 		" Alternatively, this can be set with the following environment variable: " + tlsKeyFileEnvKey
 	tlsKeyFileEnvKey = "EDV_TLS_KEY_FILE"
 
+	localKMSSecretsDatabaseTypeFlagName  = "localkms-secrets-database-type"
+	localKMSSecretsDatabaseTypeEnvKey    = "EDV_LOCALKMS_SECRETS_DATABASE_TYPE" //nolint: gosec
+	localKMSSecretsDatabaseTypeFlagUsage = "The type of database to use for storing KMS secrets for Keystore. " +
+		"Supported options: mem, couchdb. " + commonEnvVarUsageText + localKMSSecretsDatabaseTypeEnvKey
+
+	localKMSSecretsDatabaseURLFlagName  = "localkms-secrets-database-url"
+	localKMSSecretsDatabaseURLEnvKey    = "EDV_LOCALKMS_SECRETS_DATABASE_URL" //nolint: gosec
+	localKMSSecretsDatabaseURLFlagUsage = "The URL of the database for KMS secrets. " +
+		"Not needed if using in-memory storage. " +
+		"For CouchDB, include the username:password@ text if required. " + commonEnvVarUsageText +
+		localKMSSecretsDatabaseURLEnvKey
+
+	localKMSSecretsDatabasePrefixFlagName  = "localkms-secrets-database-prefix"
+	localKMSSecretsDatabasePrefixEnvKey    = "EDV_LOCALKMS_SECRETS_DATABASE_PREFIX" //nolint: gosec
+	localKMSSecretsDatabasePrefixFlagUsage = "An optional prefix to be used when creating and retrieving the underlying " +
+		"KMS secrets database. " + commonEnvVarUsageText + localKMSSecretsDatabasePrefixEnvKey
+
+	authEnableFlagName  = "auth-enable"
+	authEnableFlagUsage = "Enable authorization. Possible values [true] [false]. " +
+		"Defaults to false if not set. " + commonEnvVarUsageText + authEnableEnvKey
+	authEnableEnvKey = "KMS_TLS_SYSTEMCERTPOOL"
+
 	dataVaultConfigurationStoreName = "data_vault_configurations"
 
 	sleep = time.Second
+
+	masterKeyURI       = "local-lock://custom/master/key/"
+	masterKeyStoreName = "masterkey"
+	masterKeyDBKeyName = masterKeyStoreName
+
+	masterKeyNumBytes = 32
 )
 
 var logger = log.New("edv-rest")
@@ -116,20 +157,51 @@ var supportedEDVStorageProviders = map[string]func(string, string) (edvprovider.
 	},
 }
 
+// nolint:gochecknoglobals
+var supportedAriesStorageProviders = map[string]func(string, string) (ariesstorage.Provider, error){
+	databaseTypeCouchDBOption: func(databaseURL, prefix string) (ariesstorage.Provider, error) {
+		return ariescouchdbstorage.NewProvider(databaseURL, ariescouchdbstorage.WithDBPrefix(prefix))
+	},
+	databaseTypeMemOption: func(_, _ string) (ariesstorage.Provider, error) { // nolint:unparam
+		return ariesmemstorage.NewProvider(), nil
+	},
+}
+
 type edvParameters struct {
-	srv             server
-	hostURL         string
-	databaseType    string
-	databaseURL     string
-	databasePrefix  string
-	databaseTimeout uint64
-	logLevel        string
-	tlsConfig       *tlsConfig
+	srv                    server
+	hostURL                string
+	databaseType           string
+	databaseURL            string
+	databasePrefix         string
+	databaseTimeout        uint64
+	logLevel               string
+	tlsConfig              *tlsConfig
+	authEnable             bool
+	localKMSSecretsStorage *storageParameters
+}
+
+type storageParameters struct {
+	storageType   string
+	storageURL    string
+	storagePrefix string
 }
 
 type tlsConfig struct {
 	certFile string
 	keyFile  string
+}
+
+type kmsProvider struct {
+	storageProvider   ariesstorage.Provider
+	secretLockService secretlock.Service
+}
+
+func (k kmsProvider) StorageProvider() ariesstorage.Provider {
+	return k.storageProvider
+}
+
+func (k kmsProvider) SecretLock() secretlock.Service {
+	return k.secretLockService
 }
 
 type server interface {
@@ -157,7 +229,7 @@ func GetStartCmd(srv server) *cobra.Command {
 	return startCmd
 }
 
-func createStartCmd(srv server) *cobra.Command {
+func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start EDV",
@@ -204,19 +276,74 @@ func createStartCmd(srv server) *cobra.Command {
 				return err
 			}
 
+			authEnable, err := getAuthEnable(cmd)
+			if err != nil {
+				return err
+			}
+
+			localKMSSecretsStorage, err := getLocalKMSSecretsStorageParameters(cmd, !authEnable)
+			if err != nil {
+				return err
+			}
+
 			parameters := &edvParameters{
-				srv:             srv,
-				hostURL:         hostURL,
-				databaseType:    databaseType,
-				databaseURL:     databaseURL,
-				databasePrefix:  databasePrefix,
-				databaseTimeout: databaseTimeout,
-				logLevel:        loggingLevel,
-				tlsConfig:       tlsConfig,
+				srv:                    srv,
+				hostURL:                hostURL,
+				databaseType:           databaseType,
+				databaseURL:            databaseURL,
+				databasePrefix:         databasePrefix,
+				databaseTimeout:        databaseTimeout,
+				logLevel:               loggingLevel,
+				tlsConfig:              tlsConfig,
+				authEnable:             authEnable,
+				localKMSSecretsStorage: localKMSSecretsStorage,
 			}
 			return startEDV(parameters)
 		},
 	}
+}
+
+func getAuthEnable(cmd *cobra.Command) (bool, error) {
+	authEnableString := cmdutils.GetUserSetOptionalVarFromString(cmd, authEnableFlagName, authEnableEnvKey)
+
+	authEnable := false
+
+	if authEnableString != "" {
+		var err error
+		authEnable, err = strconv.ParseBool(authEnableString)
+
+		if err != nil {
+			return false, err
+		}
+	}
+
+	return authEnable, nil
+}
+
+func getLocalKMSSecretsStorageParameters(cmd *cobra.Command, isOptional bool) (*storageParameters, error) {
+	dbType, err := cmdutils.GetUserSetVarFromString(cmd, localKMSSecretsDatabaseTypeFlagName,
+		localKMSSecretsDatabaseTypeEnvKey, isOptional)
+	if err != nil {
+		return nil, err
+	}
+
+	storageParam := &storageParameters{storageType: dbType}
+
+	if dbType != databaseTypeMemOption {
+		dbURL, err := cmdutils.GetUserSetVarFromString(cmd, localKMSSecretsDatabaseURLFlagName,
+			localKMSSecretsDatabaseURLEnvKey, isOptional)
+		if err != nil {
+			return nil, err
+		}
+
+		dbPrefix := cmdutils.GetUserSetOptionalVarFromString(cmd, localKMSSecretsDatabasePrefixFlagName,
+			localKMSSecretsDatabasePrefixEnvKey)
+
+		storageParam.storageURL = dbURL
+		storageParam.storagePrefix = dbPrefix
+	}
+
+	return storageParam, nil
 }
 
 func getTimeout(cmd *cobra.Command) (timeout uint64, err error) {
@@ -262,6 +389,13 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(logLevelFlagName, logLevelFlagShorthand, "", logLevelPrefixFlagUsage)
 	startCmd.Flags().StringP(tlsCertFileFlagName, tlsCertFileFlagShorthand, "", tlsCertFileFlagUsage)
 	startCmd.Flags().StringP(tlsKeyFileFlagName, tlsKeyFileFlagShorthand, "", tlsKeyFileFlagUsage)
+	startCmd.Flags().StringP(localKMSSecretsDatabaseTypeFlagName, "", "",
+		localKMSSecretsDatabaseTypeFlagUsage)
+	startCmd.Flags().StringP(localKMSSecretsDatabaseURLFlagName, "", "",
+		localKMSSecretsDatabaseURLFlagUsage)
+	startCmd.Flags().StringP(localKMSSecretsDatabasePrefixFlagName, "", "",
+		localKMSSecretsDatabasePrefixFlagUsage)
+	startCmd.Flags().StringP(authEnableFlagName, "", "", authEnableFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error {
@@ -279,7 +413,16 @@ func startEDV(parameters *edvParameters) error {
 		return err
 	}
 
-	edvService, err := restapi.New(provider)
+	// create key manager
+	var keyManager kms.KeyManager
+	if parameters.authEnable {
+		keyManager, err = createKeyManager(parameters)
+		if err != nil {
+			return err
+		}
+	}
+
+	edvService, err := restapi.New(&operation.Config{Provider: provider, KeyManager: keyManager})
 	if err != nil {
 		return err
 	}
@@ -400,4 +543,89 @@ func retry(fn func() error, numRetries uint64) error {
 			logger.Warnf("failed to connect to database, will sleep for %s before trying again: %s",
 				t, retryErr)
 		})
+}
+
+func createKeyManager(parameters *edvParameters) (kms.KeyManager, error) {
+	localKMSSecretsStorageProvider, err := createAriesStorageProvider(parameters.localKMSSecretsStorage,
+		parameters.databaseTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	localKMS, err := createLocalKMS(localKMSSecretsStorageProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	return localKMS, nil
+}
+
+func createLocalKMS(kmsSecretsStoreProvider ariesstorage.Provider) (*localkms.LocalKMS, error) {
+	masterKeyReader, err := prepareMasterKeyReader(kmsSecretsStoreProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	secretLockService, err := local.NewService(masterKeyReader, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	kmsProv := kmsProvider{
+		storageProvider:   kmsSecretsStoreProvider,
+		secretLockService: secretLockService,
+	}
+
+	return localkms.New(masterKeyURI, kmsProv)
+}
+
+// prepareMasterKeyReader prepares a master key reader for secret lock usage
+func prepareMasterKeyReader(kmsSecretsStoreProvider ariesstorage.Provider) (*bytes.Reader, error) {
+	masterKeyStore, err := kmsSecretsStoreProvider.OpenStore(masterKeyStoreName)
+	if err != nil {
+		return nil, err
+	}
+
+	masterKey, err := masterKeyStore.Get(masterKeyDBKeyName)
+	if err != nil {
+		if errors.Is(err, ariesstorage.ErrDataNotFound) {
+			masterKeyRaw := random.GetRandomBytes(uint32(masterKeyNumBytes))
+			masterKey = []byte(base64.URLEncoding.EncodeToString(masterKeyRaw))
+
+			putErr := masterKeyStore.Put(masterKeyDBKeyName, masterKey)
+			if putErr != nil {
+				return nil, putErr
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	masterKeyReader := bytes.NewReader(masterKey)
+
+	return masterKeyReader, nil
+}
+
+func createAriesStorageProvider(parameters *storageParameters, databaseTimeout uint64) (ariesstorage.Provider, error) {
+	var prov ariesstorage.Provider
+
+	if parameters.storageType == databaseTypeMemOption {
+		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")
+	}
+
+	providerFunc, supported := supportedAriesStorageProviders[parameters.storageType]
+	if !supported {
+		return nil, errInvalidDatabaseType
+	}
+
+	err := retry(func() error {
+		var openErr error
+		prov, openErr = providerFunc(parameters.storageURL, parameters.storagePrefix)
+		return openErr
+	}, databaseTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s: %w", parameters.storageType, err)
+	}
+
+	return prov, nil
 }
