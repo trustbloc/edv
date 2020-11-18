@@ -58,7 +58,9 @@ const (
 var errFailingMarshal = errors.New("failingMarshal always fails")
 
 func TestClient_New(t *testing.T) {
-	client := New("", WithTLSConfig(&tls.Config{ServerName: "name", MinVersion: tls.VersionTLS12}))
+	client := New("", WithHeaders(func(req *http.Request) (*http.Header, error) {
+		return nil, nil
+	}), WithTLSConfig(&tls.Config{ServerName: "name", MinVersion: tls.VersionTLS12}))
 
 	require.NotNil(t, client)
 
@@ -75,7 +77,10 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	location, _, err := client.CreateDataVault(&validConfig, WithHTTPHeader("h1", "v1"))
+	location, _, err := client.CreateDataVault(&validConfig,
+		WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}))
 	require.NoError(t, err)
 	require.Contains(t, location, srvAddr+"/encrypted-data-vaults/")
 
@@ -134,7 +139,10 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
 
-	location, err := client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
+	location, err := client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE),
+		WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}))
 	require.NoError(t, err)
 	require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, location)
 
@@ -185,7 +193,10 @@ func TestClient_ReadAllDocuments(t *testing.T) {
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		validConfig := getTestValidDataVaultConfiguration()
-		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
+		vaultLocationURL, _, err := client.CreateDataVault(&validConfig,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
 		require.NoError(t, err)
 
 		vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -266,9 +277,8 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 		client := New("BadURL")
 
 		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
-		require.EqualError(t, err, `failure while sending request to retrieve all documents `+
-			`from vault `+testVaultIDNonExistent+`: failure while sending GET request: Get "BadURL/`+
-			testVaultIDNonExistent+`/documents":`+` unsupported protocol scheme ""`)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unsupported protocol scheme")
 		require.Nil(t, documents)
 	})
 	t.Run("Failure while unmarshalling response body", func(t *testing.T) {
@@ -311,7 +321,10 @@ func TestClient_ReadDocument(t *testing.T) {
 	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
 	require.NoError(t, err)
 
-	document, err := client.ReadDocument(vaultID, testDocumentID)
+	document, err := client.ReadDocument(vaultID, testDocumentID,
+		WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}))
 	require.NoError(t, err)
 
 	require.Equal(t, testDocumentID, document.ID)
@@ -440,7 +453,10 @@ func TestClient_UpdateDocument(t *testing.T) {
 	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
 	require.NoError(t, err)
 
-	err = client.UpdateDocument(vaultID, testDocumentID, getTestValidEncryptedDocument(testJWE2))
+	err = client.UpdateDocument(vaultID, testDocumentID, getTestValidEncryptedDocument(testJWE2),
+		WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}))
 	require.NoError(t, err)
 
 	document, err := client.ReadDocument(vaultID, testDocumentID)
@@ -500,7 +516,10 @@ func TestClient_DeleteDocument(t *testing.T) {
 	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
 	require.NoError(t, err)
 
-	err = client.DeleteDocument(vaultID, testDocumentID)
+	err = client.DeleteDocument(vaultID, testDocumentID,
+		WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}))
 	require.NoError(t, err)
 
 	receivedDoc, err := client.ReadDocument(vaultID, testDocumentID)
