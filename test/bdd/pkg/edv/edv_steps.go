@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -117,7 +118,10 @@ func (e *Steps) createDataVaultWithWrongAccessToken() error {
 	}
 
 	_, _, err := e.bddContext.ProxyEDVClient.CreateDataVault(&config,
-		edvclient.WithHTTPHeader("Authorization", "Bearer 123"))
+		edvclient.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			req.Header.Set("Authorization", "Bearer 123")
+			return &req.Header, nil
+		}))
 	if err == nil {
 		return fmt.Errorf("create data vault didn't failed with wrong access token")
 	}
@@ -140,7 +144,10 @@ func (e *Steps) createDataVaultWithAccessToken() error {
 	}
 
 	vaultLocation, resp, err := e.bddContext.ProxyEDVClient.CreateDataVault(&config,
-		edvclient.WithHTTPHeader("Authorization", "Bearer "+e.loginBDDContext.AccessToken()))
+		edvclient.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			req.Header.Set("Authorization", "Bearer "+e.loginBDDContext.AccessToken())
+			return &req.Header, nil
+		}))
 	if err != nil {
 		return err
 	}
