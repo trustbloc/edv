@@ -51,12 +51,14 @@ func generateEDVCompatibleID(generateRandomBytes generateRandomBytesFunc) (strin
 // So the closest I can do is see if the decoded byte array is 16 bytes long,
 // however this means that if the original value was 121 bits to 127 bits long it'll still be accepted.
 func CheckIfBase58Encoded128BitValue(id string) error {
+	const number16 = 16
+
 	decodedBytes := base58.Decode(id)
 	if len(decodedBytes) == 0 {
 		return messages.ErrNotBase58Encoded
 	}
 
-	if len(decodedBytes) != 16 {
+	if len(decodedBytes) != number16 {
 		return messages.ErrNot128BitValue
 	}
 

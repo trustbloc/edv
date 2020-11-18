@@ -58,7 +58,7 @@ const (
 var errFailingMarshal = errors.New("failingMarshal always fails")
 
 func TestClient_New(t *testing.T) {
-	client := New("", WithTLSConfig(&tls.Config{ServerName: "name"}))
+	client := New("", WithTLSConfig(&tls.Config{ServerName: "name", MinVersion: tls.VersionTLS12}))
 
 	require.NotNil(t, client)
 
@@ -75,7 +75,7 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	location, err := client.CreateDataVault(&validConfig, WithHTTPHeader("h1", "v1"))
+	location, _, err := client.CreateDataVault(&validConfig, WithHTTPHeader("h1", "v1"))
 	require.NoError(t, err)
 	require.Contains(t, location, srvAddr+"/encrypted-data-vaults/")
 
@@ -94,7 +94,7 @@ func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 
 	invalidConfig := models.DataVaultConfiguration{}
 
-	location, err := client.CreateDataVault(&invalidConfig)
+	location, _, err := client.CreateDataVault(&invalidConfig)
 	require.Empty(t, location)
 
 	require.Contains(t, err.Error(), "Received invalid data vault configuration")
@@ -110,7 +110,7 @@ func TestClient_CreateDataVault_ServerUnreachable(t *testing.T) {
 	client := New("http://" + srvAddr)
 
 	validConfig := getTestValidDataVaultConfiguration()
-	location, err := client.CreateDataVault(&validConfig)
+	location, _, err := client.CreateDataVault(&validConfig)
 	require.Empty(t, location)
 
 	// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
@@ -129,7 +129,7 @@ func TestClient_CreateDocument(t *testing.T) {
 
 	validConfig := getTestValidDataVaultConfiguration()
 
-	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -185,7 +185,7 @@ func TestClient_ReadAllDocuments(t *testing.T) {
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 		validConfig := getTestValidDataVaultConfiguration()
-		vaultLocationURL, err := client.CreateDataVault(&validConfig)
+		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 		require.NoError(t, err)
 
 		vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -303,7 +303,7 @@ func TestClient_ReadDocument(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -353,7 +353,7 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -380,7 +380,7 @@ func TestClient_ReadDocument_NotFound(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -432,7 +432,7 @@ func TestClient_UpdateDocument(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)
@@ -492,7 +492,7 @@ func TestClient_DeleteDocument(t *testing.T) {
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
 	validConfig := getTestValidDataVaultConfiguration()
-	vaultLocationURL, err := client.CreateDataVault(&validConfig)
+	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
 	require.NoError(t, err)
 
 	vaultID := getVaultIDFromURL(vaultLocationURL)

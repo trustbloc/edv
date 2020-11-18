@@ -19,6 +19,8 @@ import (
 	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
 	ariescouchdbstorage "github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
+	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
+	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
@@ -127,7 +129,7 @@ const (
 	authEnableFlagName  = "auth-enable"
 	authEnableFlagUsage = "Enable authorization. Possible values [true] [false]. " +
 		"Defaults to false if not set. " + commonEnvVarUsageText + authEnableEnvKey
-	authEnableEnvKey = "KMS_TLS_SYSTEMCERTPOOL"
+	authEnableEnvKey = "EDV_AUTH_ENABLE"
 
 	dataVaultConfigurationStoreName = "data_vault_configurations"
 
@@ -398,7 +400,7 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(authEnableFlagName, "", "", authEnableFlagUsage)
 }
 
-func startEDV(parameters *edvParameters) error {
+func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	if parameters.logLevel != "" {
 		setLogLevel(parameters.logLevel)
 	}
@@ -415,14 +417,30 @@ func startEDV(parameters *edvParameters) error {
 
 	// create key manager
 	var keyManager kms.KeyManager
+
+	var crypto cryptoapi.Crypto
+
 	if parameters.authEnable {
 		keyManager, err = createKeyManager(parameters)
 		if err != nil {
 			return err
 		}
+
+		// create crypto
+		crypto, err = tinkcrypto.New()
+		if err != nil {
+			return err
+		}
 	}
 
-	edvService, err := restapi.New(&operation.Config{Provider: provider, KeyManager: keyManager})
+	storageProvider, err := createAriesStorageProvider(&storageParameters{storageType: parameters.databaseType,
+		storageURL: parameters.databaseURL, storagePrefix: parameters.databasePrefix}, parameters.databaseTimeout)
+	if err != nil {
+		return err
+	}
+
+	edvService, err := restapi.New(&operation.Config{Provider: provider, KeyManager: keyManager, Crypto: crypto,
+		StorageProvider: storageProvider, AuthEnable: parameters.authEnable})
 	if err != nil {
 		return err
 	}

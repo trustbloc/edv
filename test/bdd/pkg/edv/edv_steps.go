@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/noop"
 	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
 	ariesmemstorage "github.com/hyperledger/aries-framework-go/pkg/storage/mem"
+	"github.com/trustbloc/edge-core/pkg/zcapld"
 	authloginctx "github.com/trustbloc/hub-auth/test/bdd/pkg/context"
 
 	edvclient "github.com/trustbloc/edv/pkg/client"
@@ -97,7 +98,7 @@ func (e *Steps) createDataVault() error {
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
 	}
 
-	vaultLocation, err := e.bddContext.EDVClient.CreateDataVault(&config)
+	vaultLocation, _, err := e.bddContext.EDVClient.CreateDataVault(&config)
 
 	s := strings.Split(vaultLocation, "/")
 	vaultID := s[len(s)-1]
@@ -115,7 +116,7 @@ func (e *Steps) createDataVaultWithWrongAccessToken() error {
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
 	}
 
-	_, err := e.bddContext.ProxyEDVClient.CreateDataVault(&config,
+	_, _, err := e.bddContext.ProxyEDVClient.CreateDataVault(&config,
 		edvclient.WithHTTPHeader("Authorization", "Bearer 123"))
 	if err == nil {
 		return fmt.Errorf("create data vault didn't failed with wrong access token")
@@ -138,7 +139,7 @@ func (e *Steps) createDataVaultWithAccessToken() error {
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
 	}
 
-	vaultLocation, err := e.bddContext.ProxyEDVClient.CreateDataVault(&config,
+	vaultLocation, resp, err := e.bddContext.ProxyEDVClient.CreateDataVault(&config,
 		edvclient.WithHTTPHeader("Authorization", "Bearer "+e.loginBDDContext.AccessToken()))
 	if err != nil {
 		return err
@@ -147,6 +148,15 @@ func (e *Steps) createDataVaultWithAccessToken() error {
 	s := strings.Split(vaultLocation, "/")
 	vaultID := s[len(s)-1]
 	e.bddContext.VaultID = vaultID
+
+	capability, err := zcapld.ParseCapability(resp)
+	if err != nil {
+		return err
+	}
+
+	if capability.Context != zcapld.SecurityContextV2 {
+		return fmt.Errorf("wrong ctx return for zcapld")
+	}
 
 	return nil
 }
@@ -167,7 +177,7 @@ func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
 	return nil
 }
 
-func (e *Steps) clientEncryptsTheStructuredDocument() error { //nolint: funlen
+func (e *Steps) clientEncryptsTheStructuredDocument() error {
 	marshalledStructuredDoc, err := json.Marshal(e.bddContext.StructuredDocToBeEncrypted)
 	if err != nil {
 		return err

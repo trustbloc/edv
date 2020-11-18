@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/messages"
-	"github.com/trustbloc/edv/pkg/restapi/models"
-
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/storage"
 	"github.com/trustbloc/edge-core/pkg/storage/mockstore"
+
+	"github.com/trustbloc/edv/pkg/edvprovider"
+	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 const testStoreName = "TestStore"

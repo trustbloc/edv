@@ -7,9 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package restapi
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/hyperledger/aries-framework-go/pkg/mock/storage"
 	"github.com/stretchr/testify/require"
 
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
@@ -20,6 +22,12 @@ func TestController_New(t *testing.T) {
 	controller, err := New(&operation.Config{Provider: memedvprovider.NewProvider()})
 	require.NoError(t, err)
 	require.NotNil(t, controller)
+
+	controller, err = New(&operation.Config{StorageProvider: &storage.MockStoreProvider{
+		ErrOpenStoreHandle: fmt.Errorf("failed to open")}, AuthEnable: true})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to open")
+	require.Nil(t, controller)
 }
 
 func TestController_GetOperations(t *testing.T) {

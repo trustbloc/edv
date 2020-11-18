@@ -65,7 +65,7 @@ func (e *Steps) createDataVault() error {
 }
 
 func (e *Steps) trustBlocCreateDataVault() error {
-	trustBlocEDVLocation, err :=
+	trustBlocEDVLocation, _, err :=
 		e.bddInteropContext.TrustBlocEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func (e *Steps) trustBlocCreateDataVault() error {
 }
 
 func (e *Steps) transmuteCreateDataVault() error {
-	transmuteDataVaultLocation, err :=
+	transmuteDataVaultLocation, _, err :=
 		e.bddInteropContext.TransmuteEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 	if err != nil {
 		return err
@@ -109,7 +109,7 @@ func (e *Steps) transmuteCreateDataVault() error {
 }
 
 func (e *Steps) createDataVaultAgain() error {
-	_, errTrustBlocCreateVault :=
+	_, _, errTrustBlocCreateVault :=
 		e.bddInteropContext.TrustBlocEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 
 	if !strings.Contains(errTrustBlocCreateVault.Error(), statusCode409Msg) {
@@ -117,7 +117,7 @@ func (e *Steps) createDataVaultAgain() error {
 			"but got " + errTrustBlocCreateVault.Error() + " instead")
 	}
 
-	_, errTransmuteCreateVault :=
+	_, _, errTransmuteCreateVault :=
 		e.bddInteropContext.TransmuteEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 
 	if !strings.Contains(errTransmuteCreateVault.Error(), statusCode409Msg) {
