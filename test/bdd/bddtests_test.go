@@ -50,11 +50,10 @@ func TestMain(m *testing.M) {
 	os.Exit(status)
 }
 
-func runBDDTests(tags, format string) int {
+func runBDDTests(tags, format string) int { //nolint: gocognit
 	return godog.RunWithOptions("godogs", func(s *godog.Suite) {
 		var composition []*dockerutil.Composition
-		var composeFiles = []string{"./fixtures/couchdb", "./fixtures/auth-rest"}
-		var edvComposeFile = "./fixtures/edv-rest"
+		var composeFiles = []string{"./fixtures/couchdb", "./fixtures/edv-rest", "./fixtures/auth-rest"}
 		s.BeforeSuite(func() {
 			if os.Getenv("DISABLE_COMPOSITION") != "true" {
 				// Need a unique name, but docker does not allow '-' in names
@@ -65,7 +64,7 @@ func runBDDTests(tags, format string) int {
 				}
 
 				fmt.Println("docker-compose up ... waiting for containers to start ...")
-				testSleep := 40
+				testSleep := 50
 				if os.Getenv("TEST_SLEEP") != "" {
 					var e error
 
@@ -74,12 +73,6 @@ func runBDDTests(tags, format string) int {
 						panic(fmt.Sprintf("Invalid value found in 'TEST_SLEEP': %s", e))
 					}
 				}
-
-				sleepAndWait(testSleep)
-
-				composition = appendToComposition(composition, edvComposeFile, composeProjectName)
-
-				testSleep = 5
 
 				sleepAndWait(testSleep)
 			}

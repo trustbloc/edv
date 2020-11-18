@@ -138,7 +138,7 @@ func NewBDDContext(caCertPaths ...string) (*BDDContext, error) {
 	}
 
 	instance := BDDContext{
-		TLSConfig:      &tls.Config{RootCAs: rootCAs},
+		TLSConfig:      &tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12},
 		EDVClient:      trustBlocEDVClient,
 		ProxyEDVClient: proxyEDVClient,
 	}
@@ -202,7 +202,8 @@ func createTrustBlocEDVClient() (*edvclient.Client, error) {
 		return nil, err
 	}
 
-	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs})), nil
+	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs,
+		MinVersion: tls.VersionTLS12})), nil
 }
 
 func createProxyEDVClient() (*edvclient.Client, error) {
@@ -211,5 +212,6 @@ func createProxyEDVClient() (*edvclient.Client, error) {
 		return nil, err
 	}
 
-	return edvclient.New("http://"+proxyHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs})), nil
+	return edvclient.New("http://"+proxyHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs,
+		MinVersion: tls.VersionTLS12})), nil
 }

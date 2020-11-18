@@ -14,10 +14,13 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
+	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/storage"
 
+	"github.com/trustbloc/edv/pkg/auth/zcapld"
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
@@ -55,7 +58,12 @@ var logger = log.New(logModuleName)
 type Operation struct {
 	handlers        []Handler
 	vaultCollection VaultCollection
-	keyManager      kms.KeyManager
+	authEnable      bool
+	authService     authService
+}
+
+type authService interface {
+	Create(resourceID, verificationMethod string) ([]byte, error)
 }
 
 // VaultCollection represents EDV storage.
@@ -72,20 +80,32 @@ type Handler interface {
 
 // Config defines configuration for vcs operations
 type Config struct {
-	Provider   edvprovider.EDVProvider
-	KeyManager kms.KeyManager
+	Provider        edvprovider.EDVProvider
+	KeyManager      kms.KeyManager
+	AuthEnable      bool
+	Crypto          cryptoapi.Crypto
+	StorageProvider ariesstorage.Provider
 }
 
 // New returns a new EDV operations instance.
-func New(config *Config) *Operation {
+func New(config *Config) (*Operation, error) {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: config.Provider,
-		},
-		keyManager: config.KeyManager}
+		}, authEnable: config.AuthEnable}
+
+	if config.AuthEnable {
+		authService, err := zcapld.New(config.KeyManager, config.Crypto, config.StorageProvider)
+		if err != nil {
+			return nil, err
+		}
+
+		svc.authService = authService
+	}
+
 	svc.registerHandler()
 
-	return svc
+	return svc, nil
 }
 
 // registerHandler register handlers to be exposed from this service as REST API endpoints.
@@ -174,10 +194,18 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 		return
 	}
 
-	// Add zcap
-	// first create key
+	// Add auth payload if enabled
+	var payload []byte
 
-	writeCreateDataVaultSuccess(rw, vaultID, hostURL, configBytesForLog)
+	if c.authEnable {
+		payload, err = c.authService.Create(config.ReferenceID, config.Controller)
+		if err != nil {
+			writeCreateDataVaultFailure(rw, err, configBytesForLog)
+			return
+		}
+	}
+
+	writeCreateDataVaultSuccess(rw, vaultID, hostURL, configBytesForLog, payload)
 }
 
 // Query Vault swagger:route POST /encrypted-data-vaults/{vaultID}/queries queryVaultReq

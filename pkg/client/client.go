@@ -77,7 +77,7 @@ func New(edvServerURL string, opts ...Option) *Client {
 
 // CreateDataVault sends the EDV server a request to create a new data vault.
 // The location of the newly created data vault is returned.
-func (c *Client) CreateDataVault(config *models.DataVaultConfiguration, opts ...EDVOption) (string, error) {
+func (c *Client) CreateDataVault(config *models.DataVaultConfiguration, opts ...EDVOption) (string, []byte, error) {
 	opt := &Opts{httpHeader: make(map[string]string)}
 
 	for _, o := range opts {
@@ -86,7 +86,7 @@ func (c *Client) CreateDataVault(config *models.DataVaultConfiguration, opts ...
 
 	jsonToSend, err := c.marshal(config)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal data vault configuration: %w", err)
+		return "", nil, fmt.Errorf("failed to marshal data vault configuration: %w", err)
 	}
 
 	logger.Debugf("Sending request to create a new data vault with the following data vault configuration: %s",
@@ -105,7 +105,10 @@ func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocume
 
 	logger.Debugf("Sending request to create the following document: %s", jsonToSend)
 
-	return c.sendPOSTCreateRequest(jsonToSend, nil, fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
+	locationHdr, _, err := c.sendPOSTCreateRequest(jsonToSend, nil,
+		fmt.Sprintf("/%s/documents", url.PathEscape(vaultID)))
+
+	return locationHdr, err
 }
 
 // ReadAllDocuments sends the EDV server a request to retrieve all the documents within the specified vault.
@@ -244,12 +247,12 @@ func (c *Client) UpdateDocument(vaultID, docID string, document *models.Encrypte
 }
 
 func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, httpHeader map[string]string,
-	endpointPathToAppend string) (string, error) {
+	endpointPathToAppend string) (string, []byte, error) {
 	fullEndpoint := c.edvServerURL + endpointPathToAppend
 
 	req, err := http.NewRequest(http.MethodPost, fullEndpoint, bytes.NewBuffer(jsonToSend))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -260,14 +263,14 @@ func (c *Client) sendPOSTCreateRequest(jsonToSend []byte, httpHeader map[string]
 
 	resp, err := c.httpClient.Do(req) //nolint: bodyclose
 	if err != nil {
-		return "", fmt.Errorf("failed to send POST request: %w", err)
+		return "", nil, fmt.Errorf("failed to send POST request: %w", err)
 	}
 
 	defer closeReadCloser(resp.Body)
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return "", nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	logger.Debugf(`Sent POST request to %s.
@@ -277,10 +280,10 @@ Response status code: %d
 Response body: %s`, fullEndpoint, jsonToSend, resp.StatusCode, respBytes)
 
 	if resp.StatusCode == http.StatusCreated {
-		return resp.Header.Get("Location"), nil
+		return resp.Header.Get("Location"), respBytes, nil
 	}
 
-	return "", fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+	return "", nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
 		resp.StatusCode, respBytes)
 }
 

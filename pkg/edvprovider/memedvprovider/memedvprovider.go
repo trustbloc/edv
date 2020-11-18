@@ -11,12 +11,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/trustbloc/edge-core/pkg/storage"
+	"github.com/trustbloc/edge-core/pkg/storage/memstore"
+
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
-
-	"github.com/trustbloc/edge-core/pkg/storage"
-	"github.com/trustbloc/edge-core/pkg/storage/memstore"
 )
 
 const failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"

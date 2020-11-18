@@ -69,7 +69,8 @@ func writeCreateDataVaultFailure(rw http.ResponseWriter, errVaultCreation error,
 	}
 }
 
-func writeCreateDataVaultSuccess(rw http.ResponseWriter, vaultID, hostURL string, configBytesForLog []byte) {
+func writeCreateDataVaultSuccess(rw http.ResponseWriter, vaultID, hostURL string,
+	configBytesForLog, body []byte) {
 	urlEncodedVaultID := url.PathEscape(vaultID)
 
 	newVaultLocation := hostURL + "/encrypted-data-vaults/" + urlEncodedVaultID
@@ -78,7 +79,12 @@ func writeCreateDataVaultSuccess(rw http.ResponseWriter, vaultID, hostURL string
 		"Successfully created new data vault at "+newVaultLocation, configBytesForLog)
 
 	rw.Header().Set("Location", newVaultLocation)
+	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusCreated)
+
+	if _, err := rw.Write(body); err != nil {
+		logger.Errorf(err.Error())
+	}
 }
 
 func writeQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string, vaultID string, queryBytesForLog []byte) {
