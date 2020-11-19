@@ -18,6 +18,7 @@ require (
 	github.com/fsouza/go-dockerclient v1.6.6
 	github.com/google/uuid v1.1.2
 	github.com/hyperledger/aries-framework-go v0.1.5-0.20201110161050-249e1c428734
+	github.com/igor-pavlenko/httpsignatures-go v0.0.21
 	github.com/tidwall/gjson v1.6.0
 	github.com/trustbloc/edge-core v0.1.5-0.20201118072041-f28d721640b1
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000

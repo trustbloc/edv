@@ -135,14 +135,14 @@ func generateUUID() string {
 }
 
 func FeatureContext(s *godog.Suite) {
-	bddContext, err := bddctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem", "fixtures/keys/tls/ec-pubCert.pem")
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create a new NewBDDContext: %s", err))
-	}
-
 	loginBDDContext, err := authloginctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem")
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create a new auth login NewBDDContext: %s", err))
+	}
+
+	bddContext, err := bddctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem", loginBDDContext)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create a new NewBDDContext: %s", err))
 	}
 
 	bddInteropContext, err := bddctx.NewBDDInteropContext()

@@ -150,7 +150,7 @@ func TestNewProvider(t *testing.T) {
 		prov, err := NewProvider("http://localhost:5984", "")
 		require.NotNil(t, err)
 		require.Nil(t, prov)
-		require.Contains(t, err.Error(), "connection refused")
+		require.Contains(t, err.Error(), "failure while pinging couchDB")
 	})
 }
 
