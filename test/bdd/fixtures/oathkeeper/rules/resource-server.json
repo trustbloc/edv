@@ -5,9 +5,11 @@
       "url": "https://edv.example.com:8080"
     },
     "match": {
-      "url": "http://localhost:4455/encrypted-data-vaults",
+      "url": "http://localhost:4455/encrypted-data-vaults<.*>",
       "methods": [
-        "POST"
+        "GET",
+        "POST",
+        "DELETE"
       ]
     },
     "authenticators": [

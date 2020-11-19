@@ -13,13 +13,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff"
 	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
 	ariescouchdbstorage "github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
-	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
@@ -34,6 +34,7 @@ import (
 	"github.com/trustbloc/edge-core/pkg/storage"
 	cmdutils "github.com/trustbloc/edge-core/pkg/utils/cmd"
 
+	"github.com/trustbloc/edv/pkg/auth/zcapld"
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
@@ -140,6 +141,9 @@ const (
 	masterKeyDBKeyName = masterKeyStoreName
 
 	masterKeyNumBytes = 32
+
+	createVaultPath = "/encrypted-data-vaults"
+	healthCheckPath = "/healthcheck"
 )
 
 var logger = log.New("edv-rest")
@@ -204,6 +208,11 @@ func (k kmsProvider) StorageProvider() ariesstorage.Provider {
 
 func (k kmsProvider) SecretLock() secretlock.Service {
 	return k.secretLockService
+}
+
+type authService interface {
+	Create(resourceID, verificationMethod string) ([]byte, error)
+	Handler(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error)
 }
 
 type server interface {
@@ -415,32 +424,35 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		return err
 	}
 
-	// create key manager
-	var keyManager kms.KeyManager
-
-	var crypto cryptoapi.Crypto
+	// create auth service
+	var authSvc authService
 
 	if parameters.authEnable {
-		keyManager, err = createKeyManager(parameters)
-		if err != nil {
-			return err
+		keyManager, errCreate := createKeyManager(parameters)
+		if errCreate != nil {
+			return errCreate
 		}
 
 		// create crypto
-		crypto, err = tinkcrypto.New()
+		crypto, errCreate := tinkcrypto.New()
+		if errCreate != nil {
+			return errCreate
+		}
+
+		storageProvider, errCreate := createAriesStorageProvider(&storageParameters{storageType: parameters.databaseType,
+			storageURL: parameters.databaseURL, storagePrefix: parameters.databasePrefix}, parameters.databaseTimeout)
+		if errCreate != nil {
+			return errCreate
+		}
+
+		authSvc, err = zcapld.New(keyManager, crypto, storageProvider)
 		if err != nil {
 			return err
 		}
 	}
 
-	storageProvider, err := createAriesStorageProvider(&storageParameters{storageType: parameters.databaseType,
-		storageURL: parameters.databaseURL, storagePrefix: parameters.databasePrefix}, parameters.databaseTimeout)
-	if err != nil {
-		return err
-	}
-
-	edvService, err := restapi.New(&operation.Config{Provider: provider, KeyManager: keyManager, Crypto: crypto,
-		StorageProvider: storageProvider, AuthEnable: parameters.authEnable})
+	edvService, err := restapi.New(&operation.Config{Provider: provider, AuthService: authSvc,
+		AuthEnable: parameters.authEnable})
 	if err != nil {
 		return err
 	}
@@ -466,17 +478,13 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
 	}
 
-	logger.Infof(`Starting EDV REST server with the following parameters: 
-Host URL: %s
-Database type: %s
-Database URL: %s
-Database prefix: %s
-TLS certificate file: %s
-TLS key file: %s`, parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
+	logger.Infof("Starting EDV REST server with the following parameters:Host URL: %s Database type: %s "+
+		"Database URL: %s Database prefix: %s TLS certificate file: %sTLS key file: %s",
+		parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile)
 
 	return parameters.srv.ListenAndServe(parameters.hostURL,
-		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructCORSHandler(router))
+		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(authSvc, router))
 }
 
 func setLogLevel(userLogLevel string) {
@@ -545,13 +553,13 @@ func createConfigStore(provider edvprovider.EDVProvider) error {
 	return nil
 }
 
-func constructCORSHandler(handler http.Handler) http.Handler {
+func constructHandlers(authSvc authService, routerHandler http.Handler) http.Handler {
 	return cors.New(
 		cors.Options{
 			AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut},
 			AllowedHeaders: []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
 		},
-	).Handler(handler)
+	).Handler(&httpHandler{authSvc: authSvc, routerHandler: routerHandler})
 }
 
 func retry(fn func() error, numRetries uint64) error {
@@ -646,4 +654,44 @@ func createAriesStorageProvider(parameters *storageParameters, databaseTimeout u
 	}
 
 	return prov, nil
+}
+
+type httpHandler struct {
+	authSvc       authService
+	routerHandler http.Handler
+}
+
+func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// check if authSvc is nil
+	if h.authSvc == nil {
+		h.routerHandler.ServeHTTP(w, r)
+
+		return
+	}
+
+	if r.RequestURI == createVaultPath || r.RequestURI == healthCheckPath {
+		h.routerHandler.ServeHTTP(w, r)
+
+		return
+	}
+
+	s := strings.SplitAfter(r.RequestURI, "/")
+
+	authHandler, err := h.authSvc.Handler(strings.TrimSuffix(s[2], "/"), w,
+		func(writer http.ResponseWriter, request *http.Request) {
+			h.routerHandler.ServeHTTP(w, r)
+		})
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+
+		_, errWrite := w.Write([]byte(err.Error()))
+		if errWrite != nil {
+			logger.Errorf(errWrite.Error())
+		}
+
+		return
+	}
+
+	authHandler.ServeHTTP(w, r)
 }

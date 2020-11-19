@@ -9,6 +9,7 @@ package zcapld
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/google/uuid"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
@@ -18,13 +19,16 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
+	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
 )
 
 const (
-	storeName            = "zcap-capability"
-	invocationTargetType = "urn:edv:vault"
+	storeName   = "zcap_capability"
+	edvResource = "urn:edv:vault"
 )
+
+var logger = log.New("auth-zcap-service")
 
 // Service to provide zcapld functionality
 type Service struct {
@@ -57,12 +61,14 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 
 	id := uuid.New().URN()
 
+	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
+
 	capability, err := zcapld.NewCapability(&zcapld.Signer{
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
 		SuiteType:          ed25519signature2018.SignatureType,
-		VerificationMethod: keyID(signer),
+		VerificationMethod: didKeyURL,
 	}, zcapld.WithID(id), zcapld.WithParent(rootCapability.ID), zcapld.WithInvoker(verificationMethod),
-		zcapld.WithInvocationTarget(resourceID, invocationTargetType))
+		zcapld.WithInvocationTarget(resourceID, edvResource), zcapld.WithCapabilityChain(rootCapability.ID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new capability: %w", err)
 	}
@@ -75,6 +81,36 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 	return capabilityBytes, nil
 }
 
+// Handler will create auth handler
+func (s *Service) Handler(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error) {
+	rootCapability, err := s.getCapability(resourceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root capability %s from db: %w", resourceID, err)
+	}
+
+	return zcapld.NewHTTPSigAuthHandler(
+		&zcapld.HTTPSigAuthConfig{
+			CapabilityResolver: capabilityResolver{svc: s},
+			KeyResolver:        &zcapld.DIDKeyResolver{},
+			VerifierOptions: []zcapld.VerificationOption{
+				zcapld.WithSignatureSuites(
+					ed25519signature2018.New(suite.WithVerifier(ed25519signature2018.NewPublicKeyVerifier())),
+				),
+			},
+			Secrets:     &zcapld.AriesDIDKeySecrets{},
+			ErrConsumer: logError{w: w}.Log,
+			KMS:         s.keyManager,
+			Crypto:      s.crypto,
+		},
+		&zcapld.InvocationExpectations{
+			Target:         resourceID,
+			RootCapability: rootCapability.ID,
+			Action:         "read",
+		},
+		next,
+	), nil
+}
+
 func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, error) {
 	// create root capability and store in db
 	signer, err := signature.NewCryptoSigner(s.crypto, s.keyManager, kms.ED25519)
@@ -84,11 +120,13 @@ func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, e
 
 	rootID := uuid.New().URN()
 
+	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
+
 	rootCapability, err := zcapld.NewCapability(&zcapld.Signer{
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
 		SuiteType:          ed25519signature2018.SignatureType,
-		VerificationMethod: keyID(signer),
-	}, zcapld.WithID(rootID), zcapld.WithParent(rootID), zcapld.WithInvocationTarget(resourceID, invocationTargetType))
+		VerificationMethod: didKeyURL,
+	}, zcapld.WithID(rootID), zcapld.WithParent(rootID), zcapld.WithInvocationTarget(resourceID, edvResource))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new root capability: %w", err)
 	}
@@ -102,14 +140,43 @@ func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, e
 		return nil, fmt.Errorf("failed to store root capability: %w", err)
 	}
 
+	if err := s.store.Put(resourceID, rootCapabilityBytes); err != nil {
+		return nil, fmt.Errorf("failed to store root capability: %w", err)
+	}
+
 	return rootCapability, nil
 }
 
-func keyID(sigSigner signature.Signer) string {
-	// source: https://github.com/multiformats/multicodec/blob/master/table.csv.
-	const ed25519pub = 0xed // Ed25519 public key in multicodec table
+func (s *Service) getCapability(id string) (*zcapld.Capability, error) {
+	bytes, err := s.store.Get(id)
+	if err != nil {
+		return nil, err
+	}
 
-	thumb := fingerprint.KeyFingerprint(ed25519pub, sigSigner.PublicKeyBytes())
+	return zcapld.ParseCapability(bytes)
+}
 
-	return fmt.Sprintf("did:key:%s", thumb)
+// capabilityResolver resolve capability from db
+type capabilityResolver struct {
+	svc *Service
+}
+
+// Resolve resolves capabilities.
+func (s capabilityResolver) Resolve(uri string) (*zcapld.Capability, error) {
+	return s.svc.getCapability(uri)
+}
+
+// logError log error
+type logError struct {
+	w http.ResponseWriter
+}
+
+// Resolve resolves capabilities.
+func (l logError) Log(err error) {
+	l.w.WriteHeader(http.StatusBadRequest)
+
+	_, errWrite := l.w.Write([]byte(err.Error()))
+	if errWrite != nil {
+		logger.Errorf(errWrite.Error())
+	}
 }

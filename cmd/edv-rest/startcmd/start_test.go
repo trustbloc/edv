@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -331,6 +332,83 @@ func TestCreateProvider(t *testing.T) {
 		require.EqualError(t, err, fmt.Sprintf("failed to connect to couchdb: %s",
 			`failure while instantiate Kivik CouchDB client: parse "http://%": invalid URL escape "%"`))
 	})
+}
+
+func TestHttpHandler_ServeHTTP(t *testing.T) {
+	t.Run("test svc is nil", func(t *testing.T) {
+		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
+			require.Nil(t, r)
+		}}
+		h := httpHandler{routerHandler: m}
+		h.ServeHTTP(&httptest.ResponseRecorder{}, nil)
+	})
+
+	t.Run("test create vault request", func(t *testing.T) {
+		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.RequestURI, createVaultPath)
+		}}
+		h := httpHandler{routerHandler: m, authSvc: &mockAuthService{}}
+		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: createVaultPath})
+	})
+
+	t.Run("test health check request", func(t *testing.T) {
+		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.RequestURI, healthCheckPath)
+		}}
+		h := httpHandler{routerHandler: m, authSvc: &mockAuthService{}}
+		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: healthCheckPath})
+	})
+
+	t.Run("test error from auth handler", func(t *testing.T) {
+		h := httpHandler{authSvc: &mockAuthService{
+			handlerFunc: func(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error) {
+				return nil, fmt.Errorf("failed to create auth handler")
+			}}}
+
+		responseRecorder := httptest.NewRecorder()
+		h.ServeHTTP(responseRecorder, &http.Request{RequestURI: createVaultPath + "/vaultID"})
+
+		require.Contains(t, responseRecorder.Body.String(), "failed to create auth handler")
+	})
+
+	t.Run("test auth handler success", func(t *testing.T) {
+		h := httpHandler{authSvc: &mockAuthService{
+			handlerFunc: func(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error) {
+				return func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, r.RequestURI, createVaultPath+"/vaultID")
+				}, nil
+			}}}
+
+		responseRecorder := httptest.NewRecorder()
+		h.ServeHTTP(responseRecorder, &http.Request{RequestURI: createVaultPath + "/vaultID"})
+	})
+}
+
+type mockHTTPHandler struct {
+	serveHTTPFun func(w http.ResponseWriter, r *http.Request)
+}
+
+func (m *mockHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if m.serveHTTPFun != nil {
+		m.serveHTTPFun(w, r)
+	}
+}
+
+type mockAuthService struct {
+	handlerFunc func(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error)
+}
+
+func (m *mockAuthService) Create(resourceID, verificationMethod string) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockAuthService) Handler(resourceID string, w http.ResponseWriter,
+	next http.HandlerFunc) (http.HandlerFunc, error) {
+	if m.handlerFunc != nil {
+		return m.handlerFunc(resourceID, w, next)
+	}
+
+	return nil, nil
 }
 
 func TestListenAndServe(t *testing.T) {

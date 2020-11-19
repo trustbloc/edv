@@ -9,10 +9,12 @@ package interop
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
+	"github.com/trustbloc/edge-core/pkg/zcapld"
 
 	"github.com/trustbloc/edv/pkg/restapi/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
@@ -45,7 +47,7 @@ func (e *Steps) createDataVault() error {
 	vaultRefID := uuid.New().String()
 	e.bddInteropContext.DataVaultConfig = &models.DataVaultConfiguration{
 		Sequence:    0,
-		Controller:  "did:example:123456789",
+		Controller:  e.bddInteropContext.VerificationMethod,
 		ReferenceID: vaultRefID,
 		KEK:         models.IDTypePair{ID: "https://example.com/kms/12345", Type: "AesKeyWrappingKey2019"},
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
@@ -65,7 +67,7 @@ func (e *Steps) createDataVault() error {
 }
 
 func (e *Steps) trustBlocCreateDataVault() error {
-	trustBlocEDVLocation, _, err :=
+	trustBlocEDVLocation, resp, err :=
 		e.bddInteropContext.TrustBlocEDVClient.CreateDataVault(e.bddInteropContext.DataVaultConfig)
 	if err != nil {
 		return err
@@ -82,6 +84,17 @@ func (e *Steps) trustBlocCreateDataVault() error {
 	trustBlocDataVaultLocationURLSplitUp := strings.Split(trustBlocEDVLocation, "/")
 	e.bddInteropContext.TrustBlocEDVDataVaultID =
 		trustBlocDataVaultLocationURLSplitUp[len(trustBlocDataVaultLocationURLSplitUp)-1]
+
+	capability, err := zcapld.ParseCapability(resp)
+	if err != nil {
+		return err
+	}
+
+	if capability.Context != zcapld.SecurityContextV2 {
+		return fmt.Errorf("wrong ctx return for zcapld")
+	}
+
+	e.bddInteropContext.Capability = capability
 
 	return nil
 }
