@@ -18,7 +18,11 @@ import (
 	"github.com/google/uuid"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
+	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
 	authloginctx "github.com/trustbloc/hub-auth/test/bdd/pkg/context"
 
@@ -39,6 +43,8 @@ const (
 
 	documentTypeExpectedStructuredDoc  = "expected Structured Document"
 	documentTypeDecryptedStructuredDoc = "decrypted Structured Document"
+
+	edvResource = "urn:edv:vault"
 )
 
 // Steps is steps for EDV BDD tests
@@ -85,9 +91,16 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 }
 
 func (e *Steps) createDataVault() error {
+	signer, err := signature.NewCryptoSigner(e.bddContext.Crypto, e.bddContext.KeyManager, kms.ED25519)
+	if err != nil {
+		return fmt.Errorf("failed to create crypto signer: %w", err)
+	}
+
+	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
+
 	config := models.DataVaultConfiguration{
 		Sequence:    0,
-		Controller:  e.bddContext.VerificationMethod,
+		Controller:  didKeyURL,
 		ReferenceID: uuid.New().String(),
 		KEK:         models.IDTypePair{ID: "https://example.com/kms/12345", Type: "AesKeyWrappingKey2019"},
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
@@ -115,15 +128,37 @@ func (e *Steps) createDataVault() error {
 		return fmt.Errorf("wrong ctx return for zcapld")
 	}
 
-	e.bddContext.Capability = capability
+	// create chain capability
+	c, err := e.createChainCapability(capability, vaultID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	e.bddContext.Capability = c
+
+	return nil
+}
+
+func (e *Steps) createChainCapability(capability *zcapld.Capability, vaultID string) (*zcapld.Capability, error) {
+	signer, err := signature.NewCryptoSigner(e.bddContext.Crypto, e.bddContext.KeyManager, kms.ED25519)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create crypto signer: %w", err)
+	}
+
+	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
+
+	return zcapld.NewCapability(&zcapld.Signer{
+		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
+		SuiteType:          ed25519signature2018.SignatureType,
+		VerificationMethod: didKeyURL,
+	}, zcapld.WithParent(capability.ID), zcapld.WithInvoker(didKeyURL), zcapld.WithAllowedActions("read", "write"),
+		zcapld.WithInvocationTarget(vaultID, edvResource), zcapld.WithCapabilityChain(capability.Parent, capability.ID))
 }
 
 func (e *Steps) createDataVaultWithWrongAccessToken() error {
 	config := models.DataVaultConfiguration{
 		Sequence:    0,
-		Controller:  e.bddContext.VerificationMethod,
+		Controller:  "",
 		ReferenceID: uuid.New().String(),
 		KEK:         models.IDTypePair{ID: "https://example.com/kms/12345", Type: "AesKeyWrappingKey2019"},
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},

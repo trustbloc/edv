@@ -59,16 +59,15 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 		return nil, fmt.Errorf("failed to create crypto signer: %w", err)
 	}
 
-	id := uuid.New().URN()
-
 	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
 
 	capability, err := zcapld.NewCapability(&zcapld.Signer{
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: didKeyURL,
-	}, zcapld.WithID(id), zcapld.WithParent(rootCapability.ID), zcapld.WithInvoker(verificationMethod),
-		zcapld.WithInvocationTarget(resourceID, edvResource), zcapld.WithCapabilityChain(rootCapability.ID))
+	}, zcapld.WithParent(rootCapability.ID), zcapld.WithInvoker(verificationMethod),
+		zcapld.WithAllowedActions("read", "write"), zcapld.WithInvocationTarget(resourceID, edvResource),
+		zcapld.WithCapabilityChain(rootCapability.ID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new capability: %w", err)
 	}
@@ -76,6 +75,10 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 	capabilityBytes, err := json.Marshal(capability)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal capability: %w", err)
+	}
+
+	if err := s.store.Put(capability.ID, capabilityBytes); err != nil {
+		return nil, fmt.Errorf("failed to store capability: %w", err)
 	}
 
 	return capabilityBytes, nil
@@ -126,7 +129,8 @@ func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, e
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: didKeyURL,
-	}, zcapld.WithID(rootID), zcapld.WithParent(rootID), zcapld.WithInvocationTarget(resourceID, edvResource))
+	}, zcapld.WithID(rootID), zcapld.WithInvocationTarget(resourceID, edvResource),
+		zcapld.WithAllowedActions("read", "write"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new root capability: %w", err)
 	}
