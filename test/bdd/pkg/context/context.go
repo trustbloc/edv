@@ -151,7 +151,6 @@ type BDDContext struct {
 	Capability                 *zcapld.Capability
 	KeyManager                 kms.KeyManager
 	Crypto                     cryptoapi.Crypto
-	VerificationMethod         string
 }
 
 // NewBDDContext creates a new BDDContext
@@ -174,16 +173,8 @@ func NewBDDContext(caCertPaths string, loginBDDContext *authloginctx.BDDContext)
 		return nil, err
 	}
 
-	signer, err := signature.NewCryptoSigner(crypto, keyManager, kms.ED25519)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create crypto signer: %w", err)
-	}
-
-	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
-
 	instance := BDDContext{
 		TLSConfig: &tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}, KeyManager: keyManager, Crypto: crypto,
-		VerificationMethod: didKeyURL,
 	}
 
 	trustBlocEDVClient, err := createProxyEDVClient(&instance, loginBDDContext)
@@ -300,7 +291,7 @@ func createProxyEDVClient(ctx *BDDContext, loginBDDContext *authloginctx.BDDCont
 			KMS:    ctx.KeyManager,
 		})
 
-		err = hs.Sign(ctx.VerificationMethod, req)
+		err = hs.Sign(ctx.Capability.Invoker, req)
 		if err != nil {
 			return nil, err
 		}

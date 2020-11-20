@@ -20,9 +20,9 @@ require (
 	github.com/hyperledger/aries-framework-go v0.1.5-0.20201110161050-249e1c428734
 	github.com/igor-pavlenko/httpsignatures-go v0.0.21
 	github.com/tidwall/gjson v1.6.0
-	github.com/trustbloc/edge-core v0.1.5-0.20201118072041-f28d721640b1
+	github.com/trustbloc/edge-core v0.1.5-0.20201120210728-27b002acd148
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 	github.com/trustbloc/hub-auth v0.0.0-20201118211603-7936a8c44a81 // indirect
-	github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201118211603-7936a8c44a81
+	github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201119220108-8df7631c8dd2
 	gotest.tools/v3 v3.0.3 // indirect
 )
