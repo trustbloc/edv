@@ -17,10 +17,10 @@ require (
 	github.com/cucumber/godog v0.9.0
 	github.com/fsouza/go-dockerclient v1.6.6
 	github.com/google/uuid v1.1.2
-	github.com/hyperledger/aries-framework-go v0.1.5-0.20201110161050-249e1c428734
+	github.com/hyperledger/aries-framework-go v0.1.5-0.20201120141223-c70cf578d36b
 	github.com/igor-pavlenko/httpsignatures-go v0.0.21
 	github.com/tidwall/gjson v1.6.0
-	github.com/trustbloc/edge-core v0.1.5-0.20201120210728-27b002acd148
+	github.com/trustbloc/edge-core v0.1.5-0.20201121093852-c37f1dd38d3c
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 	github.com/trustbloc/hub-auth v0.0.0-20201118211603-7936a8c44a81 // indirect
 	github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201119220108-8df7631c8dd2

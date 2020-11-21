@@ -648,8 +648,8 @@ github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d/go.mod h1:+NfK9FKe
 github.com/hpcloud/tail v1.0.0 h1:nfCOvKYfkgYP8hkirhJocXT2+zOD8yUNjXaWfTlyFKI=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/huaweicloud/golangsdk v0.0.0-20200304081349-45ec0797f2a4/go.mod h1:WQBcHRNX9shz3928lWEvstQJtAtYI7ks6XlgtRT9Tcw=
-github.com/hyperledger/aries-framework-go v0.1.5-0.20201110161050-249e1c428734 h1:zF9gANh/lO87S96RPWTONZxYKToAgBNWDspFRkSxDeI=
-github.com/hyperledger/aries-framework-go v0.1.5-0.20201110161050-249e1c428734/go.mod h1:QzlBsH2J303U3r8lJ1jq69ackseH+v5/B9hpCFouBqg=
+github.com/hyperledger/aries-framework-go v0.1.5-0.20201120141223-c70cf578d36b h1:MhwszjbbQXBheiqs+yBbPTRCTy2GTOW+Pkc6cYFa6Sg=
+github.com/hyperledger/aries-framework-go v0.1.5-0.20201120141223-c70cf578d36b/go.mod h1:QzlBsH2J303U3r8lJ1jq69ackseH+v5/B9hpCFouBqg=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/igor-pavlenko/httpsignatures-go v0.0.21 h1:qSa8O/Xktnwh3zOdLYL3LFS3ARQ0K4m8JUdC0GJz3bU=
 github.com/igor-pavlenko/httpsignatures-go v0.0.21/go.mod h1:3LVsCi3evlfQSNDKMTg3uElxEP8SjK3/Q5N9I8GU9W0=
@@ -998,14 +998,12 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8 h1:VtbBrpzy6rg4EHKOgGDOhBlFg8WWb0dFTYGz140gtj4=
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8/go.mod h1:gcwDl9YLyNc3H3wmPXamu+8evD8TYUa6BjTsWnvdn7A=
 github.com/trustbloc/edge-core v0.1.5-0.20200916124536-c32454a16108/go.mod h1:mTU1E/HcKcjmHaPCjBOvHERuryGhh5zgVkRSi4slAHg=
-github.com/trustbloc/edge-core v0.1.5-0.20201120210728-27b002acd148 h1:ZaHY/rTvK63EMn+6GhFp+IUyq62+tvSRVWxIbvYXs0M=
-github.com/trustbloc/edge-core v0.1.5-0.20201120210728-27b002acd148/go.mod h1:MwFQ9Wryjp2bZiyIuFlfPVPCxr5RewaCGUWe6K6G4vM=
+github.com/trustbloc/edge-core v0.1.5-0.20201121093852-c37f1dd38d3c h1:fADQh6StK1qg5Qy52p0P9wjO/2EZvng1hF3EDW4fgZE=
+github.com/trustbloc/edge-core v0.1.5-0.20201121093852-c37f1dd38d3c/go.mod h1:iOoeeW5Jd6/hhEwaK0+lhBstV7yBWzJxckNU21V0+Vg=
 github.com/trustbloc/hub-auth v0.0.0-20201116135852-764f60b8417b h1:zV0pvpiX/mpdTbjcNas4ICVKid6XU2Zqs4V5+Ibu5sM=
 github.com/trustbloc/hub-auth v0.0.0-20201116135852-764f60b8417b/go.mod h1:gDclLmGBmkJr4KYMKR0dOvOIIb0tkldOMsSDWVH9T5Q=
 github.com/trustbloc/hub-auth v0.0.0-20201118211603-7936a8c44a81 h1:4TrbffQnXTjqgTuv34QXWI1pYif42DBihAxO1YK9HV8=
 github.com/trustbloc/hub-auth v0.0.0-20201118211603-7936a8c44a81/go.mod h1:gDclLmGBmkJr4KYMKR0dOvOIIb0tkldOMsSDWVH9T5Q=
-github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201118211603-7936a8c44a81 h1:jFLw0+i4GcuCWXY6W/DhZP9usl7AxKBgQv2oCYt3moE=
-github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201118211603-7936a8c44a81/go.mod h1:O/1SNXF/inNY4aUBRttx2gzToii1f2p86sC8m1ODwkc=
 github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201119220108-8df7631c8dd2 h1:jPqE9vT0pslLZv3WNUDyt7B4M0MP3+LcoS/n2/DumPg=
 github.com/trustbloc/hub-auth/test/bdd v0.0.0-20201119220108-8df7631c8dd2/go.mod h1:O/1SNXF/inNY4aUBRttx2gzToii1f2p86sC8m1ODwkc=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
