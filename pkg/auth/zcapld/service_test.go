@@ -8,6 +8,7 @@ package zcapld
 
 import (
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -75,7 +76,7 @@ func TestService_Handler(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, mockstorage.NewMockStoreProvider())
 		require.NoError(t, err)
 
-		h, err := svc.Handler("r1", nil, nil)
+		h, err := svc.Handler("r1", &http.Request{Method: http.MethodGet}, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to get root capability r1 from db")
 		require.Nil(t, h)
@@ -92,7 +93,7 @@ func TestService_Handler(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, s)
 		require.NoError(t, err)
 
-		h, err := svc.Handler("r1", nil, nil)
+		h, err := svc.Handler("r1", &http.Request{Method: http.MethodGet}, nil, nil)
 		require.NoError(t, err)
 		require.NotNil(t, h)
 	})

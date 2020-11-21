@@ -212,7 +212,7 @@ func (k kmsProvider) SecretLock() secretlock.Service {
 
 type authService interface {
 	Create(resourceID, verificationMethod string) ([]byte, error)
-	Handler(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error)
+	Handler(resourceID string, req *http.Request, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error)
 }
 
 type server interface {
@@ -677,7 +677,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s := strings.SplitAfter(r.RequestURI, "/")
 
-	authHandler, err := h.authSvc.Handler(strings.TrimSuffix(s[2], "/"), w,
+	authHandler, err := h.authSvc.Handler(strings.TrimSuffix(s[2], "/"), r, w,
 		func(writer http.ResponseWriter, request *http.Request) {
 			h.routerHandler.ServeHTTP(w, r)
 		})

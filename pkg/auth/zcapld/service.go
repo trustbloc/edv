@@ -85,10 +85,16 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 }
 
 // Handler will create auth handler
-func (s *Service) Handler(resourceID string, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error) {
+func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseWriter,
+	next http.HandlerFunc) (http.HandlerFunc, error) {
 	rootCapability, err := s.getCapability(resourceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get root capability %s from db: %w", resourceID, err)
+	}
+
+	action := "write"
+	if req.Method == http.MethodGet {
+		action = "read"
 	}
 
 	return zcapld.NewHTTPSigAuthHandler(
@@ -108,7 +114,7 @@ func (s *Service) Handler(resourceID string, w http.ResponseWriter, next http.Ha
 		&zcapld.InvocationExpectations{
 			Target:         resourceID,
 			RootCapability: rootCapability.ID,
-			Action:         "read",
+			Action:         action,
 		},
 		next,
 	), nil
