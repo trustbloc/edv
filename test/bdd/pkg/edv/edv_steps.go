@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
@@ -129,7 +130,7 @@ func (e *Steps) createDataVault() error {
 	}
 
 	// create chain capability
-	c, err := e.createChainCapability(capability, vaultID)
+	c, err := e.createChainCapability(capability, signer, vaultID)
 	if err != nil {
 		return err
 	}
@@ -139,7 +140,8 @@ func (e *Steps) createDataVault() error {
 	return nil
 }
 
-func (e *Steps) createChainCapability(capability *zcapld.Capability, vaultID string) (*zcapld.Capability, error) {
+func (e *Steps) createChainCapability(capability *zcapld.Capability, capabilitySigner verifiable.Signer,
+	vaultID string) (*zcapld.Capability, error) {
 	signer, err := signature.NewCryptoSigner(e.bddContext.Crypto, e.bddContext.KeyManager, kms.ED25519)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crypto signer: %w", err)
@@ -148,9 +150,9 @@ func (e *Steps) createChainCapability(capability *zcapld.Capability, vaultID str
 	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
 
 	return zcapld.NewCapability(&zcapld.Signer{
-		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
+		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(capabilitySigner)),
 		SuiteType:          ed25519signature2018.SignatureType,
-		VerificationMethod: didKeyURL,
+		VerificationMethod: capability.Invoker,
 	}, zcapld.WithParent(capability.ID), zcapld.WithInvoker(didKeyURL), zcapld.WithAllowedActions("read", "write"),
 		zcapld.WithInvocationTarget(vaultID, edvResource), zcapld.WithCapabilityChain(capability.Parent, capability.ID))
 }
