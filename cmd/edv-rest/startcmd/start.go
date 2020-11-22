@@ -556,7 +556,7 @@ func createConfigStore(provider edvprovider.EDVProvider) error {
 func constructHandlers(authSvc authService, routerHandler http.Handler) http.Handler {
 	return cors.New(
 		cors.Options{
-			AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut},
+			AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 			AllowedHeaders: []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
 		},
 	).Handler(&httpHandler{authSvc: authSvc, routerHandler: routerHandler})
