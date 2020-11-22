@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -36,6 +37,13 @@ const (
 		`document will be filtered out since it is a mapping document: 
 CouchDB document ID: %s
 Document content: %s`
+
+	queryResultsLimit = 25
+
+	queryTemplate = `{"selector":{"%s":"%s"},"use_index":["EDV_EncryptedIndexesDesignDoc"` +
+		`,"EDV_IndexName"],"limit":%s}`
+	queryTemplateWithBookmark = `{"selector":{"%s":"%s"},"use_index":["EDV_EncryptedIndexesDesignDoc` +
+		`","EDV_IndexName"],"limit":%s,"bookmark":"%s"}`
 )
 
 var logger = log.New("edv-couchdbprovider")
@@ -573,50 +581,73 @@ func (c *CouchDBEDVStore) findDocMatchingQueryEncryptedDocID(encryptedDocID stri
 }
 
 func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (map[string]struct{}, error) {
-	query := `{"selector":{"` + mapDocumentIndexedField + `":"` + queryIndexName +
-		`"},"use_index": ["EDV_EncryptedIndexesDesignDoc", "EDV_IndexName"]}`
-
-	logger.Debugf(`Querying config store with the following query: %s`, query)
-
-	itr, err := c.coreStore.Query(query)
-	if err != nil {
-		return nil, err
-	}
-
-	ok, err := itr.Next()
-	if err != nil {
-		return nil, err
-	}
+	query := generateStringForMappingDocumentQuery(queryIndexName, "")
 
 	idsOfDocsWithAMatchingIndex := make(map[string]struct{})
 
-	for ok {
-		value, valueErr := itr.Value()
-		if valueErr != nil {
-			return nil, valueErr
-		}
+	doneWithQuery := false
 
-		receivedCouchDBIndexMappingDocument := couchDBIndexMappingDocument{}
+	for !doneWithQuery {
+		logger.Debugf(`Querying store %s with the following query: %s`, c.name, query)
 
-		err = json.Unmarshal(value, &receivedCouchDBIndexMappingDocument)
+		itr, err := c.coreStore.Query(query)
 		if err != nil {
 			return nil, err
 		}
 
-		idsOfDocsWithAMatchingIndex[receivedCouchDBIndexMappingDocument.MatchingEncryptedDocID] = struct{}{}
-
-		ok, err = itr.Next()
+		ok, err := itr.Next()
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	err = itr.Release()
-	if err != nil {
-		return nil, err
+		numDocumentsReturned := 0
+
+		for ok {
+			value, valueErr := itr.Value()
+			if valueErr != nil {
+				return nil, valueErr
+			}
+
+			receivedCouchDBIndexMappingDocument := couchDBIndexMappingDocument{}
+
+			err = json.Unmarshal(value, &receivedCouchDBIndexMappingDocument)
+			if err != nil {
+				return nil, err
+			}
+
+			idsOfDocsWithAMatchingIndex[receivedCouchDBIndexMappingDocument.MatchingEncryptedDocID] = struct{}{}
+
+			ok, err = itr.Next()
+			if err != nil {
+				return nil, err
+			}
+
+			numDocumentsReturned++
+		}
+
+		// This means that there are (potentially) more pages of documents to get. Need to do another query.
+		if numDocumentsReturned >= queryResultsLimit {
+			query = generateStringForMappingDocumentQuery(queryIndexName, itr.Bookmark())
+		} else {
+			doneWithQuery = true
+		}
+
+		err = itr.Release()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return idsOfDocsWithAMatchingIndex, nil
+}
+
+func generateStringForMappingDocumentQuery(queryIndexName, bookmark string) string {
+	if bookmark == "" {
+		return fmt.Sprintf(queryTemplate, mapDocumentIndexedField, queryIndexName, strconv.Itoa(queryResultsLimit))
+	}
+
+	return fmt.Sprintf(queryTemplateWithBookmark, mapDocumentIndexedField, queryIndexName,
+		strconv.Itoa(queryResultsLimit), bookmark)
 }
 
 // Given a set of documents, returns the document IDs that satisfy the query.

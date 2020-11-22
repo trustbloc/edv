@@ -998,8 +998,8 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8 h1:VtbBrpzy6rg4EHKOgGDOhBlFg8WWb0dFTYGz140gtj4=
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8/go.mod h1:gcwDl9YLyNc3H3wmPXamu+8evD8TYUa6BjTsWnvdn7A=
 github.com/trustbloc/edge-core v0.1.5-0.20200916124536-c32454a16108/go.mod h1:mTU1E/HcKcjmHaPCjBOvHERuryGhh5zgVkRSi4slAHg=
-github.com/trustbloc/edge-core v0.1.5-0.20201121093852-c37f1dd38d3c h1:fADQh6StK1qg5Qy52p0P9wjO/2EZvng1hF3EDW4fgZE=
-github.com/trustbloc/edge-core v0.1.5-0.20201121093852-c37f1dd38d3c/go.mod h1:iOoeeW5Jd6/hhEwaK0+lhBstV7yBWzJxckNU21V0+Vg=
+github.com/trustbloc/edge-core v0.1.5-0.20201121214029-0646e96dbdcf h1:D8Q4KRWD64vWd6hgTdGDsWI0s9pEeKbN1eHsr+FVos0=
+github.com/trustbloc/edge-core v0.1.5-0.20201121214029-0646e96dbdcf/go.mod h1:iOoeeW5Jd6/hhEwaK0+lhBstV7yBWzJxckNU21V0+Vg=
 github.com/trustbloc/hub-auth v0.0.0-20201116135852-764f60b8417b h1:zV0pvpiX/mpdTbjcNas4ICVKid6XU2Zqs4V5+Ibu5sM=
 github.com/trustbloc/hub-auth v0.0.0-20201116135852-764f60b8417b/go.mod h1:gDclLmGBmkJr4KYMKR0dOvOIIb0tkldOMsSDWVH9T5Q=
 github.com/trustbloc/hub-auth v0.0.0-20201118211603-7936a8c44a81 h1:4TrbffQnXTjqgTuv34QXWI1pYif42DBihAxO1YK9HV8=

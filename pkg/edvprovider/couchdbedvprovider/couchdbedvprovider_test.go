@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -404,6 +405,39 @@ func TestCouchDBEDVStore_CreateEncryptedDocIDIndex(t *testing.T) {
 	require.NoError(t, err)
 }
 
+type wrappedMockStore struct {
+	mockStoreToWrap mockstore.MockStore
+	mockIterator    *mockIterator
+}
+
+func (m *wrappedMockStore) Put(k string, v []byte) error {
+	return m.mockStoreToWrap.Put(k, v)
+}
+
+func (m *wrappedMockStore) GetAll() (map[string][]byte, error) {
+	return m.mockStoreToWrap.GetAll()
+}
+
+func (m *wrappedMockStore) Get(k string) ([]byte, error) {
+	return m.mockStoreToWrap.Get(k)
+}
+
+func (m *wrappedMockStore) CreateIndex(createIndexRequest storage.CreateIndexRequest) error {
+	return m.mockStoreToWrap.CreateIndex(createIndexRequest)
+}
+
+func (m *wrappedMockStore) Query(query string) (storage.ResultsIterator, error) {
+	if strings.Contains(query, "bookmark") {
+		return m.mockIterator, nil
+	}
+
+	return m.mockStoreToWrap.ResultsIteratorToReturn, nil
+}
+
+func (m *wrappedMockStore) Delete(k string) error {
+	return m.mockStoreToWrap.Delete(k)
+}
+
 type mockIterator struct {
 	timesNextCalled         int
 	maxTimesNextCanBeCalled int
@@ -441,6 +475,10 @@ func (m *mockIterator) Value() ([]byte, error) {
 	return m.valueReturn, m.errValue
 }
 
+func (m *mockIterator) Bookmark() string {
+	return "MockBookmark"
+}
+
 func TestCouchDBEDVStore_Query(t *testing.T) {
 	t.Run("Success: no documents match query", func(t *testing.T) {
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
@@ -465,6 +503,63 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1,
 				valueReturn: []byte(testQuery)}}
+
+		err := mockCoreStore.Put(testDocID1, []byte(testEncryptedDoc))
+		require.NoError(t, err)
+		err = mockCoreStore.Put(testDocID2, []byte(testEncryptedDoc2))
+		require.NoError(t, err)
+
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		query := models.Query{
+			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+			Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+		}
+
+		docIDs, err := store.Query(&query)
+		require.NoError(t, err)
+		require.Len(t, docIDs, 1)
+		require.Equal(t, testDocID1, docIDs[0])
+	})
+	t.Run("Success: one document matches query, "+
+		"and paging was required (total number of documents found = queryResultsLimit+10)", func(t *testing.T) {
+		mockCoreStore := wrappedMockStore{
+			mockStoreToWrap: mockstore.MockStore{Store: make(map[string][]byte),
+				ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: queryResultsLimit,
+					valueReturn: []byte(testQuery)}},
+			mockIterator: &mockIterator{maxTimesNextCanBeCalled: 10,
+				valueReturn: []byte(testQuery)},
+		}
+
+		err := mockCoreStore.Put(testDocID1, []byte(testEncryptedDoc))
+		require.NoError(t, err)
+		err = mockCoreStore.Put(testDocID2, []byte(testEncryptedDoc2))
+		require.NoError(t, err)
+
+		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+
+		query := models.Query{
+			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+			Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+		}
+
+		docIDs, err := store.Query(&query)
+		require.NoError(t, err)
+		require.Len(t, docIDs, 1)
+		require.Equal(t, testDocID1, docIDs[0])
+	})
+	t.Run("Success: one document matches query, "+
+		"and paging was required (total number of documents found = queryResultsLimit)", func(t *testing.T) {
+		// While it's true that there's no need to fetch another page in this case, we can't know for sure
+		// without doing another query and getting an empty page (empty iterator) back,
+		// at which point we can be confident that we've got all the documents.
+		mockCoreStore := wrappedMockStore{
+			mockStoreToWrap: mockstore.MockStore{Store: make(map[string][]byte),
+				ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: queryResultsLimit,
+					valueReturn: []byte(testQuery)}},
+			mockIterator: &mockIterator{maxTimesNextCanBeCalled: 0,
+				valueReturn: []byte(testQuery)},
+		}
 
 		err := mockCoreStore.Put(testDocID1, []byte(testEncryptedDoc))
 		require.NoError(t, err)
