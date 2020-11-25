@@ -10,15 +10,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
+	"github.com/piprate/json-gold/ld"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
 )
@@ -32,9 +35,10 @@ var logger = log.New("auth-zcap-service")
 
 // Service to provide zcapld functionality
 type Service struct {
-	keyManager kms.KeyManager
-	crypto     cryptoapi.Crypto
-	store      ariesstorage.Store
+	keyManager       kms.KeyManager
+	crypto           cryptoapi.Crypto
+	store            ariesstorage.Store
+	ldDocumentLoader *ld.CachingDocumentLoader
 }
 
 // New return zcap service
@@ -44,7 +48,14 @@ func New(keyManager kms.KeyManager, crypto cryptoapi.Crypto, storeProv ariesstor
 		return nil, fmt.Errorf("failed to open store %s: %w", storeName, err)
 	}
 
-	return &Service{keyManager: keyManager, crypto: crypto, store: store}, nil
+	ldDocumentLoader, err := createJSONLDDocumentLoader()
+	if err != nil {
+		return nil, fmt.Errorf("failed create json ld document loader: %w", err)
+	}
+
+	return &Service{
+		keyManager: keyManager, crypto: crypto, store: store, ldDocumentLoader: ldDocumentLoader,
+	}, nil
 }
 
 // Create zcap payload
@@ -104,7 +115,7 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 			VerifierOptions: []zcapld.VerificationOption{
 				zcapld.WithSignatureSuites(
 					ed25519signature2018.New(suite.WithVerifier(ed25519signature2018.NewPublicKeyVerifier())),
-				),
+				), zcapld.WithLDDocumentLoaders(s.ldDocumentLoader),
 			},
 			Secrets:     &zcapld.AriesDIDKeySecrets{},
 			ErrConsumer: logError{w: w}.Log,
@@ -189,4 +200,41 @@ func (l logError) Log(err error) {
 	if errWrite != nil {
 		logger.Errorf(errWrite.Error())
 	}
+}
+
+func createJSONLDDocumentLoader() (*ld.CachingDocumentLoader, error) {
+	loader := verifiable.CachingJSONLDLoader()
+
+	contexts := []struct {
+		vocab   string
+		content string
+	}{
+		{
+			vocab:   "https://w3id.org/security/v1",
+			content: w3idOrgSecurityV1,
+		},
+		{
+			vocab:   "https://w3id.org/security/v2",
+			content: w3idOrgSecurityV2,
+		},
+	}
+
+	for i := range contexts {
+		if err := addJSONLDCachedContext(loader, contexts[i].vocab, contexts[i].content); err != nil {
+			return nil, err
+		}
+	}
+
+	return loader, nil
+}
+
+func addJSONLDCachedContext(loader *ld.CachingDocumentLoader, contextURL, contextContent string) error {
+	reader, err := ld.DocumentFromReader(strings.NewReader(contextContent))
+	if err != nil {
+		return err
+	}
+
+	loader.AddDocument(contextURL, reader)
+
+	return nil
 }
