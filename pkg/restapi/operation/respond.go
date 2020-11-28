@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/trustbloc/edv/pkg/restapi/messages"
+	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 func writeCreateDataVaultRequestReadFailure(rw http.ResponseWriter, errBodyRead error) {
@@ -87,24 +88,64 @@ func writeCreateDataVaultSuccess(rw http.ResponseWriter, vaultID, hostURL string
 	}
 }
 
-func writeQueryResponse(rw http.ResponseWriter, matchingDocumentIDs []string, vaultID string, queryBytesForLog []byte) {
-	if matchingDocumentIDs == nil {
+func writeQueryResponse(rw http.ResponseWriter, matchingDocuments []models.EncryptedDocument, vaultID string,
+	queryBytesForLog []byte, returnFullDocument bool, host string) {
+	if matchingDocuments == nil {
 		writeNoDocsFound(rw, vaultID, queryBytesForLog)
 		return
 	}
 
-	matchingDocumentIDsBytes, err := json.Marshal(matchingDocumentIDs)
+	if returnFullDocument {
+		writeQueryResponseWithFullDocuments(rw, matchingDocuments, vaultID, queryBytesForLog)
+	} else {
+		writeQueryResponseWithDocumentIDs(rw, matchingDocuments, vaultID, queryBytesForLog, host)
+	}
+}
+
+func writeQueryResponseWithDocumentIDs(rw http.ResponseWriter, matchingDocuments []models.EncryptedDocument,
+	vaultID string, queryBytesForLog []byte, host string) {
+	var matchingDocumentIDs []string
+
+	for _, matchingDocument := range matchingDocuments {
+		matchingDocumentIDs = append(matchingDocumentIDs, matchingDocument.ID)
+	}
+
+	fullDocumentURLs := convertToFullDocumentURLs(matchingDocumentIDs, vaultID, host)
+
+	fullDocumentURLsBytes, err := json.Marshal(fullDocumentURLs)
 	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.FailToMarshalDocIDs, err, vaultID,
-			queryBytesForLog)
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.FailToMarshalDocIDs,
+			err, vaultID, queryBytesForLog)
 		return
 	}
 
 	logger.Debugf(messages.DebugLogEventWithReceivedData,
-		fmt.Sprintf(messages.QuerySuccess+" Matching document IDs: %s", vaultID, matchingDocumentIDsBytes),
+		fmt.Sprintf(messages.QuerySuccess+" Matching document URLs: %s", vaultID, fullDocumentURLsBytes),
 		queryBytesForLog)
 
-	_, err = rw.Write(matchingDocumentIDsBytes)
+	_, err = rw.Write(fullDocumentURLsBytes)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		logger.Errorf(messages.QuerySuccess+messages.FailWriteResponse, vaultID, err)
+		logger.Debugf(messages.DebugLogEventWithReceivedData,
+			fmt.Sprintf(messages.QuerySuccess+messages.FailWriteResponse, vaultID, err), queryBytesForLog)
+	}
+}
+
+func writeQueryResponseWithFullDocuments(rw http.ResponseWriter, matchingDocuments []models.EncryptedDocument,
+	vaultID string, queryBytesForLog []byte) {
+	matchingDocumentsBytes, err := json.Marshal(matchingDocuments)
+	if err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.FailToMarshalDocuments,
+			err, vaultID, queryBytesForLog)
+		return
+	}
+
+	logger.Debugf(messages.DebugLogEventWithReceivedData,
+		fmt.Sprintf(messages.QuerySuccess+" Matching documents: %s", vaultID, matchingDocumentsBytes),
+		queryBytesForLog)
+
+	_, err = rw.Write(matchingDocumentsBytes)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		logger.Errorf(messages.QuerySuccess+messages.FailWriteResponse, vaultID, err)

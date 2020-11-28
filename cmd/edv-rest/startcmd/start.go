@@ -132,6 +132,18 @@ const (
 		"Defaults to false if not set. " + commonEnvVarUsageText + authEnableEnvKey
 	authEnableEnvKey = "EDV_AUTH_ENABLE"
 
+	returnFullDocumentOnQueryExtensionName = "ReturnFullDocumentsOnQuery"
+	readAllDocumentsExtensionName          = "ReadAllDocuments"
+
+	extensionsFlagName  = "with-extensions"
+	extensionsFlagUsage = "Enables features that are extensions of the spec. " +
+		"If set, must be a comma-separated list of some or all of the following possible values: " +
+		"[" + returnFullDocumentOnQueryExtensionName + "," + readAllDocumentsExtensionName + "]. " +
+		"If not set, then no extensions will be used and the EDV server will be strictly conformant with the spec. " +
+		"These can all be safely enabled without breaking any core EDV functionality or non-extension-aware clients." +
+		commonEnvVarUsageText + extensionsEnvKey
+	extensionsEnvKey = "EDV_EXTENSIONS"
+
 	dataVaultConfigurationStoreName = "data_vault_configurations"
 
 	sleep = time.Second
@@ -184,6 +196,7 @@ type edvParameters struct {
 	tlsConfig              *tlsConfig
 	authEnable             bool
 	localKMSSecretsStorage *storageParameters
+	extensionsToEnable     operation.EnabledExtensions
 }
 
 type storageParameters struct {
@@ -297,6 +310,23 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				return err
 			}
 
+			extensionsCSV, err := cmdutils.GetUserSetVarFromString(cmd, extensionsFlagName, extensionsEnvKey, true)
+			if err != nil {
+				return err
+			}
+
+			extensionsToEnable := strings.Split(extensionsCSV, ",")
+
+			var enabledExtensions operation.EnabledExtensions
+
+			for _, extensionToEnable := range extensionsToEnable {
+				if strings.EqualFold(extensionToEnable, returnFullDocumentOnQueryExtensionName) {
+					enabledExtensions.ReturnFullDocumentsOnQuery = true
+				} else if strings.EqualFold(extensionToEnable, readAllDocumentsExtensionName) {
+					enabledExtensions.ReadAllDocumentsEndpoint = true
+				}
+			}
+
 			parameters := &edvParameters{
 				srv:                    srv,
 				hostURL:                hostURL,
@@ -308,6 +338,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				tlsConfig:              tlsConfig,
 				authEnable:             authEnable,
 				localKMSSecretsStorage: localKMSSecretsStorage,
+				extensionsToEnable:     enabledExtensions,
 			}
 			return startEDV(parameters)
 		},
@@ -407,6 +438,7 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(localKMSSecretsDatabasePrefixFlagName, "", "",
 		localKMSSecretsDatabasePrefixFlagUsage)
 	startCmd.Flags().StringP(authEnableFlagName, "", "", authEnableFlagUsage)
+	startCmd.Flags().StringP(extensionsFlagName, "", "", extensionsFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
@@ -452,7 +484,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	}
 
 	edvService, err := restapi.New(&operation.Config{Provider: provider, AuthService: authSvc,
-		AuthEnable: parameters.authEnable})
+		AuthEnable: parameters.authEnable, EnabledExtensions: &parameters.extensionsToEnable})
 	if err != nil {
 		return err
 	}

@@ -99,6 +99,9 @@ Received data: %s`
 	// FailToMarshalDocIDs is used when the document IDs returned from a query can't be marshalled.
 	// This should not happen during normal operation.
 	FailToMarshalDocIDs = QuerySuccess + " Failed to marshal the matching document IDs into bytes: %s."
+	// FailToMarshalDocuments is used when the documents returned from a query can't be marshalled.
+	// This should not happen during normal operation.
+	FailToMarshalDocuments = QuerySuccess + " Failed to marshal the matching documents into bytes: %s."
 	// MarshalQueryForLogFailure is used when the log level is set to debug and a query
 	// fails to marshal back into bytes for logging purposes.
 	MarshalQueryForLogFailure = "Failed to marshal query back into bytes for logging purposes: %s."

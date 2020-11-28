@@ -495,9 +495,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Value: "NotGoingToMatch",
 		}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.NoError(t, err)
-		require.Empty(t, docIDs)
+		require.Empty(t, docs)
 	})
 	t.Run("Success: one document matches query", func(t *testing.T) {
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
@@ -516,10 +516,10 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
 		}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.NoError(t, err)
-		require.Len(t, docIDs, 1)
-		require.Equal(t, testDocID1, docIDs[0])
+		require.Len(t, docs, 1)
+		require.Equal(t, testDocID1, docs[0].ID)
 	})
 	t.Run("Success: one document matches query, "+
 		"and paging was required (total number of documents found = queryResultsLimit+10)", func(t *testing.T) {
@@ -543,10 +543,10 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
 		}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.NoError(t, err)
-		require.Len(t, docIDs, 1)
-		require.Equal(t, testDocID1, docIDs[0])
+		require.Len(t, docs, 1)
+		require.Equal(t, testDocID1, docs[0].ID)
 	})
 	t.Run("Success: one document matches query, "+
 		"and paging was required (total number of documents found = queryResultsLimit)", func(t *testing.T) {
@@ -573,10 +573,10 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
 		}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.NoError(t, err)
-		require.Len(t, docIDs, 1)
-		require.Equal(t, testDocID1, docIDs[0])
+		require.Len(t, docs, 1)
+		require.Equal(t, testDocID1, docs[0].ID)
 	})
 	t.Run("Failure: coreStore query returns error", func(t *testing.T) {
 		errTest := errors.New("queryError")
@@ -586,9 +586,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 
 		query := models.Query{}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.Equal(t, errTest, err)
-		require.Empty(t, docIDs)
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: first iterator next() call returns error", func(t *testing.T) {
 		errTest := errors.New("next error")
@@ -599,9 +599,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 
 		query := models.Query{}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.Equal(t, errTest, err)
-		require.Empty(t, docIDs)
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: second iterator next() call returns error", func(t *testing.T) {
 		errTest := errors.New("next error")
@@ -613,9 +613,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 
 		query := models.Query{}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.Equal(t, errTest, err)
-		require.Empty(t, docIDs)
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: iterator value() call returns error", func(t *testing.T) {
 		errTest := errors.New("value error")
@@ -626,9 +626,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 
 		query := models.Query{}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.Equal(t, errTest, err)
-		require.Empty(t, docIDs)
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: iterator release() call returns error", func(t *testing.T) {
 		errTest := errors.New("release error")
@@ -639,9 +639,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 
 		query := models.Query{}
 
-		docIDs, err := store.Query(&query)
+		docs, err := store.Query(&query)
 		require.Equal(t, errTest, err)
-		require.Empty(t, docIDs)
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: iterator value() call returns value that can't be unmarshalled into a mapping document",
 		func(t *testing.T) {
@@ -652,9 +652,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 
 			query := models.Query{}
 
-			docIDs, err := store.Query(&query)
+			docs, err := store.Query(&query)
 			require.EqualError(t, err, "unexpected end of JSON input")
-			require.Empty(t, docIDs)
+			require.Empty(t, docs)
 		})
 	t.Run("Failure: value returned from coreStore while "+
 		"filtering docs by query can't be unmarshalled into an encrypted document", func(t *testing.T) {
@@ -671,9 +671,10 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
 		}
 
-		docIDs, err := store.Query(&query)
-		require.EqualError(t, err, "unexpected end of JSON input")
-		require.Empty(t, docIDs)
+		docs, err := store.Query(&query)
+		require.EqualError(t, err, fmt.Errorf(failFilterDocsByQueryErrMsg,
+			errors.New("unexpected end of JSON input")).Error())
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: document not found in coreStore while filtering docs by query", func(t *testing.T) {
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte),
@@ -686,9 +687,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
 		}
 
-		docIDs, err := store.Query(&query)
-		require.Equal(t, messages.ErrDocumentNotFound, err)
-		require.Empty(t, docIDs)
+		docs, err := store.Query(&query)
+		require.EqualError(t, err, fmt.Errorf(failFilterDocsByQueryErrMsg, messages.ErrDocumentNotFound).Error())
+		require.Empty(t, docs)
 	})
 	t.Run("Failure: other error in coreStore while filtering docs by query", func(t *testing.T) {
 		errTest := errors.New("other store error")
@@ -704,9 +705,9 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
 		}
 
-		docIDs, err := store.Query(&query)
-		require.Equal(t, errTest, err)
-		require.Empty(t, docIDs)
+		docs, err := store.Query(&query)
+		require.EqualError(t, err, fmt.Errorf(failFilterDocsByQueryErrMsg, errTest).Error())
+		require.Empty(t, docs)
 	})
 }
 

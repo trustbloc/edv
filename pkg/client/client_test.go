@@ -70,7 +70,7 @@ func TestClient_New(t *testing.T) {
 func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -91,7 +91,7 @@ func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
 func TestClient_CreateDataVault_InvalidConfig(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -126,7 +126,7 @@ func TestClient_CreateDataVault_ServerUnreachable(t *testing.T) {
 func TestClient_CreateDocument(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -153,7 +153,7 @@ func TestClient_CreateDocument(t *testing.T) {
 func TestClient_CreateDocument_NoVault(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -186,7 +186,7 @@ func TestClient_ReadAllDocuments(t *testing.T) {
 	t.Run("Status OK", func(t *testing.T) {
 		srvAddr := randomURL()
 
-		srv := startEDVServer(t, srvAddr)
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true})
 
 		waitForServerToStart(t, srvAddr)
 
@@ -258,7 +258,7 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 	t.Run("Status not found", func(t *testing.T) {
 		srvAddr := randomURL()
 
-		srv := startEDVServer(t, srvAddr)
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true})
 
 		waitForServerToStart(t, srvAddr)
 
@@ -306,7 +306,7 @@ Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentB
 func TestClient_ReadDocument(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -359,7 +359,7 @@ func TestClient_ReadDocument_UnmarshalFail(t *testing.T) {
 func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -386,7 +386,7 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 func TestClient_ReadDocument_NotFound(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -438,7 +438,7 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 func TestClient_UpdateDocument(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -471,7 +471,7 @@ func TestClient_UpdateDocument(t *testing.T) {
 func TestClient_UpdateDocument_VaultNotFound(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -501,7 +501,7 @@ func TestClient_UpdateDocument_ServerUnreachable(t *testing.T) {
 func TestClient_DeleteDocument(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -533,7 +533,7 @@ func TestClient_DeleteDocument(t *testing.T) {
 func TestClient_DeleteDocument_VaultNotFound(t *testing.T) {
 	srvAddr := randomURL()
 
-	srv := startEDVServer(t, srvAddr)
+	srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 	waitForServerToStart(t, srvAddr)
 
@@ -573,7 +573,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		ids, err := client.QueryVault("testVaultID", "name", "value")
 		require.NoError(t, err)
 		require.Equal(t, "docID1", ids[0])
 		require.Equal(t, "docID2", ids[1])
@@ -586,7 +586,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		ids, err := client.QueryVault("testVaultID", "name", "value")
 
 		// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
 		testPassed := (strings.Contains(err.Error(), "EOF") ||
@@ -606,7 +606,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		ids, err := client.QueryVault("testVaultID", "name", "value")
 		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
 		require.Empty(t, ids)
 
@@ -616,13 +616,13 @@ func TestClient_QueryVault(t *testing.T) {
 	t.Run("Failure: vault doesn't exist", func(t *testing.T) {
 		srvAddr := randomURL()
 
-		srv := startEDVServer(t, srvAddr)
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
 
 		waitForServerToStart(t, srvAddr)
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		ids, err := client.QueryVault("testVaultID", "name", "value")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
 		require.Contains(t, err.Error(), "status code 400")
@@ -634,7 +634,88 @@ func TestClient_QueryVault(t *testing.T) {
 	t.Run("Failure: error while marshalling query", func(t *testing.T) {
 		client := Client{marshal: failingMarshal}
 
-		ids, err := client.QueryVault("testVaultID", &models.Query{})
+		ids, err := client.QueryVault("testVaultID", "name", "value")
+		require.Equal(t, errFailingMarshal, err)
+		require.Empty(t, ids)
+	})
+}
+
+func TestClient_QueryVaultForFullDocuments(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		mockQueryVaultHTTPHandler :=
+			support.NewHTTPHandler(queryVaultEndpointPath, http.MethodPost,
+				mockSuccessQueryVaultFullDocumentsHandler)
+
+		srv := startMockEDVServer(srvAddr, mockQueryVaultHTTPHandler)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		docs, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		require.NoError(t, err)
+		require.Equal(t, "docID1", docs[0].ID)
+		require.Equal(t, "docID2", docs[1].ID)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: server unreachable", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+
+		// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
+		testPassed := (strings.Contains(err.Error(), "EOF") ||
+			strings.Contains(err.Error(), "connection refused")) && len(ids) == 0
+		require.True(t, testPassed)
+	})
+	t.Run("Failure: unable to unmarshal response into string array", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		mockQueryVaultHTTPHandler :=
+			support.NewHTTPHandler(queryVaultEndpointPath, http.MethodPost,
+				mockFailQueryVaultHandler)
+
+		srv := startMockEDVServer(srvAddr, mockQueryVaultHTTPHandler)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
+		require.Empty(t, ids)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: vault doesn't exist", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
+		require.Contains(t, err.Error(), "status code 400")
+		require.Empty(t, ids)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: error while marshalling query", func(t *testing.T) {
+		client := Client{marshal: failingMarshal}
+
+		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
 		require.Equal(t, errFailingMarshal, err)
 		require.Empty(t, ids)
 	})
@@ -669,12 +750,12 @@ func getTestValidEncryptedDocument(testJWE string) *models.EncryptedDocument {
 }
 
 // Returns a reference to the server so the caller can stop it.
-func startEDVServer(t *testing.T, srvAddr string) *http.Server {
+func startEDVServer(t *testing.T, srvAddr string, enabledExtensions *operation.EnabledExtensions) *http.Server {
 	memProv := memedvprovider.NewProvider()
 	err := memProv.CreateStore(dataVaultConfigurationStoreName)
 	require.NoError(t, err)
 
-	edvService, err := restapi.New(&operation.Config{Provider: memProv})
+	edvService, err := restapi.New(&operation.Config{Provider: memProv, EnabledExtensions: enabledExtensions})
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()
@@ -736,6 +817,19 @@ func mockSuccessQueryVaultHandler(rw http.ResponseWriter, req *http.Request) {
 	_, err := rw.Write([]byte(testQueryVaultResponse))
 	if err != nil {
 		logger.Fatalf("failed to write in mock success query vault handler")
+	}
+}
+
+// Just writes an arbitrary valid response.
+func mockSuccessQueryVaultFullDocumentsHandler(rw http.ResponseWriter, req *http.Request) {
+	docsBytes, err := json.Marshal([]models.EncryptedDocument{{ID: "docID1"}, {ID: "docID2"}})
+	if err != nil {
+		logger.Fatalf("failed to marshal docs in mock success query vault full documents handler")
+	}
+
+	_, err = rw.Write(docsBytes)
+	if err != nil {
+		logger.Fatalf("failed to write in mock success query vault full documennts handler")
 	}
 }
 

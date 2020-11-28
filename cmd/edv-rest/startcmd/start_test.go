@@ -64,7 +64,7 @@ func (m *mockEDVStore) CreateEDVIndex() error {
 	return nil
 }
 
-func (m *mockEDVStore) Query(*models.Query) ([]string, error) {
+func (m *mockEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) {
 	return nil, nil
 }
 
@@ -158,7 +158,8 @@ func TestStartCmdValidArgs(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
 		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + authEnableFlagName, "true", "--" + localKMSSecretsDatabaseTypeFlagName, "mem"}
+			"--" + authEnableFlagName, "true", "--" + localKMSSecretsDatabaseTypeFlagName, "mem",
+			"--" + extensionsFlagName, returnFullDocumentOnQueryExtensionName + "," + readAllDocumentsExtensionName}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()

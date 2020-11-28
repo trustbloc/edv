@@ -36,11 +36,11 @@ func unescapePathVar(pathVar string, vars map[string]string, rw http.ResponseWri
 	return unescapedPathVar, true
 }
 
-func convertToFullDocumentURLs(documentIDs []string, vaultID string, req *http.Request) []string {
+func convertToFullDocumentURLs(documentIDs []string, vaultID, host string) []string {
 	fullDocumentURLs := make([]string, len(documentIDs))
 
 	for i, matchingDocumentID := range documentIDs {
-		fullDocumentURLs[i] = req.Host + "/encrypted-data-vaults/" +
+		fullDocumentURLs[i] = host + "/encrypted-data-vaults/" +
 			url.PathEscape(vaultID) + "/documents/" + url.PathEscape(matchingDocumentID)
 	}
 
