@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -90,11 +89,6 @@ func writeCreateDataVaultSuccess(rw http.ResponseWriter, vaultID, hostURL string
 
 func writeQueryResponse(rw http.ResponseWriter, matchingDocuments []models.EncryptedDocument, vaultID string,
 	queryBytesForLog []byte, returnFullDocument bool, host string) {
-	if matchingDocuments == nil {
-		writeNoDocsFound(rw, vaultID, queryBytesForLog)
-		return
-	}
-
 	if returnFullDocument {
 		writeQueryResponseWithFullDocuments(rw, matchingDocuments, vaultID, queryBytesForLog)
 	} else {
@@ -151,20 +145,6 @@ func writeQueryResponseWithFullDocuments(rw http.ResponseWriter, matchingDocumen
 		logger.Errorf(messages.QuerySuccess+messages.FailWriteResponse, vaultID, err)
 		logger.Debugf(messages.DebugLogEventWithReceivedData,
 			fmt.Sprintf(messages.QuerySuccess+messages.FailWriteResponse, vaultID, err), queryBytesForLog)
-	}
-}
-
-func writeNoDocsFound(rw io.Writer, vaultID string, queryBytesForLog []byte) {
-	logger.Debugf(messages.DebugLogEventWithReceivedData,
-		fmt.Sprintf(messages.QueryNoMatchingDocs, vaultID),
-		queryBytesForLog)
-
-	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.QueryNoMatchingDocs, vaultID)))
-	if errWrite != nil {
-		logger.Errorf(messages.QueryNoMatchingDocs+messages.FailWriteResponse, vaultID, errWrite)
-		logger.Debugf(messages.DebugLogEventWithReceivedData,
-			fmt.Sprintf(messages.QueryNoMatchingDocs+messages.FailWriteResponse, vaultID, errWrite),
-			queryBytesForLog)
 	}
 }
 
