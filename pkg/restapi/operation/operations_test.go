@@ -682,22 +682,6 @@ func TestQueryVault(t *testing.T) {
 			rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
-	t.Run("No matching documents", func(t *testing.T) {
-		rr := httptest.NewRecorder()
-
-		writeQueryResponse(rr, nil, testVaultID, nil,
-			false, "TestHost")
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		require.Equal(t, fmt.Sprintf(messages.QueryNoMatchingDocs, testVaultID), rr.Body.String())
-	})
-	t.Run("Fail to write response when no matching documents found", func(t *testing.T) {
-		writeQueryResponse(failingResponseWriter{}, nil, testVaultID, nil,
-			false, "TestHost")
-
-		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
-			fmt.Sprintf(messages.QueryNoMatchingDocs+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
-	})
 	t.Run("Fail to write response when matching documents are found (only IDs returned)", func(t *testing.T) {
 		encryptedDoc1 := models.EncryptedDocument{ID: "docID1"}
 		encryptedDoc2 := models.EncryptedDocument{ID: "docID2"}

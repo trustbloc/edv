@@ -263,7 +263,7 @@ func (c *CouchDBEDVStore) Query(query *models.Query) ([]models.EncryptedDocument
 		return nil, fmt.Errorf(failFilterDocsByQueryErrMsg, err)
 	}
 
-	var matchingEncryptedDocs []models.EncryptedDocument
+	matchingEncryptedDocs := make([]models.EncryptedDocument, 0)
 
 	for _, idOfMatchingDoc := range idsOfMatchingDocs {
 		encryptedDocBytes, err := c.Get(idOfMatchingDoc)

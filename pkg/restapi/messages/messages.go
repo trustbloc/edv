@@ -94,8 +94,6 @@ Received data: %s`
 	QueryFailure = `Failure while querying vault %s: %s.`
 	// QuerySuccess is used when a vault is successfully queried.
 	QuerySuccess = `Successfully queried data vault %s.`
-	// QueryNoMatchingDocs is used when a query returns no matching documents.
-	QueryNoMatchingDocs = QuerySuccess + " No matching documents were found."
 	// FailToMarshalDocIDs is used when the document IDs returned from a query can't be marshalled.
 	// This should not happen during normal operation.
 	FailToMarshalDocIDs = QuerySuccess + " Failed to marshal the matching document IDs into bytes: %s."
