@@ -64,8 +64,9 @@ type IDTypePair struct {
 
 // Query represents a name+value pair that can be used to query the encrypted indices for specific data.
 type Query struct {
-	Name  string `json:"index"`
-	Value string `json:"equals"`
+	ReturnFullDocuments bool   `json:"returnFullDocuments"`
+	Name                string `json:"index"`
+	Value               string `json:"equals"`
 }
 
 // JSONWebEncryption represents a JWE

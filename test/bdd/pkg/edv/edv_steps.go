@@ -302,12 +302,7 @@ func (e *Steps) decryptDocument() error {
 }
 
 func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
-	query := models.Query{
-		Name:  queryIndexName,
-		Value: queryIndexValue,
-	}
-
-	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, &query)
+	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryIndexName, queryIndexValue)
 	if err != nil {
 		return err
 	}

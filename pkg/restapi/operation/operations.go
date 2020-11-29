@@ -52,10 +52,11 @@ var logger = log.New(logModuleName)
 
 // Operation defines handler logic for the EDV service.
 type Operation struct {
-	handlers        []Handler
-	vaultCollection VaultCollection
-	authEnable      bool
-	authService     authService
+	handlers          []Handler
+	vaultCollection   VaultCollection
+	authEnable        bool
+	authService       authService
+	enabledExtensions *EnabledExtensions
 }
 
 type authService interface {
@@ -74,11 +75,18 @@ type Handler interface {
 	Handle() http.HandlerFunc
 }
 
+// EnabledExtensions indicates which EDV server extensions have been enabled.
+type EnabledExtensions struct {
+	ReturnFullDocumentsOnQuery bool
+	ReadAllDocumentsEndpoint   bool
+}
+
 // Config defines configuration for vcs operations
 type Config struct {
-	Provider    edvprovider.EDVProvider
-	AuthService authService
-	AuthEnable  bool
+	Provider          edvprovider.EDVProvider
+	AuthService       authService
+	AuthEnable        bool
+	EnabledExtensions *EnabledExtensions
 }
 
 // New returns a new EDV operations instance.
@@ -86,7 +94,7 @@ func New(config *Config) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: config.Provider,
-		}, authEnable: config.AuthEnable, authService: config.AuthService}
+		}, authEnable: config.AuthEnable, authService: config.AuthService, enabledExtensions: config.EnabledExtensions}
 
 	svc.registerHandler()
 
@@ -100,10 +108,13 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
-		support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 		support.NewHTTPHandler(updateDocumentEndpoint, http.MethodPost, c.updateDocumentHandler),
 		support.NewHTTPHandler(deleteDocumentEndpoint, http.MethodDelete, c.deleteDocumentHandler),
+	}
+	if c.enabledExtensions != nil && c.enabledExtensions.ReadAllDocumentsEndpoint {
+		c.handlers = append(c.handlers,
+			support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler))
 	}
 }
 
@@ -237,15 +248,17 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	matchingDocumentIDs, err := c.vaultCollection.queryVault(vaultID, &incomingQuery)
+	matchingDocuments, err := c.vaultCollection.queryVault(vaultID, &incomingQuery)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID, queryBytesForLog)
 		return
 	}
 
-	fullDocumentURLs := convertToFullDocumentURLs(matchingDocumentIDs, vaultID, req)
-
-	writeQueryResponse(rw, fullDocumentURLs, vaultID, queryBytesForLog)
+	if c.enabledExtensions != nil && c.enabledExtensions.ReturnFullDocumentsOnQuery {
+		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, incomingQuery.ReturnFullDocuments, req.Host)
+	} else {
+		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, false, req.Host)
+	}
 }
 
 // Create Document swagger:route POST /encrypted-data-vaults/{vaultID}/documents createDocumentReq
@@ -559,7 +572,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 	return documentBytes, err
 }
 
-func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]string, error) {
+func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]models.EncryptedDocument, error) {
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
 		if errors.Is(err, storage.ErrStoreNotFound) {

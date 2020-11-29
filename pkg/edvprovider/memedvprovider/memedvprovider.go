@@ -109,7 +109,7 @@ func (m MemEDVStore) CreateEncryptedDocIDIndex() error {
 }
 
 // Query is not supported in memstore, and calling it will always return an error.
-func (m MemEDVStore) Query(query *models.Query) ([]string, error) {
+func (m MemEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) {
 	return nil, ErrQueryingNotSupported
 }
 

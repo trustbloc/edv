@@ -62,7 +62,7 @@ type EDVStore interface {
 	CreateEncryptedDocIDIndex() error
 
 	// Query does an EDV encrypted index query.
-	Query(query *models.Query) ([]string, error)
+	Query(query *models.Query) ([]models.EncryptedDocument, error)
 
 	// CreateReferenceIDIndex creates index for the referenceId field in config documents
 	CreateReferenceIDIndex() error

@@ -32,6 +32,7 @@ const (
 	mapConfigReferenceIDField = "dataVaultConfiguration.referenceId"
 
 	failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"
+	failFilterDocsByQueryErrMsg             = "failed to filter docs by query: %w"
 
 	mappingDocumentFilteredOutLogMsg = `Getting all documents from vault %s. The following ` +
 		`document will be filtered out since it is a mapping document: 
@@ -251,13 +252,36 @@ func (c *CouchDBEDVStore) CreateEncryptedDocIDIndex() error {
 // Query does an EDV encrypted index query.
 // We first get the "mapping document" and then use the ID we get from that to lookup the associated encrypted document.
 // Then we check that encrypted document to see if the value matches what was specified in the query.
-func (c *CouchDBEDVStore) Query(query *models.Query) ([]string, error) {
+func (c *CouchDBEDVStore) Query(query *models.Query) ([]models.EncryptedDocument, error) {
 	idsOfDocsWithMatchingQueryIndexName, err := c.findDocsMatchingQueryIndexName(query.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
+	idsOfMatchingDocs, err := c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
+	if err != nil {
+		return nil, fmt.Errorf(failFilterDocsByQueryErrMsg, err)
+	}
+
+	var matchingEncryptedDocs []models.EncryptedDocument
+
+	for _, idOfMatchingDoc := range idsOfMatchingDocs {
+		encryptedDocBytes, err := c.Get(idOfMatchingDoc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get document with ID %s: %w", idOfMatchingDoc, err)
+		}
+
+		var matchingEncryptedDoc models.EncryptedDocument
+
+		err = json.Unmarshal(encryptedDocBytes, &matchingEncryptedDoc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal matching encrypted document with ID %s: %w", idOfMatchingDoc, err)
+		}
+
+		matchingEncryptedDocs = append(matchingEncryptedDocs, matchingEncryptedDoc)
+	}
+
+	return matchingEncryptedDocs, nil
 }
 
 // StoreDataVaultConfiguration stores the given DataVaultConfiguration and vaultID
@@ -333,12 +357,12 @@ func (c *CouchDBEDVStore) validateNewAttribute(
 		Value: newAttribute.Value,
 	}
 
-	existingDocIDs, err := c.Query(&query)
+	existingDocs, err := c.Query(&query)
 	if err != nil {
 		return err
 	}
 
-	err = c.validateNewAttributeAgainstDocs(existingDocIDs, newDocID, newAttribute)
+	err = c.validateNewAttributeAgainstDocs(existingDocs, newDocID, newAttribute)
 	if err != nil {
 		return err
 	}
@@ -346,10 +370,10 @@ func (c *CouchDBEDVStore) validateNewAttribute(
 	return nil
 }
 
-func (c *CouchDBEDVStore) validateNewAttributeAgainstDocs(docIDs []string, newDocID string,
+func (c *CouchDBEDVStore) validateNewAttributeAgainstDocs(docs []models.EncryptedDocument, newDocID string,
 	newAttribute models.IndexedAttribute) error {
-	for _, docID := range docIDs {
-		err := c.validateNewAttributeAgainstDoc(newAttribute, docID, newDocID)
+	for _, doc := range docs {
+		err := c.validateNewAttributeAgainstDoc(newAttribute, doc, newDocID)
 		if err != nil {
 			return err
 		}
@@ -359,29 +383,13 @@ func (c *CouchDBEDVStore) validateNewAttributeAgainstDocs(docIDs []string, newDo
 }
 
 func (c *CouchDBEDVStore) validateNewAttributeAgainstDoc(newAttribute models.IndexedAttribute,
-	docID, newDocID string) error {
-	docBytes, err := c.coreStore.Get(docID)
-	if err != nil {
-		if errors.Is(err, storage.ErrValueNotFound) {
-			return messages.ErrDocumentNotFound
-		}
-
-		return err
-	}
-
-	encryptedDoc := models.EncryptedDocument{}
-
-	err = json.Unmarshal(docBytes, &encryptedDoc)
-	if err != nil {
-		return err
-	}
-
+	doc models.EncryptedDocument, newDocID string) error {
 	// Skip validating new attribute against attribute collections of the same document while updating.
-	if encryptedDoc.ID == newDocID {
+	if doc.ID == newDocID {
 		return nil
 	}
 
-	err = validateNewAttributeAgainstAttributeCollections(newAttribute, encryptedDoc.IndexedAttributeCollections)
+	err := validateNewAttributeAgainstAttributeCollections(newAttribute, doc.IndexedAttributeCollections)
 	if err != nil {
 		return err
 	}

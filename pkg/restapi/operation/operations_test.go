@@ -56,6 +56,11 @@ const (
   "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
   "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
 }`
+	testQueryWithReturnFullDocuments = `{
+  "returnFullDocuments": true,
+  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+  "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+}`
 
 	testDocID      = "VJYHHJx4C8J9Fsgz7rZqSp"
 	testDocID2     = "AJYHHJx4C8J9Fsgz7rZqSp"
@@ -205,8 +210,11 @@ func (m *mockEDVStore) CreateEDVIndex() error {
 	return m.errCreateEDVIndex
 }
 
-func (m *mockEDVStore) Query(*models.Query) ([]string, error) {
-	return []string{"docID1", "docID2"}, nil
+func (m *mockEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) {
+	encryptedDoc1 := models.EncryptedDocument{ID: "docID1"}
+	encryptedDoc2 := models.EncryptedDocument{ID: "docID2"}
+
+	return []models.EncryptedDocument{encryptedDoc1, encryptedDoc2}, nil
 }
 
 func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
@@ -470,7 +478,7 @@ func testValidateIncomingDataVaultConfiguration(t *testing.T) {
 }
 
 func TestQueryVault(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
+	t.Run("Success, returning document IDs", func(t *testing.T) {
 		op := New(&Config{Provider: &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4}})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op)
@@ -491,6 +499,36 @@ func TestQueryVault(t *testing.T) {
 		require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+
 			`docID1","/encrypted-data-vaults/`+vaultID+`/documents/docID2"]`,
 			rr.Body.String())
+		require.Equal(t, http.StatusOK, rr.Code)
+	})
+	t.Run("Success, returning full documents", func(t *testing.T) {
+		op := New(&Config{Provider: &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
+			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true}})
+
+		vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryWithReturnFullDocuments)))
+		require.NoError(t, err)
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		rr := httptest.NewRecorder()
+
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		docsBytes := rr.Body.Bytes()
+
+		var docs []models.EncryptedDocument
+
+		err = json.Unmarshal(docsBytes, &docs)
+		require.NoError(t, err)
+
+		require.Equal(t, "docID1", docs[0].ID)
+		require.Equal(t, "docID2", docs[1].ID)
 		require.Equal(t, http.StatusOK, rr.Code)
 	})
 	t.Run("Provider doesn't support querying", func(t *testing.T) {
@@ -647,19 +685,35 @@ func TestQueryVault(t *testing.T) {
 	t.Run("No matching documents", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 
-		writeQueryResponse(rr, nil, testVaultID, nil)
+		writeQueryResponse(rr, nil, testVaultID, nil,
+			false, "TestHost")
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, fmt.Sprintf(messages.QueryNoMatchingDocs, testVaultID), rr.Body.String())
 	})
 	t.Run("Fail to write response when no matching documents found", func(t *testing.T) {
-		writeQueryResponse(failingResponseWriter{}, nil, testVaultID, nil)
+		writeQueryResponse(failingResponseWriter{}, nil, testVaultID, nil,
+			false, "TestHost")
 
 		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.QueryNoMatchingDocs+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
 	})
-	t.Run("Fail to write response when matching documents are found", func(t *testing.T) {
-		writeQueryResponse(failingResponseWriter{}, []string{"docID1", "docID2"}, testVaultID, nil)
+	t.Run("Fail to write response when matching documents are found (only IDs returned)", func(t *testing.T) {
+		encryptedDoc1 := models.EncryptedDocument{ID: "docID1"}
+		encryptedDoc2 := models.EncryptedDocument{ID: "docID2"}
+
+		writeQueryResponse(failingResponseWriter{}, []models.EncryptedDocument{encryptedDoc1, encryptedDoc2},
+			testVaultID, nil, false, "TestHost")
+
+		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
+			fmt.Sprintf(messages.QuerySuccess+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
+	})
+	t.Run("Fail to write response when matching documents are found (full docs returned)", func(t *testing.T) {
+		encryptedDoc1 := models.EncryptedDocument{ID: "docID1"}
+		encryptedDoc2 := models.EncryptedDocument{ID: "docID2"}
+
+		writeQueryResponse(failingResponseWriter{}, []models.EncryptedDocument{encryptedDoc1, encryptedDoc2},
+			testVaultID, nil, true, "TestHost")
 
 		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
 			fmt.Sprintf(messages.QuerySuccess+messages.FailWriteResponse, testVaultID, errFailingResponseWriter))
@@ -907,7 +961,8 @@ func TestCreateDocument(t *testing.T) {
 
 func TestReadAllDocuments(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		op := New(&Config{Provider: memedvprovider.NewProvider()})
+		op := New(&Config{Provider: memedvprovider.NewProvider(),
+			EnabledExtensions: &EnabledExtensions{ReadAllDocumentsEndpoint: true}})
 
 		createConfigStoreExpectSuccess(t, op)
 
@@ -963,7 +1018,8 @@ Actual document 2: %s`, testEncryptedDocument, testEncryptedDocument2,
 			actualDocumentsBytes1, actualDocumentsBytes2)
 	})
 	t.Run("Vault does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: memedvprovider.NewProvider()})
+		op := New(&Config{Provider: memedvprovider.NewProvider(),
+			EnabledExtensions: &EnabledExtensions{ReadAllDocumentsEndpoint: true}})
 
 		createConfigStoreExpectSuccess(t, op)
 		storeSampleConfigExpectSuccess(t, op)
@@ -989,7 +1045,8 @@ Actual document 2: %s`, testEncryptedDocument, testEncryptedDocument2,
 	t.Run("Error while getting all docs from store", func(t *testing.T) {
 		errGetAll := errors.New("some get all error")
 		op := New(&Config{Provider: &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 2,
-			errStoreGetAll: errGetAll}})
+			errStoreGetAll: errGetAll},
+			EnabledExtensions: &EnabledExtensions{ReadAllDocumentsEndpoint: true}})
 
 		readAllDocumentsEndpointHandler := getHandler(t, op, readAllDocumentsEndpoint, http.MethodGet)
 
@@ -1011,7 +1068,8 @@ Actual document 2: %s`, testEncryptedDocument, testEncryptedDocument2,
 			rr.Body.String())
 	})
 	t.Run("Unable to escape vault ID path variable", func(t *testing.T) {
-		op := New(&Config{Provider: memedvprovider.NewProvider()})
+		op := New(&Config{Provider: memedvprovider.NewProvider(),
+			EnabledExtensions: &EnabledExtensions{ReadAllDocumentsEndpoint: true}})
 
 		readAllDocumentsEndpointHandler := getHandler(t, op, readAllDocumentsEndpoint, http.MethodGet)
 
