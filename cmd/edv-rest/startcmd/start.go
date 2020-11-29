@@ -132,6 +132,11 @@ const (
 		"Defaults to false if not set. " + commonEnvVarUsageText + authEnableEnvKey
 	authEnableEnvKey = "EDV_AUTH_ENABLE"
 
+	corsEnableFlagName  = "cors-enable"
+	corsEnableFlagUsage = "Enable cors. Possible values [true] [false]. " +
+		"Defaults to false if not set. " + commonEnvVarUsageText + corsEnableEnvKey
+	corsEnableEnvKey = "EDV_CORS_ENABLE"
+
 	returnFullDocumentOnQueryExtensionName = "ReturnFullDocumentsOnQuery"
 	readAllDocumentsExtensionName          = "ReadAllDocuments"
 
@@ -195,6 +200,7 @@ type edvParameters struct {
 	logLevel               string
 	tlsConfig              *tlsConfig
 	authEnable             bool
+	corsEnable             bool
 	localKMSSecretsStorage *storageParameters
 	extensionsToEnable     operation.EnabledExtensions
 }
@@ -253,7 +259,7 @@ func GetStartCmd(srv server) *cobra.Command {
 	return startCmd
 }
 
-func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
+func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocognit
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start EDV",
@@ -305,6 +311,11 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				return err
 			}
 
+			corsEnable, err := getCORSEnable(cmd)
+			if err != nil {
+				return err
+			}
+
 			localKMSSecretsStorage, err := getLocalKMSSecretsStorageParameters(cmd, !authEnable)
 			if err != nil {
 				return err
@@ -337,6 +348,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				logLevel:               loggingLevel,
 				tlsConfig:              tlsConfig,
 				authEnable:             authEnable,
+				corsEnable:             corsEnable,
 				localKMSSecretsStorage: localKMSSecretsStorage,
 				extensionsToEnable:     enabledExtensions,
 			}
@@ -360,6 +372,23 @@ func getAuthEnable(cmd *cobra.Command) (bool, error) {
 	}
 
 	return authEnable, nil
+}
+
+func getCORSEnable(cmd *cobra.Command) (bool, error) {
+	corsEnableString := cmdutils.GetUserSetOptionalVarFromString(cmd, corsEnableFlagName, corsEnableEnvKey)
+
+	corsEnable := false
+
+	if corsEnableString != "" {
+		var err error
+		corsEnable, err = strconv.ParseBool(corsEnableString)
+
+		if err != nil {
+			return false, err
+		}
+	}
+
+	return corsEnable, nil
 }
 
 func getLocalKMSSecretsStorageParameters(cmd *cobra.Command, isOptional bool) (*storageParameters, error) {
@@ -439,6 +468,7 @@ func createFlags(startCmd *cobra.Command) {
 		localKMSSecretsDatabasePrefixFlagUsage)
 	startCmd.Flags().StringP(authEnableFlagName, "", "", authEnableFlagUsage)
 	startCmd.Flags().StringP(extensionsFlagName, "", "", extensionsFlagUsage)
+	startCmd.Flags().StringP(corsEnableFlagName, "", "", corsEnableFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
@@ -516,7 +546,8 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile)
 
 	return parameters.srv.ListenAndServe(parameters.hostURL,
-		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(authSvc, router))
+		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(parameters.corsEnable,
+			authSvc, router))
 }
 
 func setLogLevel(userLogLevel string) {
@@ -585,15 +616,19 @@ func createConfigStore(provider edvprovider.EDVProvider) error {
 	return nil
 }
 
-func constructHandlers(authSvc authService, routerHandler http.Handler) http.Handler {
-	return cors.New(
-		cors.Options{
-			AllowedMethods: []string{
-				http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions,
+func constructHandlers(enableCORS bool, authSvc authService, routerHandler http.Handler) http.Handler {
+	if enableCORS {
+		return cors.New(
+			cors.Options{
+				AllowedMethods: []string{
+					http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions,
+				},
+				AllowedHeaders: []string{"*"},
 			},
-			AllowedHeaders: []string{"*"},
-		},
-	).Handler(&httpHandler{authSvc: authSvc, routerHandler: routerHandler})
+		).Handler(&httpHandler{authSvc: authSvc, routerHandler: routerHandler})
+	}
+
+	return &httpHandler{authSvc: authSvc, routerHandler: routerHandler}
 }
 
 func retry(fn func() error, numRetries uint64) error {
