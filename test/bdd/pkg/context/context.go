@@ -29,7 +29,6 @@ import (
 	"github.com/igor-pavlenko/httpsignatures-go"
 	tlsutils "github.com/trustbloc/edge-core/pkg/utils/tls"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
-	authloginctx "github.com/trustbloc/hub-auth/test/bdd/pkg/context"
 
 	edvclient "github.com/trustbloc/edv/pkg/client"
 	"github.com/trustbloc/edv/pkg/restapi/models"
@@ -122,7 +121,6 @@ const (
     "sequence": 0
 }`
 
-	proxyHostURL        = "localhost:4455/encrypted-data-vaults"
 	trustBlocEDVHostURL = "localhost:8080/encrypted-data-vaults"
 )
 
@@ -154,7 +152,7 @@ type BDDContext struct {
 }
 
 // NewBDDContext creates a new BDDContext
-func NewBDDContext(caCertPaths string, loginBDDContext *authloginctx.BDDContext) (*BDDContext, error) {
+func NewBDDContext(caCertPaths string) (*BDDContext, error) {
 	rootCAs, err := tlsutils.GetCertPool(false, []string{caCertPaths})
 	if err != nil {
 		return nil, err
@@ -177,7 +175,7 @@ func NewBDDContext(caCertPaths string, loginBDDContext *authloginctx.BDDContext)
 		TLSConfig: &tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}, KeyManager: keyManager, Crypto: crypto,
 	}
 
-	trustBlocEDVClient, err := createProxyEDVClient(&instance, loginBDDContext)
+	trustBlocEDVClient, err := createProxyEDVClient(&instance)
 	if err != nil {
 		return nil, err
 	}
@@ -267,16 +265,14 @@ func NewBDDInteropContext() (*BDDInteropContext, error) {
 	return ctx, nil
 }
 
-func createProxyEDVClient(ctx *BDDContext, loginBDDContext *authloginctx.BDDContext) (*edvclient.Client, error) {
+func createProxyEDVClient(ctx *BDDContext) (*edvclient.Client, error) {
 	rootCAs, err := tlsutils.GetCertPool(false, []string{"fixtures/keys/tls/ec-cacert.pem"})
 	if err != nil {
 		return nil, err
 	}
 
-	return edvclient.New("http://"+proxyHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs,
+	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs,
 		MinVersion: tls.VersionTLS12}), edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
-		req.Header.Set("Authorization", "Bearer "+loginBDDContext.AccessToken())
-
 		compressedZcap, err := compressZCAP(ctx.Capability)
 		if err != nil {
 			return nil, err

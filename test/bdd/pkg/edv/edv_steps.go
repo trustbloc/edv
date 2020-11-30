@@ -25,9 +25,8 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
-	authloginctx "github.com/trustbloc/hub-auth/test/bdd/pkg/context"
 
-	edvclient "github.com/trustbloc/edv/pkg/client"
+	"github.com/trustbloc/edv/pkg/client"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
@@ -50,20 +49,17 @@ const (
 
 // Steps is steps for EDV BDD tests
 type Steps struct {
-	bddContext      *context.BDDContext
-	loginBDDContext *authloginctx.BDDContext
+	bddContext *context.BDDContext
 }
 
 // NewSteps returns BDD test steps for EDV server
-func NewSteps(ctx *context.BDDContext, loginBDDContext *authloginctx.BDDContext) *Steps {
-	return &Steps{bddContext: ctx, loginBDDContext: loginBDDContext}
+func NewSteps(ctx *context.BDDContext) *Steps {
+	return &Steps{bddContext: ctx}
 }
 
 // RegisterSteps registers EDV server test steps
 func (e *Steps) RegisterSteps(s *godog.Suite) {
 	s.Step(`^Client sends request to create a new data vault and receives the vault location$`, e.createDataVault)
-	s.Step(`^Client sends request to create a new data vault with wrong access token$`,
-		e.createDataVaultWithWrongAccessToken)
 	s.Step(`^Client constructs a Structured Document with id "([^"]*)"$`, e.clientConstructsAStructuredDocument)
 	s.Step(`^Client encrypts the Structured Document and uses it to construct an Encrypted Document$`,
 		e.clientEncryptsTheStructuredDocument)
@@ -108,9 +104,8 @@ func (e *Steps) createDataVault() error {
 	}
 
 	vaultLocation, resp, err := e.bddContext.EDVClient.CreateDataVault(&config,
-		edvclient.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-			req.Header.Set("Authorization", "Bearer "+e.loginBDDContext.AccessToken())
-			return &req.Header, nil
+		client.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
 		}))
 	if err != nil {
 		return err
@@ -155,32 +150,6 @@ func (e *Steps) createChainCapability(capability *zcapld.Capability, capabilityS
 		VerificationMethod: capability.Invoker,
 	}, zcapld.WithParent(capability.ID), zcapld.WithInvoker(didKeyURL), zcapld.WithAllowedActions("read", "write"),
 		zcapld.WithInvocationTarget(vaultID, edvResource), zcapld.WithCapabilityChain(capability.Parent, capability.ID))
-}
-
-func (e *Steps) createDataVaultWithWrongAccessToken() error {
-	config := models.DataVaultConfiguration{
-		Sequence:    0,
-		Controller:  "",
-		ReferenceID: uuid.New().String(),
-		KEK:         models.IDTypePair{ID: "https://example.com/kms/12345", Type: "AesKeyWrappingKey2019"},
-		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
-	}
-
-	_, _, err := e.bddContext.EDVClient.CreateDataVault(&config,
-		edvclient.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-			req.Header.Set("Authorization", "Bearer 123")
-			return &req.Header, nil
-		}))
-	if err == nil {
-		return fmt.Errorf("create data vault didn't failed with wrong access token")
-	}
-
-	errMsg := "The request could not be authorized"
-	if !strings.Contains(err.Error(), errMsg) {
-		return fmt.Errorf("error msg %s didn't contains %s", err.Error(), errMsg)
-	}
-
-	return nil
 }
 
 func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
@@ -235,11 +204,7 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 }
 
 func (e *Steps) storeDocumentInVaultWithoutSignature() error {
-	_, err := e.bddContext.EDVClient.CreateDocument(e.bddContext.VaultID, e.bddContext.EncryptedDocToStore,
-		edvclient.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-			req.Header.Set("Authorization", "Bearer "+e.loginBDDContext.AccessToken())
-			return &req.Header, nil
-		}))
+	_, err := e.bddContext.EDVClient.CreateDocument(e.bddContext.VaultID, e.bddContext.EncryptedDocToStore)
 
 	if err == nil {
 		return fmt.Errorf("create docment didn't failed with empty signature header")
@@ -315,7 +280,7 @@ func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
 			" document(s), but " + strconv.Itoa(numDocumentsFound) + " were found instead")
 	}
 
-	expectedDocURL := "edv.example.com:8080/encrypted-data-vaults/" + e.bddContext.VaultID +
+	expectedDocURL := "localhost:8080/encrypted-data-vaults/" + e.bddContext.VaultID +
 		"/documents/VJYHHJx4C8J9Fsgz7rZqSp"
 
 	if docURLs[0] != expectedDocURL {
