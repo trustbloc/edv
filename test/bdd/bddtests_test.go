@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
-	authloginctx "github.com/trustbloc/hub-auth/test/bdd/pkg/context"
-	authloginbdd "github.com/trustbloc/hub-auth/test/bdd/pkg/login"
 
 	"github.com/trustbloc/edv/test/bdd/dockerutil"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
@@ -53,7 +51,7 @@ func TestMain(m *testing.M) {
 func runBDDTests(tags, format string) int { //nolint: gocognit
 	return godog.RunWithOptions("godogs", func(s *godog.Suite) {
 		var composition []*dockerutil.Composition
-		var composeFiles = []string{"./fixtures/couchdb", "./fixtures/edv-rest", "./fixtures/auth-rest"}
+		var composeFiles = []string{"./fixtures/couchdb", "./fixtures/edv-rest"}
 		s.BeforeSuite(func() {
 			if os.Getenv("DISABLE_COMPOSITION") != "true" {
 				// Need a unique name, but docker does not allow '-' in names
@@ -135,12 +133,7 @@ func generateUUID() string {
 }
 
 func FeatureContext(s *godog.Suite) {
-	loginBDDContext, err := authloginctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem")
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create a new auth login NewBDDContext: %s", err))
-	}
-
-	bddContext, err := bddctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem", loginBDDContext)
+	bddContext, err := bddctx.NewBDDContext("fixtures/keys/tls/ec-cacert.pem")
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create a new NewBDDContext: %s", err))
 	}
@@ -150,8 +143,7 @@ func FeatureContext(s *godog.Suite) {
 		panic(fmt.Sprintf("Failed to create a new NewBDDInteropContext: %s", err))
 	}
 
-	edv.NewSteps(bddContext, loginBDDContext).RegisterSteps(s)
+	edv.NewSteps(bddContext).RegisterSteps(s)
 	common.NewSteps(bddContext).RegisterSteps(s)
 	interop.NewSteps(bddInteropContext).RegisterSteps(s)
-	authloginbdd.NewSteps(loginBDDContext).RegisterSteps(s)
 }
