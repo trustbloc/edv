@@ -345,6 +345,41 @@ func (c *Client) DeleteDocument(vaultID, docID string, opts ...ReqOption) error 
 		statusCode, respBytes)
 }
 
+// Batch performs batch operations within a vault. Requires the EDV server to support the Batch extension.
+func (c *Client) Batch(vaultID string, batch *models.Batch, opts ...ReqOption) ([]string, error) {
+	reqOpt := &ReqOpts{}
+
+	for _, o := range opts {
+		o(reqOpt)
+	}
+
+	jsonToSend, err := c.marshal(batch)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := fmt.Sprintf("%s/%s/batch", c.edvServerURL, url.PathEscape(vaultID))
+
+	statusCode, _, respBytes, err := c.sendHTTPRequest(http.MethodPost, endpoint, jsonToSend, c.getHeaderFunc(reqOpt))
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode == http.StatusOK {
+		var responses []string
+
+		err = json.Unmarshal(respBytes, &responses)
+		if err != nil {
+			return nil, err
+		}
+
+		return responses, nil
+	}
+
+	return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+		statusCode, respBytes)
+}
+
 func (c *Client) sendHTTPRequest(method, endpoint string, body []byte,
 	addHeadersFunc addHeaders) (int, http.Header, []byte, error) {
 	req, errReq := http.NewRequest(method, endpoint, bytes.NewBuffer(body))

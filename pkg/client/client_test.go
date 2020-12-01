@@ -721,6 +721,138 @@ func TestClient_QueryVaultForFullDocuments(t *testing.T) {
 	})
 }
 
+func TestClient_Batch(t *testing.T) {
+	upsertNewDoc1 := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{ID: testDocumentID, JWE: []byte(testJWE)},
+	}
+
+	upsertNewDoc2 := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{ID: testDocumentID2, JWE: []byte(testJWE2)},
+	}
+
+	upsertExistingDoc1 := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{ID: testDocumentID, JWE: []byte(testJWE)},
+	}
+
+	deleteExistingDoc1 := models.VaultOperation{
+		Operation:  models.DeleteDocumentVaultOperation,
+		DocumentID: testDocumentID,
+	}
+	//
+	invalidOperation := models.VaultOperation{
+		Operation: "invalidOperationName",
+	}
+
+	t.Run("Success: upsert (create), upsert (create), upsert (update)", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{Batch: true})
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		validConfig := getTestValidDataVaultConfiguration()
+		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
+		require.NoError(t, err)
+
+		vaultID := getVaultIDFromURL(vaultLocationURL)
+
+		batch := models.Batch{upsertNewDoc1, upsertNewDoc2, upsertExistingDoc1}
+
+		responses, err := client.Batch(vaultID, &batch,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.NoError(t, err)
+		require.Len(t, responses, len(batch))
+		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, responses[0])
+		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID2, responses[1])
+		require.Equal(t, "", responses[2])
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Success: upsert (create), upsert (create), delete", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{Batch: true})
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		validConfig := getTestValidDataVaultConfiguration()
+		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
+		require.NoError(t, err)
+
+		vaultID := getVaultIDFromURL(vaultLocationURL)
+
+		batch := models.Batch{upsertNewDoc1, upsertNewDoc2, deleteExistingDoc1}
+
+		responses, err := client.Batch(vaultID, &batch,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.NoError(t, err)
+		require.Len(t, responses, len(batch))
+		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, responses[0])
+		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID2, responses[1])
+		require.Equal(t, "", responses[2])
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: upsert (create), invalid operation type, delete", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{Batch: true})
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		validConfig := getTestValidDataVaultConfiguration()
+		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
+		require.NoError(t, err)
+
+		vaultID := getVaultIDFromURL(vaultLocationURL)
+
+		batch := models.Batch{upsertNewDoc1, invalidOperation, deleteExistingDoc1}
+
+		expectedResponses := []string{"validated but not executed",
+			"invalidOperationName is not a valid vault operation", "not executed"}
+
+		expectedResponsesBytes, err := json.Marshal(expectedResponses)
+		require.NoError(t, err)
+
+		responses, err := client.Batch(vaultID, &batch,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.EqualError(t, err, fmt.Sprintf("the EDV server returned status code 400 "+
+			"along with the following message: %s", expectedResponsesBytes))
+		require.Nil(t, responses)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: upsert (create), invalid operation type, delete", func(t *testing.T) {
+		client := New("EDVServerURL")
+		client.marshal = failingMarshal
+
+		responses, err := client.Batch("VaultID", &models.Batch{},
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.EqualError(t, err, errFailingMarshal.Error())
+		require.Nil(t, responses)
+	})
+}
+
 func getTestValidDataVaultConfiguration() models.DataVaultConfiguration {
 	testDataVaultConfiguration := models.DataVaultConfiguration{
 		Sequence:   0,

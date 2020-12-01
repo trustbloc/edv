@@ -63,10 +63,28 @@ type IDTypePair struct {
 }
 
 // Query represents a name+value pair that can be used to query the encrypted indices for specific data.
+// ReturnFullDocuments is optional and can only be used if the "ReturnFullDocumentsOnQuery" extension is enabled.
 type Query struct {
 	ReturnFullDocuments bool   `json:"returnFullDocuments"`
 	Name                string `json:"index"`
 	Value               string `json:"equals"`
+}
+
+// Batch represents a batch of operations to be performed in a vault.
+type Batch []VaultOperation
+
+const (
+	// UpsertDocumentVaultOperation represents an upsert operation to be performed in a batch.
+	UpsertDocumentVaultOperation = "upsert"
+	// DeleteDocumentVaultOperation represents a delete operation to be performed in a batch.
+	DeleteDocumentVaultOperation = "delete"
+)
+
+// VaultOperation represents an upsert or delete operation to be performed in a vault.
+type VaultOperation struct {
+	Operation         string            `json:"operation"`          // Valid values: upsert,delete
+	DocumentID        string            `json:"id,omitempty"`       // Only used if Operation=delete
+	EncryptedDocument EncryptedDocument `json:"document,omitempty"` // Only used if Operation=createOrUpdate
 }
 
 // JSONWebEncryption represents a JWE
