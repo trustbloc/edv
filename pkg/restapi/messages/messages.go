@@ -85,11 +85,18 @@ Received data: %s`
 
 	// QueryReceiveRequest is used for logging new queries.
 	QueryReceiveRequest = "Received request to query data vault %s."
+	// BatchReceiveRequest is used for logging new batch operation requests.
+	BatchReceiveRequest = "Received request to do a batch operation in data vault %s."
 	// QueryFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.
 	QueryFailReadRequestBody = QueryReceiveRequest + " Failed to read the request body: %s."
+	// BatchFailReadRequestBody is used when the incoming request body can't be read.
+	// This should not happen during normal operation.
+	BatchFailReadRequestBody = BatchReceiveRequest + " Failed to read the request body: %s."
 	// InvalidQuery is used when an invalid query is received.
 	InvalidQuery = `Received invalid query for data vault %s: %s.`
+	// InvalidBatch is used when an invalid batch operation is received.
+	InvalidBatch = `Received invalid batch operation for data vault %s: %s.`
 	// QueryFailure is used when an error occurs while querying a vault.
 	QueryFailure = `Failure while querying vault %s: %s.`
 	// QuerySuccess is used when a vault is successfully queried.
@@ -103,6 +110,9 @@ Received data: %s`
 	// MarshalQueryForLogFailure is used when the log level is set to debug and a query
 	// fails to marshal back into bytes for logging purposes.
 	MarshalQueryForLogFailure = "Failed to marshal query back into bytes for logging purposes: %s."
+	// MarshalBatchForLogFailure is used when the log level is set to debug and a batch request
+	// fails to marshal back into bytes for logging purposes.
+	MarshalBatchForLogFailure = "Failed to marshal batch request back into bytes for logging purposes: %s."
 
 	// CreateDocumentReceiveRequest is used for logging create document requests.
 	CreateDocumentReceiveRequest = "Received request to create a new document in data vault %s."
@@ -161,8 +171,8 @@ Received data: %s`
 	// UpdateDocumentFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.
 	UpdateDocumentFailReadRequestBody = UpdateDocumentReceiveRequest + ` Failed to read request body: %s.`
-	// UnmatchedDocIDs is used when docIDs obtained from the path variable and the request body are different.
-	UnmatchedDocIDs = "document IDs from the path variable and the request body have to be the same"
+	// MismatchedDocIDs is used when docIDs obtained from the path variable and the request body are different.
+	MismatchedDocIDs = "document IDs from the path variable and the request body have to be the same"
 	// InvalidDocumentForDocUpdate is used when an invalid document is received while updating a document.
 	InvalidDocumentForDocUpdate = `Received a request to update document %s in vault %s, ` +
 		"but the document is invalid: %s."
@@ -180,6 +190,11 @@ Received data: %s`
 	DeleteDocumentFailure = `Failed to delete document %s in vault %s: %s.`
 	// DeleteMappingDocumentFailure is used when an error occurs while deleting a mapping document for the document.
 	DeleteMappingDocumentFailure = "failed to delete mapping document: %s"
+
+	// BatchResponseSuccess is used when all operations within a batch request execute successfully.
+	BatchResponseSuccess = `Successfully performed batch operation. Vault ID: %s, Request: %s, Response: %s`
+	// BatchResponseFailure is used when one or more operations within a batch request fail.
+	BatchResponseFailure = `Failure during batch operation. Vault ID: %s, Request: %s, Response: %s`
 
 	// PutLogSpecFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.

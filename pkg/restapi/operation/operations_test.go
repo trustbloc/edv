@@ -154,7 +154,11 @@ func (m mockContext) Value(interface{}) interface{} {
 
 type mockEDVProvider struct {
 	errStoreCreateEDVIndex             error
+	errStorePut                        error
+	errStoreGet                        error
 	errStoreGetAll                     error
+	errStoreUpdate                     error
+	errStoreDelete                     error
 	errStoreStoreDataVaultConfig       error
 	errStoreFindVaultIDVaultNamePair   error
 	errCreateStore                     error
@@ -182,20 +186,27 @@ func (m *mockEDVProvider) OpenStore(string) (edvprovider.EDVStore, error) {
 
 	m.numTimesOpenStoreCalled++
 
-	return &mockEDVStore{errCreateEDVIndex: m.errStoreCreateEDVIndex, errGetAll: m.errStoreGetAll,
+	return &mockEDVStore{errCreateEDVIndex: m.errStoreCreateEDVIndex, errPut: m.errStorePut, errGet: m.errStoreGet,
+		errGetAll:                   m.errStoreGetAll,
+		errUpdate:                   m.errStoreUpdate,
+		errDelete:                   m.errStoreDelete,
 		errStoreDataVaultConfig:     m.errStoreStoreDataVaultConfig,
 		errFindVaultIDVaultNamePair: m.errStoreFindVaultIDVaultNamePair}, nil
 }
 
 type mockEDVStore struct {
 	errCreateEDVIndex           error
+	errPut                      error
+	errGet                      error
 	errGetAll                   error
+	errUpdate                   error
+	errDelete                   error
 	errStoreDataVaultConfig     error
 	errFindVaultIDVaultNamePair error
 }
 
 func (m *mockEDVStore) Put(models.EncryptedDocument) error {
-	panic("implement me")
+	return m.errPut
 }
 
 func (m *mockEDVStore) GetAll() ([][]byte, error) {
@@ -203,7 +214,7 @@ func (m *mockEDVStore) GetAll() ([][]byte, error) {
 }
 
 func (m *mockEDVStore) Get(string) ([]byte, error) {
-	panic("implement me")
+	return nil, m.errGet
 }
 
 func (m *mockEDVStore) CreateEDVIndex() error {
@@ -218,11 +229,11 @@ func (m *mockEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) 
 }
 
 func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
-	return nil
+	return m.errUpdate
 }
 
 func (m *mockEDVStore) Delete(docID string) error {
-	return nil
+	return m.errDelete
 }
 
 func (m *mockEDVStore) CreateReferenceIDIndex() error {
@@ -1339,7 +1350,7 @@ func TestUpdateDocument(t *testing.T) {
 		vaultID, _ := createDataVaultExpectSuccess(t, op)
 
 		updateDocumentExpectError(t, op, []byte(testEncryptedDocument), vaultID, testDocID2,
-			fmt.Sprintf(messages.InvalidDocumentForDocUpdate, testDocID2, vaultID, messages.UnmatchedDocIDs),
+			fmt.Sprintf(messages.InvalidDocumentForDocUpdate, testDocID2, vaultID, messages.MismatchedDocIDs),
 			http.StatusBadRequest)
 	})
 	t.Run("Failure - invalid incoming document", func(t *testing.T) {
@@ -1483,6 +1494,192 @@ func TestDeleteDocument(t *testing.T) {
 			fmt.Sprintf(messages.DeleteDocumentFailure+messages.FailWriteResponse, testDocID, testVaultID, "test error",
 				errFailingResponseWriter))
 	})
+}
+
+func TestBatch(t *testing.T) {
+	upsertNewDoc1 := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{ID: testDocID, JWE: []byte(testJWE1)},
+	}
+
+	upsertNewDoc2 := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{ID: testDocID2, JWE: []byte(testJWE2)},
+	}
+
+	upsertExistingDoc1 := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{ID: testDocID2, JWE: []byte(testJWE1)},
+	}
+
+	deleteExistingDoc1 := models.VaultOperation{
+		Operation:  models.DeleteDocumentVaultOperation,
+		DocumentID: testDocID,
+	}
+
+	invalidOperation := models.VaultOperation{
+		Operation: "invalidOperationName",
+	}
+
+	upsertInvalidDoc := models.VaultOperation{
+		Operation:         models.UpsertDocumentVaultOperation,
+		EncryptedDocument: models.EncryptedDocument{},
+	}
+
+	deleteMissingDocumentID := models.VaultOperation{
+		Operation: models.DeleteDocumentVaultOperation,
+	}
+
+	t.Run("Success: upsert (create), upsert (create), upsert (update)", func(t *testing.T) {
+		rr, vaultID := doBatchCall(t, &models.Batch{upsertNewDoc1, upsertNewDoc2, upsertExistingDoc1},
+			memedvprovider.NewProvider())
+
+		require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID+`"`+
+			`,"/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID2+`",""]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusOK, rr.Code)
+	})
+	t.Run("Success: upsert (create), upsert (create), delete", func(t *testing.T) {
+		rr, vaultID := doBatchCall(t, &models.Batch{upsertNewDoc1, upsertNewDoc2, deleteExistingDoc1},
+			memedvprovider.NewProvider())
+
+		require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID+`"`+
+			`,"/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID2+`",""]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusOK, rr.Code)
+	})
+	t.Run("Failure: upsert (create), upsert (create), invalid operation", func(t *testing.T) {
+		rr, _ := doBatchCall(t, &models.Batch{upsertNewDoc1, upsertNewDoc2, invalidOperation},
+			memedvprovider.NewProvider())
+
+		require.Equal(t, `["validated but not executed","validated but not executed",`+
+			`"invalidOperationName is not a valid vault operation"]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: upsert (create) with an invalid encrypted document", func(t *testing.T) {
+		rr, _ := doBatchCall(t, &models.Batch{upsertInvalidDoc}, memedvprovider.NewProvider())
+
+		require.Equal(t, `["document ID must be a base58-encoded value"]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: unable to escape vault ID", func(t *testing.T) {
+		op := New(&Config{Provider: memedvprovider.NewProvider(),
+			EnabledExtensions: &EnabledExtensions{Batch: true}})
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("")))
+		require.NoError(t, err)
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = "%"
+
+		req = mux.SetURLVars(req, urlVars)
+
+		rr := httptest.NewRecorder()
+
+		batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost)
+		batchEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t,
+			fmt.Sprintf(messages.UnescapeFailure, vaultIDPathVariable, `invalid URL escape "%"`),
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: unable to marshal request", func(t *testing.T) {
+		op := New(&Config{Provider: memedvprovider.NewProvider(),
+			EnabledExtensions: &EnabledExtensions{Batch: true}})
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("Incorrect format")))
+		require.NoError(t, err)
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = testVaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		rr := httptest.NewRecorder()
+
+		batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost)
+		batchEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t,
+			fmt.Sprintf(messages.InvalidBatch, testVaultID,
+				"invalid character 'I' looking for beginning of value"),
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: delete with a missing document ID", func(t *testing.T) {
+		rr, _ := doBatchCall(t, &models.Batch{deleteMissingDocumentID}, memedvprovider.NewProvider())
+
+		require.Equal(t, `["document ID cannot be empty for a delete operation"]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: unable to create new document in underlying storage provider", func(t *testing.T) {
+		errTestPut := errors.New("put error")
+		rr, _ := doBatchCall(t, &models.Batch{upsertNewDoc1}, &mockEDVProvider{
+			numTimesOpenStoreCalledBeforeErr: 3,
+			errStorePut:                      errTestPut,
+			errStoreGet:                      storage.ErrValueNotFound,
+		})
+
+		require.Equal(t, `["`+errTestPut.Error()+`"]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: unable to update document in underlying storage provider", func(t *testing.T) {
+		errTestPut := errors.New("put error")
+		errTestUpdate := errors.New("update error")
+		rr, _ := doBatchCall(t, &models.Batch{upsertNewDoc1}, &mockEDVProvider{
+			numTimesOpenStoreCalledBeforeErr: 4,
+			errStorePut:                      errTestPut,
+			errStoreUpdate:                   errTestUpdate,
+		})
+
+		require.Equal(t, `["`+errTestUpdate.Error()+`"]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run("Failure: unable to delete document in underlying storage provider", func(t *testing.T) {
+		errTestDelete := errors.New("delete error")
+		rr, _ := doBatchCall(t, &models.Batch{deleteExistingDoc1}, &mockEDVProvider{
+			numTimesOpenStoreCalledBeforeErr: 3,
+			errStoreDelete:                   errTestDelete,
+		})
+
+		require.Equal(t, `["`+errTestDelete.Error()+`"]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+}
+
+func doBatchCall(t *testing.T, batch *models.Batch,
+	provider edvprovider.EDVProvider) (*httptest.ResponseRecorder, string) {
+	op := New(&Config{Provider: provider,
+		EnabledExtensions: &EnabledExtensions{Batch: true}})
+
+	createConfigStoreExpectSuccess(t, op)
+
+	vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+	batchBytes, err := json.Marshal(batch)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "", bytes.NewBuffer(batchBytes))
+	require.NoError(t, err)
+
+	urlVars := make(map[string]string)
+	urlVars[vaultIDPathVariable] = vaultID
+
+	req = mux.SetURLVars(req, urlVars)
+
+	rr := httptest.NewRecorder()
+
+	batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost)
+	batchEndpointHandler.Handle().ServeHTTP(rr, req)
+
+	return rr, vaultID
 }
 
 func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, pathVarVaultID,

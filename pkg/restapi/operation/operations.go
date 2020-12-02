@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/trustbloc/edge-core/pkg/log"
@@ -39,6 +40,7 @@ const (
 	// This also matches the one used by Transmute's EDV implementation.
 	queryVaultEndpoint       = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/query"
 	createDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
+	batchEndpoint            = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/batch"
 	readAllDocumentsEndpoint = createDocumentEndpoint
 	readDocumentEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
@@ -79,6 +81,7 @@ type Handler interface {
 type EnabledExtensions struct {
 	ReturnFullDocumentsOnQuery bool
 	ReadAllDocumentsEndpoint   bool
+	Batch                      bool
 }
 
 // Config defines configuration for vcs operations
@@ -112,9 +115,16 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(updateDocumentEndpoint, http.MethodPost, c.updateDocumentHandler),
 		support.NewHTTPHandler(deleteDocumentEndpoint, http.MethodDelete, c.deleteDocumentHandler),
 	}
-	if c.enabledExtensions != nil && c.enabledExtensions.ReadAllDocumentsEndpoint {
-		c.handlers = append(c.handlers,
-			support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler))
+	if c.enabledExtensions != nil {
+		if c.enabledExtensions.ReadAllDocumentsEndpoint {
+			c.handlers = append(c.handlers,
+				support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler))
+		}
+
+		if c.enabledExtensions.Batch {
+			c.handlers = append(c.handlers,
+				support.NewHTTPHandler(batchEndpoint, http.MethodPost, c.batchHandler))
+		}
 	}
 }
 
@@ -405,6 +415,133 @@ func (c *Operation) deleteDocumentHandler(rw http.ResponseWriter, req *http.Requ
 	}
 }
 
+// Response body will be an array of responses, one for each vault operation.
+func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError, messages.BatchFailReadRequestBody,
+			err, vaultID, nil)
+		return
+	}
+
+	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.BatchReceiveRequest,
+		vaultID), requestBody)
+
+	var incomingBatch models.Batch
+
+	err = json.Unmarshal(requestBody, &incomingBatch)
+	if err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidBatch, err, vaultID, requestBody)
+		return
+	}
+
+	responses := createInitialResponses(len(incomingBatch))
+
+	// Validate everything at the start so we can fail fast if need be
+	err = validateBatch(incomingBatch, responses)
+	if err != nil {
+		writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+		return
+	}
+
+	c.executeBatchedOperations(rw, req.Host, vaultID, incomingBatch, responses, requestBody)
+}
+
+func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vaultID string,
+	incomingBatch models.Batch, responses []string, requestBody []byte) {
+	for i, vaultOperation := range incomingBatch {
+		switch {
+		case strings.EqualFold(vaultOperation.Operation, models.UpsertDocumentVaultOperation):
+			err := c.vaultCollection.createDocument(vaultID, vaultOperation.EncryptedDocument)
+			if err != nil {
+				if errors.Is(err, messages.ErrDuplicateDocument) {
+					errUpdateDocument := c.vaultCollection.updateDocument(vaultOperation.EncryptedDocument.ID, vaultID,
+						vaultOperation.EncryptedDocument)
+					if errUpdateDocument != nil {
+						responses[i] = errUpdateDocument.Error()
+						writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+
+						return
+					}
+
+					responses[i] = ""
+
+					continue
+				} else {
+					responses[i] = err.Error()
+					writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+
+					return
+				}
+			}
+
+			responses[i] = getFullDocumentURL(vaultOperation.EncryptedDocument.ID, vaultID, host)
+		case strings.EqualFold(vaultOperation.Operation, models.DeleteDocumentVaultOperation):
+			err := c.vaultCollection.deleteDocument(vaultOperation.DocumentID, vaultID)
+			if err != nil {
+				responses[i] = err.Error()
+				writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+
+				return
+			}
+
+			responses[i] = ""
+		default: // Validation check should ensure that this can't happen.
+			err := fmt.Errorf("%s is not a valid vault operation", vaultOperation.Operation)
+			responses[i] = err.Error()
+			writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+
+			return
+		}
+	}
+
+	writeBatchResponse(rw, messages.BatchResponseSuccess, vaultID, requestBody, responses)
+}
+
+func createInitialResponses(numResponses int) []string {
+	responses := make([]string, numResponses)
+	for i := range responses {
+		responses[i] = "not executed"
+	}
+
+	return responses
+}
+
+func validateBatch(incomingBatch models.Batch, responses []string) error {
+	for i, vaultOperation := range incomingBatch {
+		switch {
+		case strings.EqualFold(vaultOperation.Operation, models.UpsertDocumentVaultOperation):
+			if err := validateEncryptedDocument(vaultOperation.EncryptedDocument); err != nil {
+				responses[i] = err.Error()
+				return err
+			}
+
+			responses[i] = "validated but not executed"
+		case strings.EqualFold(vaultOperation.Operation, models.DeleteDocumentVaultOperation):
+			if vaultOperation.DocumentID == "" {
+				err := errors.New("document ID cannot be empty for a delete operation")
+				responses[i] = err.Error()
+
+				return err
+			}
+
+			responses[i] = "validated but not executed"
+		default:
+			err := fmt.Errorf("%s is not a valid vault operation", vaultOperation.Operation)
+			responses[i] = err.Error()
+
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (vc *VaultCollection) createDataVault(vaultID string) error {
 	err := vc.provider.CreateStore(vaultID)
 	if err != nil {
@@ -596,7 +733,7 @@ func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, d
 
 	if incomingDocument.ID != docID {
 		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate,
-			errors.New(messages.UnmatchedDocIDs), docID, vaultID)
+			errors.New(messages.MismatchedDocIDs), docID, vaultID)
 		return
 	}
 

@@ -137,16 +137,21 @@ const (
 		"Defaults to false if not set. " + commonEnvVarUsageText + corsEnableEnvKey
 	corsEnableEnvKey = "EDV_CORS_ENABLE"
 
+	// Enables queries to return full documents in queries instead of only the document locations.
+	// Requires "returnFullDocuments" to be set to true in incoming query JSON,
+	// otherwise only document locations will be returned.
 	returnFullDocumentOnQueryExtensionName = "ReturnFullDocumentsOnQuery"
-	readAllDocumentsExtensionName          = "ReadAllDocuments"
+	// Enables a /{VaultID}/batch endpoint for doing batching operations within a vault.
+	batchExtensionName            = "Batch"
+	readAllDocumentsExtensionName = "ReadAllDocuments"
 
 	extensionsFlagName  = "with-extensions"
 	extensionsFlagUsage = "Enables features that are extensions of the spec. " +
 		"If set, must be a comma-separated list of some or all of the following possible values: " +
-		"[" + returnFullDocumentOnQueryExtensionName + "," + readAllDocumentsExtensionName + "]. " +
-		"If not set, then no extensions will be used and the EDV server will be strictly conformant with the spec. " +
-		"These can all be safely enabled without breaking any core EDV functionality or non-extension-aware clients." +
-		commonEnvVarUsageText + extensionsEnvKey
+		"[" + returnFullDocumentOnQueryExtensionName + "," + batchExtensionName + "," +
+		readAllDocumentsExtensionName + "]. " + "If not set, then no extensions will be used and the EDV server will be " +
+		"strictly conformant with the spec. These can all be safely enabled without breaking any core " +
+		"EDV functionality or non-extension-aware clients." + commonEnvVarUsageText + extensionsEnvKey
 	extensionsEnvKey = "EDV_EXTENSIONS"
 
 	dataVaultConfigurationStoreName = "data_vault_configurations"
@@ -202,7 +207,7 @@ type edvParameters struct {
 	authEnable             bool
 	corsEnable             bool
 	localKMSSecretsStorage *storageParameters
-	extensionsToEnable     operation.EnabledExtensions
+	extensionsToEnable     *operation.EnabledExtensions
 }
 
 type storageParameters struct {
@@ -259,7 +264,7 @@ func GetStartCmd(srv server) *cobra.Command {
 	return startCmd
 }
 
-func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocognit
+func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start EDV",
@@ -321,21 +326,9 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				return err
 			}
 
-			extensionsCSV, err := cmdutils.GetUserSetVarFromString(cmd, extensionsFlagName, extensionsEnvKey, true)
+			enabledExtensions, err := getEnabledExtensions(cmd)
 			if err != nil {
 				return err
-			}
-
-			extensionsToEnable := strings.Split(extensionsCSV, ",")
-
-			var enabledExtensions operation.EnabledExtensions
-
-			for _, extensionToEnable := range extensionsToEnable {
-				if strings.EqualFold(extensionToEnable, returnFullDocumentOnQueryExtensionName) {
-					enabledExtensions.ReturnFullDocumentsOnQuery = true
-				} else if strings.EqualFold(extensionToEnable, readAllDocumentsExtensionName) {
-					enabledExtensions.ReadAllDocumentsEndpoint = true
-				}
 			}
 
 			parameters := &edvParameters{
@@ -415,6 +408,30 @@ func getLocalKMSSecretsStorageParameters(cmd *cobra.Command, isOptional bool) (*
 	}
 
 	return storageParam, nil
+}
+
+func getEnabledExtensions(cmd *cobra.Command) (*operation.EnabledExtensions, error) {
+	extensionsCSV, err := cmdutils.GetUserSetVarFromString(cmd, extensionsFlagName, extensionsEnvKey, true)
+	if err != nil {
+		return nil, err
+	}
+
+	extensionsToEnable := strings.Split(extensionsCSV, ",")
+
+	var enabledExtensions operation.EnabledExtensions
+
+	for _, extensionToEnable := range extensionsToEnable {
+		switch {
+		case strings.EqualFold(extensionToEnable, returnFullDocumentOnQueryExtensionName):
+			enabledExtensions.ReturnFullDocumentsOnQuery = true
+		case strings.EqualFold(extensionToEnable, readAllDocumentsExtensionName):
+			enabledExtensions.ReadAllDocumentsEndpoint = true
+		case strings.EqualFold(extensionToEnable, batchExtensionName):
+			enabledExtensions.Batch = true
+		}
+	}
+
+	return &enabledExtensions, nil
 }
 
 func getTimeout(cmd *cobra.Command) (timeout uint64, err error) {
@@ -514,7 +531,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	}
 
 	edvService, err := restapi.New(&operation.Config{Provider: provider, AuthService: authSvc,
-		AuthEnable: parameters.authEnable, EnabledExtensions: &parameters.extensionsToEnable})
+		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable})
 	if err != nil {
 		return err
 	}
@@ -540,10 +557,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		router.HandleFunc(handler.Path(), handler.Handle()).Methods(handler.Method())
 	}
 
-	logger.Infof("Starting EDV REST server with the following parameters:Host URL: %s Database type: %s "+
-		"Database URL: %s Database prefix: %s TLS certificate file: %sTLS key file: %s",
-		parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
-		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile)
+	logStartupMessage(parameters)
 
 	return parameters.srv.ListenAndServe(parameters.hostURL,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(parameters.corsEnable,
@@ -723,6 +737,16 @@ func createAriesStorageProvider(parameters *storageParameters, databaseTimeout u
 	}
 
 	return prov, nil
+}
+
+func logStartupMessage(parameters *edvParameters) {
+	logger.Infof("Starting EDV REST server with the following parameters:   Host URL: %s, Database type: %s, "+
+		"Database URL: %s, Database prefix: %s, TLS certificate file: %s, TLS key file: %s, Extensions: %+v, "+
+		"Auth enabled?: %t, CORS enabled?: %t, Database timeout: %d, Local KMS secrets storage: %+v, Log level: %s",
+		parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
+		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, parameters.extensionsToEnable,
+		parameters.authEnable, parameters.corsEnable, parameters.databaseTimeout, parameters.localKMSSecretsStorage,
+		parameters.logLevel)
 }
 
 type httpHandler struct {

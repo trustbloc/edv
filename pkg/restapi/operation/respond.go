@@ -317,3 +317,22 @@ func writeDeleteDocumentFailure(rw http.ResponseWriter, errDeleteDoc error, docI
 		logger.Errorf(messages.DeleteDocumentFailure+messages.FailWriteResponse, docID, vaultID, errDeleteDoc, errWrite)
 	}
 }
+
+func writeBatchResponse(rw http.ResponseWriter, batchResponseMsg, vaultID string, request []byte, responses []string) {
+	responsesBytes, err := json.Marshal(responses)
+	if err != nil {
+		logger.Errorf(batchResponseMsg+messages.FailWriteResponse, vaultID, request, responsesBytes, err)
+	}
+
+	if batchResponseMsg == messages.BatchResponseSuccess {
+		logger.Debugf(batchResponseMsg, vaultID, request, responsesBytes)
+	} else {
+		rw.WriteHeader(http.StatusBadRequest)
+		logger.Infof(batchResponseMsg, vaultID, request, responsesBytes)
+	}
+
+	_, err = rw.Write(responsesBytes)
+	if err != nil {
+		logger.Errorf(batchResponseMsg+messages.FailWriteResponse, vaultID, request, responsesBytes, err)
+	}
+}

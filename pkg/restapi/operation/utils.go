@@ -40,11 +40,14 @@ func convertToFullDocumentURLs(documentIDs []string, vaultID, host string) []str
 	fullDocumentURLs := make([]string, len(documentIDs))
 
 	for i, matchingDocumentID := range documentIDs {
-		fullDocumentURLs[i] = host + "/encrypted-data-vaults/" +
-			url.PathEscape(vaultID) + "/documents/" + url.PathEscape(matchingDocumentID)
+		fullDocumentURLs[i] = getFullDocumentURL(matchingDocumentID, vaultID, host)
 	}
 
 	return fullDocumentURLs
+}
+
+func getFullDocumentURL(documentID, vaultID, host string) string {
+	return host + "/encrypted-data-vaults/" + url.PathEscape(vaultID) + "/documents/" + url.PathEscape(documentID)
 }
 
 func debugLogLevelEnabled() bool {
