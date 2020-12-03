@@ -137,7 +137,7 @@ Received data: %s`
 	// CreateDocumentFailure is used when an error occurs while creating a new document.
 	CreateDocumentFailure = `Failure while creating document in vault %s: %s.`
 	// CreateDocumentSuccess is used when a document is successfully created.
-	CreateDocumentSuccess = "Successfully created a new document document in vault %s at %s."
+	CreateDocumentSuccess = "Successfully created a new document in vault %s at %s."
 	// MarshalDocumentForLogFailure is used when the log level is set to debug and a document
 	// fails to marshal back into bytes for logging purposes.
 	MarshalDocumentForLogFailure = "Failed to marshal document back into bytes for logging purposes: %s."

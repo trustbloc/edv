@@ -823,8 +823,10 @@ func TestClient_Batch(t *testing.T) {
 
 		batch := models.Batch{upsertNewDoc1, invalidOperation, deleteExistingDoc1}
 
-		expectedResponses := []string{"validated but not executed",
-			"invalidOperationName is not a valid vault operation", "not executed"}
+		expectedResponses := []string{
+			"validated but not executed",
+			"invalidOperationName is not a valid vault operation", "not executed",
+		}
 
 		expectedResponsesBytes, err := json.Marshal(expectedResponses)
 		require.NoError(t, err)

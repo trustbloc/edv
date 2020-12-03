@@ -109,7 +109,6 @@ func (c *CouchDBEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error
 	}
 
 	coreStore, err := c.coreProvider.OpenStore(storeName)
-
 	if err != nil {
 		return nil, err
 	}
@@ -125,32 +124,67 @@ type CouchDBEDVStore struct {
 }
 
 // Put stores the given document.
-// A mapping document is also created and stored in order to allow for encrypted indices to work.
+// Mapping documents are also created and stored in order to allow for encrypted indices to work.
 func (c *CouchDBEDVStore) Put(document models.EncryptedDocument) error {
 	err := c.validateNewDoc(document)
 	if err != nil {
-		return err
+		return fmt.Errorf("failure during encrypted document validation: %w", err)
 	}
 
 	documentBytes, err := json.Marshal(document)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal encrypted document: %w", err)
 	}
 
-	// TODO: The encrypted document and mapping document should both be stored at the same time (all-or-nothing).
-	// If either of these requests fails, then the database will be left in a weird state.
-	// https://github.com/trustbloc/edge-core/issues/27 and https://github.com/trustbloc/edv/issues/49
+	mappingDocumentsNames, mappingDocuments, err := c.createMappingDocuments(document)
+	if err != nil {
+		return fmt.Errorf("failed to create mapping document for document %s: %w", document.ID, err)
+	}
+
+	keysToStore := make([]string, len(mappingDocumentsNames)+1) // The +1 is for the actual encrypted document itself
+	valuesToStore := make([][]byte, len(mappingDocuments)+1)    // The +1 is for the actual encrypted document itself
+
+	keysToStore[0] = document.ID
+	valuesToStore[0] = documentBytes
+
+	for i := 0; i < len(mappingDocumentsNames); i++ {
+		keysToStore[i+1] = mappingDocumentsNames[i]
+		valuesToStore[i+1] = mappingDocuments[i]
+	}
+
+	err = c.coreStore.PutAll(keysToStore, valuesToStore)
+	if err != nil {
+		return fmt.Errorf("failed to put encrypted document and its associated mapping documents into "+
+			"CouchDB: %w", err)
+	}
+
+	return nil
+}
+
+// createMappingDocuments creates documents with mappings of the encrypted index to the document that has it.
+func (c *CouchDBEDVStore) createMappingDocuments(document models.EncryptedDocument) ([]string, [][]byte, error) {
+	var mappingDocumentsNames []string
+
+	var mappingDocumentsBytes [][]byte
 
 	for _, indexedAttributeCollection := range document.IndexedAttributeCollections {
 		for _, indexedAttribute := range indexedAttributeCollection.IndexedAttributes {
-			err := c.createMappingDocument(indexedAttribute.Name, document.ID)
+			mappingDocument, mappingDocumentName, err := c.createMappingDocument(indexedAttribute.Name, document.ID)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
+
+			mappingDocumentBytes, err := json.Marshal(mappingDocument)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			mappingDocumentsNames = append(mappingDocumentsNames, mappingDocumentName)
+			mappingDocumentsBytes = append(mappingDocumentsBytes, mappingDocumentBytes)
 		}
 	}
 
-	return c.coreStore.Put(document.ID, documentBytes)
+	return mappingDocumentsNames, mappingDocumentsBytes, nil
 }
 
 // GetAll fetches all the documents within this store.
@@ -436,7 +470,30 @@ func validateNewAttributeAgainstAttribute(newAttribute, attribute models.Indexed
 }
 
 // createMappingDocument creates a document with a mapping of the encrypted index to the document that has it.
-func (c *CouchDBEDVStore) createMappingDocument(indexedAttributeName, encryptedDocID string) error {
+func (c *CouchDBEDVStore) createMappingDocument(indexedAttributeName,
+	encryptedDocID string) (*couchDBIndexMappingDocument, string, error) {
+	mappingDocumentName := encryptedDocID + "_mapping_" + uuid.New().String()
+
+	mapDocument := couchDBIndexMappingDocument{
+		IndexName:              indexedAttributeName,
+		MatchingEncryptedDocID: encryptedDocID,
+		MappingDocumentName:    mappingDocumentName,
+	}
+
+	documentBytes, err := json.Marshal(mapDocument)
+	if err != nil {
+		return nil, "", err
+	}
+
+	logger.Debugf(`Creating mapping document for vault "%s":
+Name: %s,
+Contents: %s`, c.name, mappingDocumentName, documentBytes)
+
+	return &mapDocument, mappingDocumentName, nil
+}
+
+// createMappingDocument creates a document with a mapping of the encrypted index to the document that has it.
+func (c *CouchDBEDVStore) createAndStoreMappingDocument(indexedAttributeName, encryptedDocID string) error {
 	mappingDocumentName := encryptedDocID + "_mapping_" + uuid.New().String()
 
 	mapDocument := couchDBIndexMappingDocument{
@@ -497,7 +554,7 @@ func (c *CouchDBEDVStore) checkAndCreateNewMappingDocuments(encryptedDocID strin
 			}
 
 			if !indexNameFound {
-				if err := c.createMappingDocument(newIndexAttribute.Name, encryptedDocID); err != nil {
+				if err := c.createAndStoreMappingDocument(newIndexAttribute.Name, encryptedDocID); err != nil {
 					return err
 				}
 			}
