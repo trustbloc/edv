@@ -39,8 +39,6 @@ const (
 CouchDB document ID: %s
 Document content: %s`
 
-	queryResultsLimit = 25
-
 	queryTemplate = `{"selector":{"%s":"%s"},"use_index":["EDV_EncryptedIndexesDesignDoc"` +
 		`,"EDV_IndexName"],"limit":%s}`
 	queryTemplateWithBookmark = `{"selector":{"%s":"%s"},"use_index":["EDV_EncryptedIndexesDesignDoc` +
@@ -61,11 +59,12 @@ type couchDBIndexMappingDocument struct {
 // CouchDBEDVProvider represents a CouchDB provider with functionality needed for EDV data storage.
 // It wraps an edge-core CouchDB provider with additional functionality that's needed for EDV operations.
 type CouchDBEDVProvider struct {
-	coreProvider storage.Provider
+	coreProvider      storage.Provider
+	retrievalPageSize uint
 }
 
 // NewProvider instantiates Provider
-func NewProvider(databaseURL, dbPrefix string) (*CouchDBEDVProvider, error) {
+func NewProvider(databaseURL, dbPrefix string, retrievalPageSize uint) (*CouchDBEDVProvider, error) {
 	couchDBProvider, err := couchdbstore.NewProvider(databaseURL, couchdbstore.WithDBPrefix(dbPrefix))
 	if err != nil {
 		if err.Error() == "hostURL for new CouchDB provider can't be blank" {
@@ -75,7 +74,7 @@ func NewProvider(databaseURL, dbPrefix string) (*CouchDBEDVProvider, error) {
 		return nil, err
 	}
 
-	return &CouchDBEDVProvider{coreProvider: couchDBProvider}, nil
+	return &CouchDBEDVProvider{coreProvider: couchDBProvider, retrievalPageSize: retrievalPageSize}, nil
 }
 
 // CreateStore creates a new store. If the given name is a base58-encoded 128-bit value, we decode and creates a uuid
@@ -113,14 +112,15 @@ func (c *CouchDBEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error
 		return nil, err
 	}
 
-	return &CouchDBEDVStore{coreStore: coreStore, name: name}, nil
+	return &CouchDBEDVStore{coreStore: coreStore, name: name, retrievalPageSize: c.retrievalPageSize}, nil
 }
 
 // CouchDBEDVStore represents a CouchDB store with functionality needed for EDV data storage.
 // It wraps an edge-core CouchDB store with additional functionality that's needed for EDV operations.
 type CouchDBEDVStore struct {
-	coreStore storage.Store
-	name      string
+	coreStore         storage.Store
+	name              string
+	retrievalPageSize uint
 }
 
 // Put stores the given document.
@@ -152,7 +152,7 @@ func (c *CouchDBEDVStore) Put(document models.EncryptedDocument) error {
 		valuesToStore[i+1] = mappingDocuments[i]
 	}
 
-	err = c.coreStore.PutAll(keysToStore, valuesToStore)
+	err = c.coreStore.PutBulk(keysToStore, valuesToStore)
 	if err != nil {
 		return fmt.Errorf("failed to put encrypted document and its associated mapping documents into "+
 			"CouchDB: %w", err)
@@ -286,10 +286,18 @@ func (c *CouchDBEDVStore) CreateEncryptedDocIDIndex() error {
 // Query does an EDV encrypted index query.
 // We first get the "mapping document" and then use the ID we get from that to lookup the associated encrypted document.
 // Then we check that encrypted document to see if the value matches what was specified in the query.
+// TODO (#168): Add support for pagination (not currently in the spec).
+//  The c.retrievalPageSize parameter is passed in from the startup args and could be used with pagination.
 func (c *CouchDBEDVStore) Query(query *models.Query) ([]models.EncryptedDocument, error) {
+	// TODO (#169): Use c.retrievalPageSize to do pagination within this method to help control the maximum amount of
+	//  memory used here. Without official pagination support it won't be possible to truly cap memory usage, however.
 	idsOfDocsWithMatchingQueryIndexName, err := c.findDocsMatchingQueryIndexName(query.Name)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(idsOfDocsWithMatchingQueryIndexName) == 0 { // No documents have the encrypted index name tag
+		return nil, nil
 	}
 
 	idsOfMatchingDocs, err := c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
@@ -297,22 +305,27 @@ func (c *CouchDBEDVStore) Query(query *models.Query) ([]models.EncryptedDocument
 		return nil, fmt.Errorf(failFilterDocsByQueryErrMsg, err)
 	}
 
-	matchingEncryptedDocs := make([]models.EncryptedDocument, 0)
+	if len(idsOfMatchingDocs) == 0 { // No documents match the query
+		return nil, nil
+	}
 
-	for _, idOfMatchingDoc := range idsOfMatchingDocs {
-		encryptedDocBytes, err := c.Get(idOfMatchingDoc)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get document with ID %s: %w", idOfMatchingDoc, err)
-		}
+	matchingEncryptedDocs := make([]models.EncryptedDocument, len(idsOfMatchingDocs))
 
+	encryptedDocsBytes, err := c.coreStore.GetBulk(idsOfMatchingDocs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all documents with matching IDs: %w", err)
+	}
+
+	for i, encryptedDocBytes := range encryptedDocsBytes {
 		var matchingEncryptedDoc models.EncryptedDocument
 
 		err = json.Unmarshal(encryptedDocBytes, &matchingEncryptedDoc)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal matching encrypted document with ID %s: %w", idOfMatchingDoc, err)
+			return nil, fmt.Errorf("failed to unmarshal matching encrypted document with ID %s: %w",
+				idsOfMatchingDocs[i], err)
 		}
 
-		matchingEncryptedDocs = append(matchingEncryptedDocs, matchingEncryptedDoc)
+		matchingEncryptedDocs[i] = matchingEncryptedDoc
 	}
 
 	return matchingEncryptedDocs, nil
@@ -646,7 +659,7 @@ func (c *CouchDBEDVStore) findDocMatchingQueryEncryptedDocID(encryptedDocID stri
 }
 
 func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) (map[string]struct{}, error) {
-	query := generateStringForMappingDocumentQuery(queryIndexName, "")
+	query := c.generateStringForMappingDocumentQuery(queryIndexName, "")
 
 	idsOfDocsWithAMatchingIndex := make(map[string]struct{})
 
@@ -665,7 +678,7 @@ func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) 
 			return nil, err
 		}
 
-		numDocumentsReturned := 0
+		var numDocumentsReturned uint
 
 		for ok {
 			value, valueErr := itr.Value()
@@ -691,8 +704,8 @@ func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) 
 		}
 
 		// This means that there are (potentially) more pages of documents to get. Need to do another query.
-		if numDocumentsReturned >= queryResultsLimit {
-			query = generateStringForMappingDocumentQuery(queryIndexName, itr.Bookmark())
+		if numDocumentsReturned >= c.retrievalPageSize {
+			query = c.generateStringForMappingDocumentQuery(queryIndexName, itr.Bookmark())
 		} else {
 			doneWithQuery = true
 		}
@@ -706,29 +719,36 @@ func (c *CouchDBEDVStore) findDocsMatchingQueryIndexName(queryIndexName string) 
 	return idsOfDocsWithAMatchingIndex, nil
 }
 
-func generateStringForMappingDocumentQuery(queryIndexName, bookmark string) string {
+func (c *CouchDBEDVStore) generateStringForMappingDocumentQuery(queryIndexName, bookmark string) string {
 	if bookmark == "" {
-		return fmt.Sprintf(queryTemplate, mapDocumentIndexedField, queryIndexName, strconv.Itoa(queryResultsLimit))
+		return fmt.Sprintf(queryTemplate, mapDocumentIndexedField, queryIndexName,
+			strconv.FormatUint(uint64(c.retrievalPageSize), 10))
 	}
 
 	return fmt.Sprintf(queryTemplateWithBookmark, mapDocumentIndexedField, queryIndexName,
-		strconv.Itoa(queryResultsLimit), bookmark)
+		strconv.FormatUint(uint64(c.retrievalPageSize), 10), bookmark)
 }
 
 // Given a set of documents, returns the document IDs that satisfy the query.
 func (c *CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *models.Query) ([]string, error) {
 	matchingDocIDs := make([]string, 0)
 
-	for docID := range docIDs {
-		documentBytes, err := c.coreStore.Get(docID)
-		if err != nil {
-			if errors.Is(err, storage.ErrValueNotFound) {
-				return nil, messages.ErrDocumentNotFound
-			}
+	var docIDsList []string
 
-			return nil, err
+	for docID := range docIDs {
+		docIDsList = append(docIDsList, docID)
+	}
+
+	documentsBytes, err := c.coreStore.GetBulk(docIDsList...)
+	if err != nil {
+		if errors.Is(err, storage.ErrValueNotFound) {
+			return nil, messages.ErrDocumentNotFound
 		}
 
+		return nil, err
+	}
+
+	for _, documentBytes := range documentsBytes {
 		foundEncryptedDoc := models.EncryptedDocument{}
 
 		err = json.Unmarshal(documentBytes, &foundEncryptedDoc)

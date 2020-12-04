@@ -138,17 +138,17 @@ const (
 
 func TestNewProvider(t *testing.T) {
 	t.Run("Failure: blank URL", func(t *testing.T) {
-		prov, err := NewProvider("", "")
+		prov, err := NewProvider("", "", 100)
 		require.Equal(t, ErrMissingDatabaseURL, err)
 		require.Nil(t, prov)
 	})
 	t.Run("Failure: invalid URL", func(t *testing.T) {
-		prov, err := NewProvider("%", "")
+		prov, err := NewProvider("%", "", 100)
 		require.EqualError(t, err, `failure while instantiate Kivik CouchDB client: parse "http://%": invalid URL escape "%"`)
 		require.Nil(t, prov)
 	})
 	t.Run("Failure: connection refused", func(t *testing.T) {
-		prov, err := NewProvider("http://localhost:5984", "")
+		prov, err := NewProvider("http://localhost:5984", "", 100)
 		require.NotNil(t, err)
 		require.Nil(t, prov)
 		require.Contains(t, err.Error(), "failure while pinging couchDB")
@@ -207,7 +207,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 func TestCouchDBEDVStore_Put(t *testing.T) {
 	t.Run("Success - no new encrypted indices", func(t *testing.T) {
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.Put(models.EncryptedDocument{ID: "someID"})
 		require.NoError(t, err)
@@ -246,8 +246,8 @@ func TestCouchDBEDVStore_Put(t *testing.T) {
 
 	t.Run("Fail: error while creating mapping document", func(t *testing.T) {
 		errTest := errors.New("testError")
-		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrPutAll: errTest}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrPutBulk: errTest}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		testDoc := models.EncryptedDocument{
 			ID:                          "someID",
@@ -266,7 +266,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 		Store:                   make(map[string][]byte),
 		ResultsIteratorToReturn: &mockIterator{},
 	}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	indexedAttributeCollection1 := models.IndexedAttributeCollection{
 		Sequence:          0,
@@ -311,7 +311,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 
 func TestCouchDBEDVStore_createAndStoreMappingDocument(t *testing.T) {
 	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	err := store.createAndStoreMappingDocument("", "")
 	require.NoError(t, err)
@@ -363,8 +363,9 @@ func TestCouchDBEDVStore_GetAll(t *testing.T) {
 		require.NoError(t, err)
 
 		couchDBStore := CouchDBEDVStore{
-			coreStore: &coreStore,
-			name:      "",
+			coreStore:         &coreStore,
+			name:              "",
+			retrievalPageSize: 100,
 		}
 
 		// testDocument3 should be filtered out since it was stored with a key that indicates that
@@ -377,7 +378,7 @@ func TestCouchDBEDVStore_GetAll(t *testing.T) {
 	})
 	t.Run("Fail to get all key value pairs from core store", func(t *testing.T) {
 		errGetAll := errors.New("get all error")
-		store := CouchDBEDVStore{coreStore: &mockstore.MockStore{ErrGetAll: errGetAll}}
+		store := CouchDBEDVStore{coreStore: &mockstore.MockStore{ErrGetAll: errGetAll}, retrievalPageSize: 100}
 
 		values, err := store.GetAll()
 		require.EqualError(t, err, fmt.Errorf(failGetKeyValuePairsFromCoreStoreErrMsg, errGetAll).Error())
@@ -387,7 +388,7 @@ func TestCouchDBEDVStore_GetAll(t *testing.T) {
 
 func TestCouchDBEDVStore_Get(t *testing.T) {
 	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	value, err := store.Get("")
 	require.Equal(t, storage.ErrValueNotFound, err)
@@ -396,7 +397,7 @@ func TestCouchDBEDVStore_Get(t *testing.T) {
 
 func TestCouchDBEDVStore_CreateEDVIndex(t *testing.T) {
 	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	err := store.CreateEDVIndex()
 	require.NoError(t, err)
@@ -404,7 +405,7 @@ func TestCouchDBEDVStore_CreateEDVIndex(t *testing.T) {
 
 func TestCouchDBEDVStore_CreateReferenceIDIndex(t *testing.T) {
 	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	err := store.CreateReferenceIDIndex()
 	require.NoError(t, err)
@@ -412,7 +413,7 @@ func TestCouchDBEDVStore_CreateReferenceIDIndex(t *testing.T) {
 
 func TestCouchDBEDVStore_CreateEncryptedDocIDIndex(t *testing.T) {
 	mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte)}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore}
+	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	err := store.CreateEncryptedDocIDIndex()
 	require.NoError(t, err)
@@ -427,12 +428,16 @@ func (m *wrappedMockStore) Put(k string, v []byte) error {
 	return m.mockStoreToWrap.Put(k, v)
 }
 
-func (m *wrappedMockStore) PutAll(keys []string, values [][]byte) error {
-	return m.mockStoreToWrap.PutAll(keys, values)
+func (m *wrappedMockStore) PutBulk(keys []string, values [][]byte) error {
+	return m.mockStoreToWrap.PutBulk(keys, values)
 }
 
 func (m *wrappedMockStore) Get(k string) ([]byte, error) {
 	return m.mockStoreToWrap.Get(k)
+}
+
+func (m *wrappedMockStore) GetBulk(keys ...string) ([][]byte, error) {
+	return m.mockStoreToWrap.GetBulk(keys...)
 }
 
 func (m *wrappedMockStore) GetAll() (map[string][]byte, error) {
@@ -509,7 +514,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		err := mockCoreStore.Put(testDocID1, []byte(testEncryptedDoc))
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -534,7 +539,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		err = mockCoreStore.Put(testDocID2, []byte(testEncryptedDoc2))
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -547,12 +552,12 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		require.Equal(t, testDocID1, docs[0].ID)
 	})
 	t.Run("Success: one document matches query, "+
-		"and paging was required (total number of documents found = queryResultsLimit+10)", func(t *testing.T) {
+		"and paging was required (total number of documents found > query results limit)", func(t *testing.T) {
 		mockCoreStore := wrappedMockStore{
 			mockStoreToWrap: mockstore.MockStore{
 				Store: make(map[string][]byte),
 				ResultsIteratorToReturn: &mockIterator{
-					maxTimesNextCanBeCalled: queryResultsLimit,
+					maxTimesNextCanBeCalled: 25,
 					valueReturn:             []byte(testQuery),
 				},
 			},
@@ -567,7 +572,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		err = mockCoreStore.Put(testDocID2, []byte(testEncryptedDoc2))
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -580,7 +585,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		require.Equal(t, testDocID1, docs[0].ID)
 	})
 	t.Run("Success: one document matches query, "+
-		"and paging was required (total number of documents found = queryResultsLimit)", func(t *testing.T) {
+		"and paging was required (total number of documents found = query results limit)", func(t *testing.T) {
 		// While it's true that there's no need to fetch another page in this case, we can't know for sure
 		// without doing another query and getting an empty page (empty iterator) back,
 		// at which point we can be confident that we've got all the documents.
@@ -588,7 +593,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			mockStoreToWrap: mockstore.MockStore{
 				Store: make(map[string][]byte),
 				ResultsIteratorToReturn: &mockIterator{
-					maxTimesNextCanBeCalled: queryResultsLimit,
+					maxTimesNextCanBeCalled: 25,
 					valueReturn:             []byte(testQuery),
 				},
 			},
@@ -603,7 +608,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		err = mockCoreStore.Put(testDocID2, []byte(testEncryptedDoc2))
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -619,7 +624,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		errTest := errors.New("queryError")
 		mockCoreStore := mockstore.MockStore{ErrQuery: errTest}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -633,7 +638,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -650,7 +655,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -664,7 +669,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, errValue: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -678,7 +683,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errRelease: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -692,7 +697,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 				ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, valueReturn: []byte("")},
 			}
 
-			store := CouchDBEDVStore{coreStore: &mockCoreStore}
+			store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 			query := models.Query{}
 
@@ -713,7 +718,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		err := mockCoreStore.Put(testDocID1, []byte(""))
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -733,7 +738,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -750,12 +755,12 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			ResultsIteratorToReturn: &mockIterator{
 				maxTimesNextCanBeCalled: 1,
 				valueReturn:             []byte(testQuery),
-			}, ErrGet: errTest,
+			}, ErrBulkGet: errTest,
 		}
 
 		err := mockCoreStore.Put(testDocID1, []byte(testEncryptedDoc))
 		require.NoError(t, err)
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -773,7 +778,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: true},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
@@ -783,7 +788,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 	t.Run("Failure: error during query in coreStore", func(t *testing.T) {
 		errTest := errors.New("coreStore query referenceID error")
 		mockCoreStore := mockstore.MockStore{Store: make(map[string][]byte), ErrQuery: errTest}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
@@ -796,7 +801,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
 		}, testVaultID)
@@ -807,7 +812,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: false},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
@@ -820,7 +825,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: true}, ErrPut: errTest,
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		testConfig := models.DataVaultConfiguration{ReferenceID: testReferenceID}
 
@@ -835,7 +840,7 @@ func TestCouchDBEDVStore_Update(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName2, testDocID1, testMappingDocName1)
@@ -877,7 +882,7 @@ func TestCouchDBEDVStore_Update(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName2, testDocID2, testMappingDocName2)
@@ -899,7 +904,7 @@ func TestCouchDBEDVStore_Update(t *testing.T) {
 			Store: make(map[string][]byte), ErrDelete: errors.New(testError),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 
@@ -923,7 +928,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 
@@ -938,7 +943,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store: make(map[string][]byte), ErrQuery: errors.New(testError),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
@@ -950,7 +955,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errors.New(testError)},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
@@ -962,7 +967,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		mappingDoc := buildIndexMappingDocument(testIndexName1, testDocID1, testMappingDocName1)
 
@@ -985,7 +990,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		mappingDoc := buildIndexMappingDocument(testIndexName1, testDocID1, testMappingDocName1)
 
@@ -1008,7 +1013,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		mockCoreStore.ResultsIteratorToReturn = &mockIterator{
 			maxTimesNextCanBeCalled: 1,
@@ -1025,7 +1030,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		mappingDoc := buildIndexMappingDocument(testIndexName1, testDocID1, testMappingDocName1)
 
@@ -1051,7 +1056,7 @@ func TestCouchDBEDVStore_Delete(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 
@@ -1081,7 +1086,7 @@ func TestCouchDBEDVStore_Delete(t *testing.T) {
 			Store:                   make(map[string][]byte),
 			ResultsIteratorToReturn: &mockIterator{errNext: errors.New(testError)},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		doc := buildEncryptedDoc(testDocID1, models.IndexedAttributeCollection{})
 
@@ -1096,7 +1101,7 @@ func TestCouchDBEDVStore_Delete(t *testing.T) {
 			Store: make(map[string][]byte), ErrDelete: errors.New(testError),
 			ResultsIteratorToReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore}
+		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 

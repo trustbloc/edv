@@ -843,8 +843,8 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8/go.mod h1
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8 h1:VtbBrpzy6rg4EHKOgGDOhBlFg8WWb0dFTYGz140gtj4=
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8/go.mod h1:gcwDl9YLyNc3H3wmPXamu+8evD8TYUa6BjTsWnvdn7A=
-github.com/trustbloc/edge-core v0.1.5-0.20201203211818-a61e670a310e h1:+3hxtmtgQ12uP6rEcrts53Pn7PIwMhKg4l/CT4jzG2w=
-github.com/trustbloc/edge-core v0.1.5-0.20201203211818-a61e670a310e/go.mod h1:S5q7nV9bDdDI4bWl5TeMK9aVnMXtI9K3h1y96rJDbyw=
+github.com/trustbloc/edge-core v0.1.5-0.20201204205054-05009dc0285c h1:kwMBLm5PAETaDwB1mg3OaQF2L6ZPok3Wk6DUYbUPFDw=
+github.com/trustbloc/edge-core v0.1.5-0.20201204205054-05009dc0285c/go.mod h1:S5q7nV9bDdDI4bWl5TeMK9aVnMXtI9K3h1y96rJDbyw=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/ugorji/go v1.1.4/go.mod h1:uQMGLiO92mf5W77hV/PUCpI3pbzQx3CRekS0kk+RGrc=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
