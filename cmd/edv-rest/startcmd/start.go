@@ -85,6 +85,16 @@ const (
 		" Alternatively, this can be set with the following environment variable: " + databaseTimeoutEnvKey
 	databaseTimeoutDefault = 30
 
+	databaseRetrievalPageSizeFlagName      = "database-retrieval-page-size"
+	databaseRetrievalPageSizeEnvKey        = "EDV_DATABASE_PAGE_SIZE"
+	databaseRetrievalPageSizeFlagShorthand = "s"
+	databaseRetrievalPageSizeFlagUsage     = "Number of entries within each page when doing bulk operations " +
+		"within underlying databases. Larger values provide better performance at the expense of memory usage." +
+		" This option is ignored if the database type is mem." +
+		" Default: " + string(rune(databaseRetrievalPageSizeDefault)) + " 100." +
+		" Alternatively, this can be set with the following environment variable: " + databaseRetrievalPageSizeEnvKey
+	databaseRetrievalPageSizeDefault = 100
+
 	logLevelFlagName        = "log-level"
 	logLevelEnvKey          = "EDV_LOG_LEVEL"
 	logLevelFlagShorthand   = "l"
@@ -176,11 +186,11 @@ var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type."
 var errCreateConfigStore = "failed to create data vault configuration store: %w"
 
 // nolint:gochecknoglobals
-var supportedEDVStorageProviders = map[string]func(string, string) (edvprovider.EDVProvider, error){
-	databaseTypeCouchDBOption: func(databaseURL, prefix string) (edvprovider.EDVProvider, error) {
-		return couchdbedvprovider.NewProvider(databaseURL, prefix)
+var supportedEDVStorageProviders = map[string]func(string, string, uint) (edvprovider.EDVProvider, error){
+	databaseTypeCouchDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (edvprovider.EDVProvider, error) {
+		return couchdbedvprovider.NewProvider(databaseURL, prefix, retrievalPageSize)
 	},
-	databaseTypeMemOption: func(_, _ string) (edvprovider.EDVProvider, error) { // nolint:unparam
+	databaseTypeMemOption: func(_, _ string, _ uint) (edvprovider.EDVProvider, error) { // nolint:unparam
 		return memedvprovider.NewProvider(), nil
 	},
 }
@@ -196,18 +206,19 @@ var supportedAriesStorageProviders = map[string]func(string, string) (ariesstora
 }
 
 type edvParameters struct {
-	srv                    server
-	hostURL                string
-	databaseType           string
-	databaseURL            string
-	databasePrefix         string
-	databaseTimeout        uint64
-	logLevel               string
-	tlsConfig              *tlsConfig
-	authEnable             bool
-	corsEnable             bool
-	localKMSSecretsStorage *storageParameters
-	extensionsToEnable     *operation.EnabledExtensions
+	srv                       server
+	hostURL                   string
+	databaseType              string
+	databaseURL               string
+	databasePrefix            string
+	databaseTimeout           uint64
+	databaseRetrievalPageSize uint
+	logLevel                  string
+	tlsConfig                 *tlsConfig
+	authEnable                bool
+	corsEnable                bool
+	localKMSSecretsStorage    *storageParameters
+	extensionsToEnable        *operation.EnabledExtensions
 }
 
 type storageParameters struct {
@@ -301,6 +312,11 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				return err
 			}
 
+			databaseRetrievalPageSize, err := getDatabaseRetrievalPageSize(cmd)
+			if err != nil {
+				return err
+			}
+
 			loggingLevel, err := cmdutils.GetUserSetVarFromString(cmd, logLevelFlagName, logLevelEnvKey, true)
 			if err != nil {
 				return err
@@ -332,18 +348,19 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 			}
 
 			parameters := &edvParameters{
-				srv:                    srv,
-				hostURL:                hostURL,
-				databaseType:           databaseType,
-				databaseURL:            databaseURL,
-				databasePrefix:         databasePrefix,
-				databaseTimeout:        databaseTimeout,
-				logLevel:               loggingLevel,
-				tlsConfig:              tlsConfig,
-				authEnable:             authEnable,
-				corsEnable:             corsEnable,
-				localKMSSecretsStorage: localKMSSecretsStorage,
-				extensionsToEnable:     enabledExtensions,
+				srv:                       srv,
+				hostURL:                   hostURL,
+				databaseType:              databaseType,
+				databaseURL:               databaseURL,
+				databasePrefix:            databasePrefix,
+				databaseTimeout:           databaseTimeout,
+				databaseRetrievalPageSize: databaseRetrievalPageSize,
+				logLevel:                  loggingLevel,
+				tlsConfig:                 tlsConfig,
+				authEnable:                authEnable,
+				corsEnable:                corsEnable,
+				localKMSSecretsStorage:    localKMSSecretsStorage,
+				extensionsToEnable:        enabledExtensions,
 			}
 			return startEDV(parameters)
 		},
@@ -452,6 +469,27 @@ func getTimeout(cmd *cobra.Command) (timeout uint64, err error) {
 	return uint64(databaseTimeoutInt), nil
 }
 
+func getDatabaseRetrievalPageSize(cmd *cobra.Command) (uint, error) {
+	databaseRetrievalPageSize, err := cmdutils.GetUserSetVarFromString(cmd,
+		databaseRetrievalPageSizeFlagName, databaseRetrievalPageSizeEnvKey, true)
+	if err != nil {
+		return 0, err
+	}
+
+	if databaseRetrievalPageSize == "" {
+		databaseRetrievalPageSize = strconv.Itoa(databaseRetrievalPageSizeDefault)
+	}
+
+	databaseRetrievalPageSizeInt, err := strconv.ParseUint(databaseRetrievalPageSize, 10, 0)
+	if err != nil {
+		return 0,
+			fmt.Errorf("failed to parse database retrieval page size %s into a string: %w",
+				databaseRetrievalPageSize, err)
+	}
+
+	return uint(databaseRetrievalPageSizeInt), nil
+}
+
 func getTLS(cmd *cobra.Command) (*tlsConfig, error) {
 	tlsCertFile, err := cmdutils.GetUserSetVarFromString(cmd, tlsCertFileFlagName,
 		tlsCertFileEnvKey, true)
@@ -474,6 +512,8 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
 	startCmd.Flags().StringP(databasePrefixFlagName, databasePrefixFlagShorthand, "", databasePrefixFlagUsage)
 	startCmd.Flags().StringP(databaseTimeoutFlagName, databaseTimeoutFlagShorthand, "", databaseTimeoutFlagUsage)
+	startCmd.Flags().StringP(databaseRetrievalPageSizeFlagName,
+		databaseRetrievalPageSizeFlagShorthand, "", databaseRetrievalPageSizeFlagUsage)
 	startCmd.Flags().StringP(logLevelFlagName, logLevelFlagShorthand, "", logLevelPrefixFlagUsage)
 	startCmd.Flags().StringP(tlsCertFileFlagName, tlsCertFileFlagShorthand, "", tlsCertFileFlagUsage)
 	startCmd.Flags().StringP(tlsKeyFileFlagName, tlsKeyFileFlagShorthand, "", tlsKeyFileFlagUsage)
@@ -518,8 +558,10 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errCreate
 		}
 
-		storageProvider, errCreate := createAriesStorageProvider(&storageParameters{storageType: parameters.databaseType,
-			storageURL: parameters.databaseURL, storagePrefix: parameters.databasePrefix}, parameters.databaseTimeout)
+		storageProvider, errCreate := createAriesStorageProvider(&storageParameters{
+			storageType: parameters.databaseType,
+			storageURL:  parameters.databaseURL, storagePrefix: parameters.databasePrefix,
+		}, parameters.databaseTimeout)
 		if errCreate != nil {
 			return errCreate
 		}
@@ -530,8 +572,10 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		}
 	}
 
-	edvService, err := restapi.New(&operation.Config{Provider: provider, AuthService: authSvc,
-		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable})
+	edvService, err := restapi.New(&operation.Config{
+		Provider: provider, AuthService: authSvc,
+		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable,
+	})
 	if err != nil {
 		return err
 	}
@@ -592,7 +636,8 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 
 	err := retry(func() error {
 		var openErr error
-		edvProv, openErr = providerFunc(parameters.databaseURL, parameters.databasePrefix)
+		edvProv, openErr =
+			providerFunc(parameters.databaseURL, parameters.databasePrefix, parameters.databaseRetrievalPageSize)
 		return openErr
 	}, parameters.databaseTimeout)
 	if err != nil {
@@ -774,7 +819,6 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		func(writer http.ResponseWriter, request *http.Request) {
 			h.routerHandler.ServeHTTP(w, r)
 		})
-
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
