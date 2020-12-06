@@ -97,7 +97,8 @@ func New(config *Config) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: config.Provider,
-		}, authEnable: config.AuthEnable, authService: config.AuthService, enabledExtensions: config.EnabledExtensions}
+		}, authEnable: config.AuthEnable, authService: config.AuthService, enabledExtensions: config.EnabledExtensions,
+	}
 
 	svc.registerHandler()
 
@@ -415,7 +416,15 @@ func (c *Operation) deleteDocumentHandler(rw http.ResponseWriter, req *http.Requ
 	}
 }
 
-// Response body will be an array of responses, one for each vault operation.
+// Response body will be an array of responses, one for each vault operation. Response for a successful upsert
+// will be the document location. No distinction is made between document creation and document updates.
+// TODO (#171): Address the limitations of this endpoint. Specifically...
+//  1. Updated documents must have the same encrypted indices (names+values) as the documents they're replacing,
+//  2. For new documents, encrypted indices will be created, but no uniqueness validation will occur.
+//     (No errors will be thrown if either of these limitations are not respected.
+//     The underlying database will just get in a bad state if you ignore them.)
+//  3. Delete operations are slow because they don't batch with other operations. They force any queued operations
+//     to execute early. Delete operations don't batch with other operations (including other deletes).
 func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
 	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
 	if !success {
@@ -453,50 +462,80 @@ func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vaultID string,
-	incomingBatch models.Batch, responses []string, requestBody []byte) {
-	for i, vaultOperation := range incomingBatch {
+	vaultOperations models.Batch, responses []string, requestBody []byte) {
+	// To improve performance, we gather as many document upsert operations as we can before we hit a
+	// delete operation so that we can insert them into the underlying database in one big bulk operation.
+	var currentUpsertDocumentsBatch []models.EncryptedDocument
+
+	var numOperationsCompleted int
+
+	for vaultOperationIndex, vaultOperation := range vaultOperations {
 		switch {
 		case strings.EqualFold(vaultOperation.Operation, models.UpsertDocumentVaultOperation):
-			err := c.vaultCollection.createDocument(vaultID, vaultOperation.EncryptedDocument)
-			if err != nil {
-				if errors.Is(err, messages.ErrDuplicateDocument) {
-					errUpdateDocument := c.vaultCollection.updateDocument(vaultOperation.EncryptedDocument.ID, vaultID,
-						vaultOperation.EncryptedDocument)
-					if errUpdateDocument != nil {
-						responses[i] = errUpdateDocument.Error()
-						writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
-
-						return
+			currentUpsertDocumentsBatch = append(currentUpsertDocumentsBatch, vaultOperation.EncryptedDocument)
+		case strings.EqualFold(vaultOperation.Operation, models.DeleteDocumentVaultOperation):
+			if len(currentUpsertDocumentsBatch) > 0 {
+				err := c.vaultCollection.upsertDocuments(vaultID, currentUpsertDocumentsBatch)
+				if err != nil {
+					for i := 0; i < len(currentUpsertDocumentsBatch); i++ {
+						responses[i+numOperationsCompleted] = err.Error()
 					}
 
-					responses[i] = ""
-
-					continue
-				} else {
-					responses[i] = err.Error()
 					writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
 
 					return
 				}
+
+				for i := 0; i < len(currentUpsertDocumentsBatch); i++ {
+					responses[i+numOperationsCompleted] =
+						getFullDocumentURL(currentUpsertDocumentsBatch[i].ID, vaultID, host)
+				}
+
+				numOperationsCompleted += len(currentUpsertDocumentsBatch)
+
+				currentUpsertDocumentsBatch = nil // Finished with these documents, start a new batch
 			}
 
-			responses[i] = getFullDocumentURL(vaultOperation.EncryptedDocument.ID, vaultID, host)
-		case strings.EqualFold(vaultOperation.Operation, models.DeleteDocumentVaultOperation):
 			err := c.vaultCollection.deleteDocument(vaultOperation.DocumentID, vaultID)
 			if err != nil {
-				responses[i] = err.Error()
+				responses[vaultOperationIndex] = err.Error()
 				writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
 
 				return
 			}
 
-			responses[i] = ""
+			responses[vaultOperationIndex] = ""
+			numOperationsCompleted++
 		default: // Validation check should ensure that this can't happen.
 			err := fmt.Errorf("%s is not a valid vault operation", vaultOperation.Operation)
-			responses[i] = err.Error()
+			responses[vaultOperationIndex] = err.Error()
 			writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
 
 			return
+		}
+	}
+
+	c.upsertRemainingDocuments(rw, host, vaultID, currentUpsertDocumentsBatch, responses, numOperationsCompleted,
+		requestBody)
+}
+
+func (c *Operation) upsertRemainingDocuments(rw http.ResponseWriter, host, vaultID string,
+	currentUpsertDocumentsBatch []models.EncryptedDocument, responses []string, numOperationsCompleted int,
+	requestBody []byte) {
+	if len(currentUpsertDocumentsBatch) > 0 {
+		err := c.vaultCollection.upsertDocuments(vaultID, currentUpsertDocumentsBatch)
+		if err != nil {
+			for i := 0; i < len(currentUpsertDocumentsBatch); i++ {
+				responses[i+numOperationsCompleted] = err.Error()
+			}
+
+			writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+
+			return
+		}
+
+		for i := 0; i < len(currentUpsertDocumentsBatch); i++ {
+			responses[i+numOperationsCompleted] = getFullDocumentURL(currentUpsertDocumentsBatch[i].ID, vaultID, host)
 		}
 	}
 
@@ -506,7 +545,7 @@ func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vault
 func createInitialResponses(numResponses int) []string {
 	responses := make([]string, numResponses)
 	for i := range responses {
-		responses[i] = "not executed"
+		responses[i] = "not validated or executed"
 	}
 
 	return responses
@@ -667,6 +706,19 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 	}
 
 	return store.Put(document)
+}
+
+func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.EncryptedDocument) error {
+	store, err := vc.provider.OpenStore(vaultID)
+	if err != nil {
+		if errors.Is(err, storage.ErrStoreNotFound) {
+			return messages.ErrVaultNotFound
+		}
+
+		return err
+	}
+
+	return store.UpsertBulk(documents)
 }
 
 func (vc *VaultCollection) readAllDocuments(vaultName string) ([][]byte, error) {
