@@ -110,8 +110,8 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 
 	cachingDL := verifiable.CachingJSONLDLoader()
 
-	for u, d := range s.cachedLDContext {
-		cachingDL.AddDocument(u, d)
+	for _, d := range s.cachedLDContext {
+		cachingDL.AddDocument(d.ContextURL, d.Document)
 	}
 
 	return zcapld.NewHTTPSigAuthHandler(
