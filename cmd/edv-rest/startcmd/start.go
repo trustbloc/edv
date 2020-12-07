@@ -81,7 +81,7 @@ const (
 	databaseTimeoutEnvKey        = "EDV_DATABASE_TIMEOUT"
 	databaseTimeoutFlagShorthand = "o"
 	databaseTimeoutFlagUsage     = "Total time in seconds to wait until the database is available before giving up." +
-		" Default: " + string(rune(databaseTimeoutDefault)) + " seconds." +
+		" Default: 30 seconds." +
 		" Alternatively, this can be set with the following environment variable: " + databaseTimeoutEnvKey
 	databaseTimeoutDefault = 30
 
@@ -91,7 +91,7 @@ const (
 	databaseRetrievalPageSizeFlagUsage     = "Number of entries within each page when doing bulk operations " +
 		"within underlying databases. Larger values provide better performance at the expense of memory usage." +
 		" This option is ignored if the database type is mem." +
-		" Default: " + string(rune(databaseRetrievalPageSizeDefault)) + " 100." +
+		" Default: 100." +
 		" Alternatively, this can be set with the following environment variable: " + databaseRetrievalPageSizeEnvKey
 	databaseRetrievalPageSizeDefault = 100
 
