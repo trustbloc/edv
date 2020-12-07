@@ -67,6 +67,22 @@ func (m MemEDVStore) Put(document models.EncryptedDocument) error {
 	return m.coreStore.Put(document.ID, documentBytes)
 }
 
+// UpsertBulk stores the given documents, creating or updating them as needed.
+func (m MemEDVStore) UpsertBulk(documents []models.EncryptedDocument) error {
+	if documents == nil {
+		return fmt.Errorf("documents array cannot be nil")
+	}
+
+	for _, document := range documents {
+		err := m.Put(document)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // GetAll fetches all the documents within this store.
 func (m MemEDVStore) GetAll() ([][]byte, error) {
 	allKeyValuePairs, err := m.coreStore.GetAll()

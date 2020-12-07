@@ -52,6 +52,10 @@ func (m *mockEDVStore) Put(models.EncryptedDocument) error {
 	return nil
 }
 
+func (m *mockEDVStore) UpsertBulk(documents []models.EncryptedDocument) error {
+	return nil
+}
+
 func (m *mockEDVStore) GetAll() ([][]byte, error) {
 	return nil, nil
 }
@@ -136,8 +140,10 @@ func TestStartCmdWithMissingArg(t *testing.T) {
 	t.Run("test auth enable wrong value", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + authEnableFlagName, "wrong"}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + authEnableFlagName, "wrong",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -157,10 +163,12 @@ func TestStartCmdValidArgs(t *testing.T) {
 	t.Run("database type: mem", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + authEnableFlagName, "true", "--" + localKMSSecretsDatabaseTypeFlagName, "mem",
 			"--" + extensionsFlagName, returnFullDocumentOnQueryExtensionName +
-				"," + readAllDocumentsExtensionName + "," + batchExtensionName, "--" + corsEnableFlagName, "true"}
+				"," + readAllDocumentsExtensionName + "," + batchExtensionName, "--" + corsEnableFlagName, "true",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -183,8 +191,10 @@ func TestStartCmdLogLevels(t *testing.T) {
 	t.Run("Log level: critical", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + logLevelFlagName, logLevelCritical}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + logLevelFlagName, logLevelCritical,
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -194,8 +204,10 @@ func TestStartCmdLogLevels(t *testing.T) {
 	t.Run("Log level: error", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + logLevelFlagName, logLevelError}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + logLevelFlagName, logLevelError,
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -205,8 +217,10 @@ func TestStartCmdLogLevels(t *testing.T) {
 	t.Run("Log level: warn", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + logLevelFlagName, logLevelWarn}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + logLevelFlagName, logLevelWarn,
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -216,8 +230,10 @@ func TestStartCmdLogLevels(t *testing.T) {
 	t.Run("Log level: info", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + logLevelFlagName, logLevelInfo}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + logLevelFlagName, logLevelInfo,
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -227,8 +243,10 @@ func TestStartCmdLogLevels(t *testing.T) {
 	t.Run("Log level: debug", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + logLevelFlagName, logLevelDebug}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + logLevelFlagName, logLevelDebug,
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -238,8 +256,10 @@ func TestStartCmdLogLevels(t *testing.T) {
 	t.Run("Invalid log level - default to info", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + logLevelFlagName, "mango"}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + logLevelFlagName, "mango",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -252,8 +272,10 @@ func TestStartCmdBlankTLSArgs(t *testing.T) {
 	t.Run("Blank cert file arg", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + tlsCertFileFlagName, ""}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + tlsCertFileFlagName, "",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -262,8 +284,10 @@ func TestStartCmdBlankTLSArgs(t *testing.T) {
 	t.Run("Blank key file arg", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + tlsKeyFileFlagName, ""}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + tlsKeyFileFlagName, "",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -294,8 +318,10 @@ func TestKeyManager(t *testing.T) {
 	})
 
 	t.Run("Error - CouchDB url is invalid", func(t *testing.T) {
-		parameters := edvParameters{localKMSSecretsStorage: &storageParameters{storageType: databaseTypeCouchDBOption,
-			storageURL: "%"}, databaseTimeout: 1}
+		parameters := edvParameters{localKMSSecretsStorage: &storageParameters{
+			storageType: databaseTypeCouchDBOption,
+			storageURL:  "%",
+		}, databaseTimeout: 1}
 
 		provider, err := createKeyManager(&parameters)
 		require.Error(t, err)
@@ -366,7 +392,8 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
 				next http.HandlerFunc) (http.HandlerFunc, error) {
 				return nil, fmt.Errorf("failed to create auth handler")
-			}}}
+			},
+		}}
 
 		responseRecorder := httptest.NewRecorder()
 		h.ServeHTTP(responseRecorder, &http.Request{RequestURI: createVaultPath + "/vaultID"})
@@ -381,7 +408,8 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 				return func(w http.ResponseWriter, r *http.Request) {
 					require.Equal(t, r.RequestURI, createVaultPath+"/vaultID")
 				}, nil
-			}}}
+			},
+		}}
 
 		responseRecorder := httptest.NewRecorder()
 		h.ServeHTTP(responseRecorder, &http.Request{RequestURI: createVaultPath + "/vaultID"})
@@ -462,8 +490,10 @@ func TestGetTimeout(t *testing.T) {
 	t.Run("failure - invalid timeout flag", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + databaseTimeoutFlagName, "NotAnInt"}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + databaseTimeoutFlagName, "NotAnInt",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()

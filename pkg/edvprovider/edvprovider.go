@@ -43,6 +43,9 @@ type EDVStore interface {
 	// Put stores the given document.
 	Put(document models.EncryptedDocument) error
 
+	// UpsertBulk stores the given documents, creating or updating them as needed.
+	UpsertBulk(documents []models.EncryptedDocument) error
+
 	// GetAll fetches all the documents within this store.
 	GetAll() ([][]byte, error)
 

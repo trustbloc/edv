@@ -771,7 +771,7 @@ func TestClient_Batch(t *testing.T) {
 		require.Len(t, responses, len(batch))
 		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, responses[0])
 		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID2, responses[1])
-		require.Equal(t, "", responses[2])
+		require.Equal(t, srvAddr+"/encrypted-data-vaults/"+vaultID+"/documents/"+testDocumentID, responses[2])
 
 		err = srv.Shutdown(context.Background())
 		require.NoError(t, err)
@@ -825,7 +825,7 @@ func TestClient_Batch(t *testing.T) {
 
 		expectedResponses := []string{
 			"validated but not executed",
-			"invalidOperationName is not a valid vault operation", "not executed",
+			"invalidOperationName is not a valid vault operation", "not validated or executed",
 		}
 
 		expectedResponsesBytes, err := json.Marshal(expectedResponses)

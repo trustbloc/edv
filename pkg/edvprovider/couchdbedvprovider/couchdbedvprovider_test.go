@@ -255,8 +255,8 @@ func TestCouchDBEDVStore_Put(t *testing.T) {
 		}
 
 		err := store.Put(testDoc)
-		require.EqualError(t, err, fmt.Errorf("failed to put encrypted document and its associated "+
-			"mapping documents into CouchDB: %w", errTest).Error())
+		require.EqualError(t, err, fmt.Errorf("failed to put encrypted document(s) and their associated "+
+			"mapping document(s) into CouchDB: %w", errTest).Error())
 	})
 }
 
@@ -282,7 +282,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 	err := store.Put(testDoc1)
 	require.NoError(t, err)
 
-	mappingDoc := couchDBIndexMappingDocument{
+	mappingDoc := indexMappingDocument{
 		IndexName:              "indexName1",
 		MatchingEncryptedDocID: "someID1",
 	}
@@ -932,7 +932,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 
 		storeOriginalDocumentBeforeUpdate(t, store, &mockCoreStore, testIndexName1, testDocID1, testMappingDocName1)
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.NoError(t, err)
 		require.NotEmpty(t, mappingDocNamesAndIndexNames)
 		require.NotEmpty(t, mappingDocNamesAndIndexNames[testMappingDocName1])
@@ -945,7 +945,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 		}
 		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
 		require.NotNil(t, err)
 		require.Error(t, err, testError)
@@ -957,7 +957,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 		}
 		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
 		require.NotNil(t, err)
 		require.Error(t, err, testError)
@@ -980,7 +980,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			valueReturn:             marshalledMappingDoc,
 		}
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
 		require.NotNil(t, err)
 		require.Error(t, err, testError)
@@ -1003,7 +1003,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			valueReturn:             marshalledMappingDoc,
 		}
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
 		require.NotNil(t, err)
 		require.Error(t, err, testError)
@@ -1020,7 +1020,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			valueReturn:             []byte("notAMappingDocument"),
 		}
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
 		require.NotNil(t, err)
 		require.Contains(t, err.Error(), "error unmarshalling rawDoc")
@@ -1043,7 +1043,7 @@ func TestCouchDBEDVStore_findDocMatchingQueryEncryptedDocID(t *testing.T) {
 			valueReturn:             marshalledMappingDoc,
 		}
 
-		mappingDocNamesAndIndexNames, err := store.findDocMatchingQueryEncryptedDocID(testDocID1)
+		mappingDocNamesAndIndexNames, err := store.findDocsMatchingQueryEncryptedDocID(testDocID1)
 		require.Nil(t, mappingDocNamesAndIndexNames)
 		require.NotNil(t, err)
 		require.Error(t, err, testError)
@@ -1156,8 +1156,8 @@ func buildEncryptedDoc(id string, indexedAttributeCol models.IndexedAttributeCol
 	return doc
 }
 
-func buildIndexMappingDocument(indexName, encryptedDocID, mappingDocumentID string) *couchDBIndexMappingDocument {
-	mappingDoc := couchDBIndexMappingDocument{
+func buildIndexMappingDocument(indexName, encryptedDocID, mappingDocumentID string) *indexMappingDocument {
+	mappingDoc := indexMappingDocument{
 		IndexName:              indexName,
 		MatchingEncryptedDocID: encryptedDocID,
 		MappingDocumentName:    mappingDocumentID,
