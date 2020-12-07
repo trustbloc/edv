@@ -35,10 +35,10 @@ var logger = log.New("auth-zcap-service")
 
 // Service to provide zcapld functionality
 type Service struct {
-	keyManager       kms.KeyManager
-	crypto           cryptoapi.Crypto
-	store            ariesstorage.Store
-	ldDocumentLoader *ld.CachingDocumentLoader
+	keyManager      kms.KeyManager
+	crypto          cryptoapi.Crypto
+	store           ariesstorage.Store
+	cachedLDContext map[string]*ld.RemoteDocument
 }
 
 // New return zcap service
@@ -48,13 +48,13 @@ func New(keyManager kms.KeyManager, crypto cryptoapi.Crypto, storeProv ariesstor
 		return nil, fmt.Errorf("failed to open store %s: %w", storeName, err)
 	}
 
-	ldDocumentLoader, err := createJSONLDDocumentLoader()
+	ctx, err := loadJSONLDContext()
 	if err != nil {
 		return nil, fmt.Errorf("failed create json ld document loader: %w", err)
 	}
 
 	return &Service{
-		keyManager: keyManager, crypto: crypto, store: store, ldDocumentLoader: ldDocumentLoader,
+		keyManager: keyManager, crypto: crypto, store: store, cachedLDContext: ctx,
 	}, nil
 }
 
@@ -108,6 +108,12 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 		action = "read"
 	}
 
+	cachingDL := verifiable.CachingJSONLDLoader()
+
+	for u, d := range s.cachedLDContext {
+		cachingDL.AddDocument(u, d)
+	}
+
 	return zcapld.NewHTTPSigAuthHandler(
 		&zcapld.HTTPSigAuthConfig{
 			CapabilityResolver: capabilityResolver{svc: s},
@@ -115,7 +121,7 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 			VerifierOptions: []zcapld.VerificationOption{
 				zcapld.WithSignatureSuites(
 					ed25519signature2018.New(suite.WithVerifier(ed25519signature2018.NewPublicKeyVerifier())),
-				), zcapld.WithLDDocumentLoaders(s.ldDocumentLoader),
+				), zcapld.WithLDDocumentLoaders(cachingDL),
 			},
 			Secrets:     &zcapld.AriesDIDKeySecrets{},
 			ErrConsumer: logError{w: w}.Log,
@@ -202,9 +208,7 @@ func (l logError) Log(err error) {
 	}
 }
 
-func createJSONLDDocumentLoader() (*ld.CachingDocumentLoader, error) {
-	loader := verifiable.CachingJSONLDLoader()
-
+func loadJSONLDContext() (map[string]*ld.RemoteDocument, error) {
 	contexts := []struct {
 		vocab   string
 		content string
@@ -219,22 +223,21 @@ func createJSONLDDocumentLoader() (*ld.CachingDocumentLoader, error) {
 		},
 	}
 
+	cached := make(map[string]*ld.RemoteDocument)
+
 	for i := range contexts {
-		if err := addJSONLDCachedContext(loader, contexts[i].vocab, contexts[i].content); err != nil {
-			return nil, err
+		ctx := contexts[i]
+
+		reader, err := ld.DocumentFromReader(strings.NewReader(ctx.content))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read cached jsonld context: %w", err)
+		}
+
+		cached[ctx.vocab] = &ld.RemoteDocument{
+			DocumentURL: ctx.vocab,
+			Document:    reader,
 		}
 	}
 
-	return loader, nil
-}
-
-func addJSONLDCachedContext(loader *ld.CachingDocumentLoader, contextURL, contextContent string) error {
-	reader, err := ld.DocumentFromReader(strings.NewReader(contextContent))
-	if err != nil {
-		return err
-	}
-
-	loader.AddDocument(contextURL, reader)
-
-	return nil
+	return cached, nil
 }
