@@ -14,12 +14,12 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/google/tink/go v1.5.0
 	github.com/gorilla/mux v1.8.0
-	github.com/hyperledger/aries-framework-go v0.1.5-0.20201120141223-c70cf578d36b
+	github.com/hyperledger/aries-framework-go v0.1.5
 	github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20201119153638-fc5d5e680587
 	github.com/rs/cors v1.7.0
 	github.com/spf13/cobra v0.0.6
 	github.com/stretchr/testify v1.6.1
-	github.com/trustbloc/edge-core v0.1.5-0.20201204205054-05009dc0285c
+	github.com/trustbloc/edge-core v0.1.5
 	github.com/trustbloc/edv v0.0.0
 )
 
