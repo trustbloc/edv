@@ -5,8 +5,8 @@
 EDV_REST_PATH=cmd/edv-rest
 
 # Namespace for the EDV server image
-DOCKER_OUTPUT_NS   ?= docker.pkg.github.com
-EDV_REST_IMAGE_NAME   ?= trustbloc/edv/edv-rest
+DOCKER_OUTPUT_NS   ?= ghcr.io
+EDV_REST_IMAGE_NAME   ?= trustbloc/edv
 
 # OpenAPI spec
 OPENAPI_DOCKER_IMG=quay.io/goswagger/swagger
@@ -37,15 +37,15 @@ edv-rest:
 	@mkdir -p ./build/bin
 	@cd ${EDV_REST_PATH} && go build -o ../../build/bin/edv-rest main.go
 
-.PHONY: edv-rest-docker
-edv-rest-docker:
-	@echo "Building edv rest docker image"
+.PHONY: edv-docker
+edv-docker:
+	@echo "Building edv docker image"
 	@docker build -f ./images/edv-rest/Dockerfile --no-cache -t $(DOCKER_OUTPUT_NS)/$(EDV_REST_IMAGE_NAME):latest \
 	--build-arg GO_VER=$(GO_VER) \
 	--build-arg ALPINE_VER=$(ALPINE_VER) .
 
 .PHONY: bdd-test
-bdd-test: edv-rest-docker generate-test-keys mock-login-consent-docker
+bdd-test: edv-docker generate-test-keys mock-login-consent-docker
 	@rm -Rf ./test/bdd/*.log
 	@scripts/check_integration.sh
 
@@ -68,7 +68,7 @@ generate-openapi-spec: clean
 	scripts/generate-openapi-spec.sh
 
 .PHONY: generate-openapi-demo-specs
-generate-openapi-demo-specs: clean generate-openapi-spec edv-rest-docker
+generate-openapi-demo-specs: clean generate-openapi-spec edv-docker
 	@echo "Generate demo agent rest controller API specifications using Open API"
 	@SPEC_PATH=${OPENAPI_SPEC_PATH} OPENAPI_DEMO_PATH=test/bdd/fixtures/openapi-demo \
     	DOCKER_IMAGE=$(OPENAPI_DOCKER_IMG) DOCKER_IMAGE_VERSION=$(OPENAPI_DOCKER_IMG_VERSION)  \

@@ -12,9 +12,9 @@ IS_RELEASE=false
 
 # Project Parameters
 SOURCE_REPO=edv
-BASE_PKG_NAME=edv-rest
-RELEASE_REPO=docker.pkg.github.com/trustbloc/${SOURCE_REPO}
-SNAPSHOT_REPO=docker.pkg.github.com/trustbloc-cicd/snapshot
+BASE_PKG_NAME=edv
+RELEASE_REPO=ghcr.io/trustbloc
+SNAPSHOT_REPO=ghcr.io/trustbloc-cicd
 
 if [ ${IS_RELEASE} = false ]
 then
@@ -26,5 +26,5 @@ else
   PROJECT_PKG_REPO=${RELEASE_REPO}
 fi
 
-export EDV_REST_TAG=$PROJECT_VERSION
-export EDV_REST_PKG=${PROJECT_PKG_REPO}/${BASE_PKG_NAME}
+export EDV_TAG=${PROJECT_VERSION}
+export EDV_PKG=${PROJECT_PKG_REPO}/${BASE_PKG_NAME}
