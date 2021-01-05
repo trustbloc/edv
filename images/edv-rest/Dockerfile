@@ -25,6 +25,8 @@ RUN make edv-rest
 
 FROM alpine:${ALPINE_VER}
 
+LABEL org.opencontainers.image.source https://github.com/trustbloc/edv
+
 # copy compiled edv-rest binary from build container
 COPY --from=edv /go/src/github.com/trustbloc/edv/build/bin/edv-rest /usr/local/bin
 
