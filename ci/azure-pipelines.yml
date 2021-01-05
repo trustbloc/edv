@@ -71,9 +71,9 @@ jobs:
           trap logout EXIT
           source ci/version_var.sh
           echo $DOCKER_PASSWORD | docker login docker.pkg.github.com --username $DOCKER_USER --password-stdin
-          make edv-rest-docker
-          docker tag docker.pkg.github.com/trustbloc/edv/edv-rest:latest ${EDV_REST_PKG}:$EDV_REST_TAG
-          docker push ${EDV_REST_PKG}:$EDV_REST_TAG
+          make edv-docker
+          docker tag ghcr.io/trustbloc/edv:latest ${EDV_PKG}:${EDV_TAG}
+          docker push ${EDV_PKG}:${EDV_TAG}
         env:
           DOCKER_USER: $(DOCKER_USER)
           DOCKER_PASSWORD: $(DOCKER_PASSWORD)
