@@ -70,7 +70,7 @@ jobs:
           }
           trap logout EXIT
           source ci/version_var.sh
-          echo $DOCKER_PASSWORD | docker login docker.pkg.github.com --username $DOCKER_USER --password-stdin
+          echo $DOCKER_PASSWORD | docker login ghcr.io --username $DOCKER_USER --password-stdin
           make edv-docker
           docker tag ghcr.io/trustbloc/edv:latest ${EDV_PKG}:${EDV_TAG}
           docker push ${EDV_PKG}:${EDV_TAG}
