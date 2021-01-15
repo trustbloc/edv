@@ -4,6 +4,11 @@
 
 
 name: $(SourceBranchName)-$(Date:yyyyMMdd).$(Rev:r)
+trigger:
+  - main
+pr:
+  - main
+
 variables:
   GO_VERSION: 1.15
   GOPATH: $(Agent.BuildDirectory)/go
@@ -11,7 +16,7 @@ variables:
 jobs:
   - job: Checks
     pool:
-      vmImage: ubuntu-18.04
+      vmImage: ubuntu-20.04
     timeoutInMinutes: 30
     steps:
       - template: azp-dependencies.yml
@@ -21,7 +26,7 @@ jobs:
 
   - job: UnitTest
     pool:
-      vmImage: ubuntu-18.04
+      vmImage: ubuntu-20.04
     timeoutInMinutes: 30
     steps:
       - template: azp-dependencies.yml
@@ -35,7 +40,7 @@ jobs:
 
   - job: BDDTest
     pool:
-      vmImage: ubuntu-18.04
+      vmImage: ubuntu-20.04
     timeoutInMinutes: 30
     steps:
       - template: azp-dependencies.yml
@@ -59,7 +64,7 @@ jobs:
       - UnitTest
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     pool:
-      vmImage: ubuntu-18.04
+      vmImage: ubuntu-20.04
     timeoutInMinutes: 30
     steps:
       - template: azp-dependencies.yml
