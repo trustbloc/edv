@@ -19,7 +19,7 @@ require (
 	github.com/rs/cors v1.7.0
 	github.com/spf13/cobra v0.0.6
 	github.com/stretchr/testify v1.6.1
-	github.com/trustbloc/edge-core v0.1.5
+	github.com/trustbloc/edge-core v0.1.6-0.20210121114552-763e3f878b45
 	github.com/trustbloc/edv v0.0.0
 )
 

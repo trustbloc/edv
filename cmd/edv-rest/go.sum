@@ -813,6 +813,7 @@ github.com/square/go-jose/v3 v3.0.0-20200630053402-0a67ce9b0693/go.mod h1:6hSY48
 github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+github.com/stretchr/objx v0.2.0 h1:Hbg2NidpLE8veEBkEZTL3CvlkUIVzuU9jDplZO54c48=
 github.com/stretchr/objx v0.2.0/go.mod h1:qt09Ya8vawLte6SNmTgCsAVtYtaKzEcn8ATUoHMkEqE=
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
@@ -830,8 +831,8 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8/go.mod h1
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8 h1:VtbBrpzy6rg4EHKOgGDOhBlFg8WWb0dFTYGz140gtj4=
 github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8/go.mod h1:gcwDl9YLyNc3H3wmPXamu+8evD8TYUa6BjTsWnvdn7A=
-github.com/trustbloc/edge-core v0.1.5 h1:NWXBBZLjaFUi+fB/1nYfLmzip4VFLJ1b8saN1w7rj4M=
-github.com/trustbloc/edge-core v0.1.5/go.mod h1:YnXB2tOVOcW+zK5Xs9RZLhWSGujUzSeZUXrwDOouPgA=
+github.com/trustbloc/edge-core v0.1.6-0.20210121114552-763e3f878b45 h1:Ie+4nJYQLs1Xrm3AOEXPlHpiHa88YV04PidlZYm5gYY=
+github.com/trustbloc/edge-core v0.1.6-0.20210121114552-763e3f878b45/go.mod h1:YnXB2tOVOcW+zK5Xs9RZLhWSGujUzSeZUXrwDOouPgA=
 github.com/trustbloc/json-gold v0.3.1-0.20200414173446-30d742ee949e h1:i+hGa8C1MKGO71j3jIV7e2aKX72/DTrzLjq9R8kc6xk=
 github.com/trustbloc/json-gold v0.3.1-0.20200414173446-30d742ee949e/go.mod h1:OK1z7UgtBZk06n2cDE2OSq1kffmjFFp5/2yhLLCz9UM=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
