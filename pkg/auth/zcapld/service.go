@@ -39,6 +39,7 @@ type Service struct {
 	crypto          cryptoapi.Crypto
 	store           ariesstorage.Store
 	cachedLDContext map[string]*ld.RemoteDocument
+	loaderCache     map[string]interface{}
 }
 
 // New return zcap service
@@ -53,8 +54,19 @@ func New(keyManager kms.KeyManager, crypto cryptoapi.Crypto, storeProv ariesstor
 		return nil, fmt.Errorf("failed create json ld document loader: %w", err)
 	}
 
+	loaderCache := make(map[string]interface{})
+
+	for k, v := range ctx {
+		b, err := json.Marshal(v.Document)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare loader cache: %w", err)
+		}
+
+		loaderCache[k] = string(b)
+	}
+
 	return &Service{
-		keyManager: keyManager, crypto: crypto, store: store, cachedLDContext: ctx,
+		keyManager: keyManager, crypto: crypto, store: store, cachedLDContext: ctx, loaderCache: loaderCache,
 	}, nil
 }
 
@@ -78,7 +90,8 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 		VerificationMethod: didKeyURL,
 	}, zcapld.WithParent(rootCapability.ID), zcapld.WithInvoker(verificationMethod),
 		zcapld.WithAllowedActions("read", "write"), zcapld.WithInvocationTarget(resourceID, edvResource),
-		zcapld.WithCapabilityChain(rootCapability.ID))
+		zcapld.WithCapabilityChain(rootCapability.ID),
+		zcapld.WithDocumentLoaderCache(s.loaderCache))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new capability: %w", err)
 	}
@@ -153,7 +166,7 @@ func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, e
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: didKeyURL,
 	}, zcapld.WithID(rootID), zcapld.WithInvocationTarget(resourceID, edvResource),
-		zcapld.WithAllowedActions("read", "write"))
+		zcapld.WithAllowedActions("read", "write"), zcapld.WithDocumentLoaderCache(s.loaderCache))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new root capability: %w", err)
 	}
@@ -220,6 +233,10 @@ func loadJSONLDContext() (map[string]*ld.RemoteDocument, error) {
 		{
 			vocab:   "https://w3id.org/security/v2",
 			content: w3idOrgSecurityV2,
+		},
+		{
+			vocab:   "https://trustbloc.github.io/context/vc/credentials-v1.jsonld",
+			content: trustblocCredentialsV1,
 		},
 	}
 
