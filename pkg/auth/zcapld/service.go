@@ -90,8 +90,7 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 		VerificationMethod: didKeyURL,
 	}, zcapld.WithParent(rootCapability.ID), zcapld.WithInvoker(verificationMethod),
 		zcapld.WithAllowedActions("read", "write"), zcapld.WithInvocationTarget(resourceID, edvResource),
-		zcapld.WithCapabilityChain(rootCapability.ID),
-		zcapld.WithDocumentLoaderCache(s.loaderCache))
+		zcapld.WithCapabilityChain(rootCapability.ID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new capability: %w", err)
 	}
@@ -166,7 +165,7 @@ func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, e
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: didKeyURL,
 	}, zcapld.WithID(rootID), zcapld.WithInvocationTarget(resourceID, edvResource),
-		zcapld.WithAllowedActions("read", "write"), zcapld.WithDocumentLoaderCache(s.loaderCache))
+		zcapld.WithAllowedActions("read", "write"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new root capability: %w", err)
 	}

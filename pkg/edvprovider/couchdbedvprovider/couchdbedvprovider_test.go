@@ -469,6 +469,7 @@ type mockIterator struct {
 	errRelease              error
 	keyReturn               string
 	valueReturn             []byte
+	bookmarkValue           string
 }
 
 func (m *mockIterator) Next() (bool, error) {
@@ -498,7 +499,7 @@ func (m *mockIterator) Value() ([]byte, error) {
 }
 
 func (m *mockIterator) Bookmark() string {
-	return "MockBookmark"
+	return m.bookmarkValue
 }
 
 func TestCouchDBEDVStore_Query(t *testing.T) {

@@ -18,7 +18,7 @@ ALPINE_VER ?= 3.12
 GO_VER ?= 1.15
 
 .PHONY: all
-all: checks unit-test bdd-test
+all: checks refresh-test-keys unit-test bdd-test
 
 .PHONY: checks
 checks: license lint generate-openapi-spec
@@ -95,4 +95,11 @@ clean: clean-build
 clean-build:
 	@rm -Rf ./.build
 	@rm -Rf ./test/bdd/docker-compose.log
+
+.PHONY: clean-test-keys
+clean-test-keys:
+	@rm -Rf ./test/bdd/fixtures/keys/
+
+.PHONY: refresh-test-keys
+refresh-test-keys: clean-test-keys generate-test-keys
 
