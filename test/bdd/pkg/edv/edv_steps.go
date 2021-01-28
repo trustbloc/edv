@@ -174,7 +174,7 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 		return err
 	}
 
-	_, ecPubKeyBytes, err := e.bddContext.KeyManager.CreateAndExportPubKeyBytes(kms.ECDH256KWAES256GCMType)
+	_, ecPubKeyBytes, err := e.bddContext.KeyManager.CreateAndExportPubKeyBytes(kms.NISTP256ECDHKWType)
 	if err != nil {
 		return err
 	}
