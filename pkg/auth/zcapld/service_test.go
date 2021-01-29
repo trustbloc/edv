@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	mockcrypto "github.com/hyperledger/aries-framework-go/pkg/mock/crypto"
 	mockkms "github.com/hyperledger/aries-framework-go/pkg/mock/kms"
 	mockstorage "github.com/hyperledger/aries-framework-go/pkg/mock/storage"
@@ -22,14 +23,21 @@ import (
 
 func TestNew(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, mockstorage.NewMockStoreProvider())
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			mockstorage.NewMockStoreProvider(),
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
 	})
 
 	t.Run("success", func(t *testing.T) {
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{},
-			&mockstorage.MockStoreProvider{ErrOpenStoreHandle: fmt.Errorf("failed to open")})
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			&mockstorage.MockStoreProvider{ErrOpenStoreHandle: fmt.Errorf("failed to open")},
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to open")
 		require.Nil(t, svc)
@@ -38,7 +46,11 @@ func TestNew(t *testing.T) {
 
 func TestService_Create(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, mockstorage.NewMockStoreProvider())
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			mockstorage.NewMockStoreProvider(),
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		bytes, err := svc.Create("id", "k1")
@@ -51,7 +63,10 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("failed to create signer for root capability", func(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{CreateKeyErr: fmt.Errorf("failed to create key")},
-			&mockcrypto.Crypto{}, mockstorage.NewMockStoreProvider())
+			&mockcrypto.Crypto{},
+			mockstorage.NewMockStoreProvider(),
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		_, err = svc.Create("id", "k1")
@@ -60,9 +75,14 @@ func TestService_Create(t *testing.T) {
 	})
 
 	t.Run("failed to store root capability in db", func(t *testing.T) {
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{},
-			&mockstorage.MockStoreProvider{Store: &mockstorage.MockStore{Store: make(map[string][]byte),
-				ErrPut: fmt.Errorf("failed to store")}})
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			&mockstorage.MockStoreProvider{
+				Store: &mockstorage.MockStore{
+					Store:  make(map[string][]byte),
+					ErrPut: fmt.Errorf("failed to store")}},
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		_, err = svc.Create("id", "k1")
@@ -73,7 +93,11 @@ func TestService_Create(t *testing.T) {
 
 func TestService_Handler(t *testing.T) {
 	t.Run("test root capability not found", func(t *testing.T) {
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, mockstorage.NewMockStoreProvider())
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			mockstorage.NewMockStoreProvider(),
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		h, err := svc.Handler("r1", &http.Request{Method: http.MethodGet}, nil, nil)
@@ -90,7 +114,11 @@ func TestService_Handler(t *testing.T) {
 
 		require.NoError(t, s.Store.Put("r1", bytes))
 
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, s)
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			s,
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		h, err := svc.Handler("r1", &http.Request{Method: http.MethodGet}, nil, nil)
@@ -101,7 +129,11 @@ func TestService_Handler(t *testing.T) {
 
 func TestCapabilityResolver_Resolve(t *testing.T) {
 	t.Run("test not found", func(t *testing.T) {
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, mockstorage.NewMockStoreProvider())
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			mockstorage.NewMockStoreProvider(),
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		c := capabilityResolver{svc: svc}
@@ -119,7 +151,11 @@ func TestCapabilityResolver_Resolve(t *testing.T) {
 
 		require.NoError(t, s.Store.Put("r1", bytes))
 
-		svc, err := New(&mockkms.KeyManager{}, &mockcrypto.Crypto{}, s)
+		svc, err := New(&mockkms.KeyManager{},
+			&mockcrypto.Crypto{},
+			s,
+			verifiable.CachingJSONLDLoader(),
+		)
 		require.NoError(t, err)
 
 		c := capabilityResolver{svc: svc}

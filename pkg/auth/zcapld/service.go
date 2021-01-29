@@ -10,14 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/google/uuid"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/jsonld"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
@@ -35,38 +34,22 @@ var logger = log.New("auth-zcap-service")
 
 // Service to provide zcapld functionality
 type Service struct {
-	keyManager      kms.KeyManager
-	crypto          cryptoapi.Crypto
-	store           ariesstorage.Store
-	cachedLDContext map[string]*ld.RemoteDocument
-	loaderCache     map[string]interface{}
+	keyManager   kms.KeyManager
+	crypto       cryptoapi.Crypto
+	store        ariesstorage.Store
+	jsonLDLoader ld.DocumentLoader
 }
 
 // New return zcap service
-func New(keyManager kms.KeyManager, crypto cryptoapi.Crypto, storeProv ariesstorage.Provider) (*Service, error) {
+func New(keyManager kms.KeyManager, crypto cryptoapi.Crypto, storeProv ariesstorage.Provider,
+	jsonLDLoader ld.DocumentLoader) (*Service, error) {
 	store, err := storeProv.OpenStore(storeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open store %s: %w", storeName, err)
 	}
 
-	ctx, err := loadJSONLDContext()
-	if err != nil {
-		return nil, fmt.Errorf("failed create json ld document loader: %w", err)
-	}
-
-	loaderCache := make(map[string]interface{})
-
-	for k, v := range ctx {
-		b, err := json.Marshal(v.Document)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepare loader cache: %w", err)
-		}
-
-		loaderCache[k] = string(b)
-	}
-
 	return &Service{
-		keyManager: keyManager, crypto: crypto, store: store, cachedLDContext: ctx, loaderCache: loaderCache,
+		keyManager: keyManager, crypto: crypto, store: store, jsonLDLoader: jsonLDLoader,
 	}, nil
 }
 
@@ -88,6 +71,7 @@ func (s *Service) Create(resourceID, verificationMethod string) ([]byte, error) 
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: didKeyURL,
+		ProcessorOpts:      []jsonld.ProcessorOpts{jsonld.WithDocumentLoader(s.jsonLDLoader)},
 	}, zcapld.WithParent(rootCapability.ID), zcapld.WithInvoker(verificationMethod),
 		zcapld.WithAllowedActions("read", "write"), zcapld.WithInvocationTarget(resourceID, edvResource),
 		zcapld.WithCapabilityChain(rootCapability.ID))
@@ -120,12 +104,6 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 		action = "read"
 	}
 
-	cachingDL := verifiable.CachingJSONLDLoader()
-
-	for _, d := range s.cachedLDContext {
-		cachingDL.AddDocument(d.ContextURL, d.Document)
-	}
-
 	return zcapld.NewHTTPSigAuthHandler(
 		&zcapld.HTTPSigAuthConfig{
 			CapabilityResolver: capabilityResolver{svc: s},
@@ -133,7 +111,7 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 			VerifierOptions: []zcapld.VerificationOption{
 				zcapld.WithSignatureSuites(
 					ed25519signature2018.New(suite.WithVerifier(ed25519signature2018.NewPublicKeyVerifier())),
-				), zcapld.WithLDDocumentLoaders(cachingDL),
+				), zcapld.WithLDDocumentLoaders(s.jsonLDLoader),
 			},
 			Secrets:     &zcapld.AriesDIDKeySecrets{},
 			ErrConsumer: logError{w: w}.Log,
@@ -164,6 +142,7 @@ func (s *Service) createRootCapability(resourceID string) (*zcapld.Capability, e
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(signer)),
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: didKeyURL,
+		ProcessorOpts:      []jsonld.ProcessorOpts{jsonld.WithDocumentLoader(s.jsonLDLoader)},
 	}, zcapld.WithID(rootID), zcapld.WithInvocationTarget(resourceID, edvResource),
 		zcapld.WithAllowedActions("read", "write"))
 	if err != nil {
@@ -218,42 +197,4 @@ func (l logError) Log(err error) {
 	if errWrite != nil {
 		logger.Errorf(errWrite.Error())
 	}
-}
-
-func loadJSONLDContext() (map[string]*ld.RemoteDocument, error) {
-	contexts := []struct {
-		vocab   string
-		content string
-	}{
-		{
-			vocab:   "https://w3id.org/security/v1",
-			content: w3idOrgSecurityV1,
-		},
-		{
-			vocab:   "https://w3id.org/security/v2",
-			content: w3idOrgSecurityV2,
-		},
-		{
-			vocab:   "https://trustbloc.github.io/context/vc/credentials-v1.jsonld",
-			content: trustblocCredentialsV1,
-		},
-	}
-
-	cached := make(map[string]*ld.RemoteDocument)
-
-	for i := range contexts {
-		ctx := contexts[i]
-
-		reader, err := ld.DocumentFromReader(strings.NewReader(ctx.content))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read cached jsonld context: %w", err)
-		}
-
-		cached[ctx.vocab] = &ld.RemoteDocument{
-			DocumentURL: ctx.vocab,
-			Document:    reader,
-		}
-	}
-
-	return cached, nil
 }

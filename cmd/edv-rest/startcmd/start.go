@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/mux"
 	ariescouchdbstorage "github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
@@ -566,7 +567,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errCreate
 		}
 
-		authSvc, err = zcapld.New(keyManager, crypto, storageProvider)
+		authSvc, err = zcapld.New(keyManager, crypto, storageProvider, verifiable.CachingJSONLDLoader())
 		if err != nil {
 			return err
 		}
