@@ -294,32 +294,47 @@ func (c *CouchDBEDVStore) CreateEncryptedDocIDIndex() error {
 // Query does an EDV encrypted index query.
 // We first get the "mapping document" and then use the ID we get from that to lookup the associated encrypted document.
 // Then we check that encrypted document to see if the value matches what was specified in the query.
+// If query.Has is not blank, then we assume it's a "has" query,
+// and so any documents with an index name matching query.Has will be returned regardless of value.
 // TODO (#168): Add support for pagination (not currently in the spec).
 //  The c.retrievalPageSize parameter is passed in from the startup args and could be used with pagination.
 func (c *CouchDBEDVStore) Query(query *models.Query) ([]models.EncryptedDocument, error) {
 	// TODO (#169): Use c.retrievalPageSize to do pagination within this method to help control the maximum amount of
 	//  memory used here. Without official pagination support it won't be possible to truly cap memory usage, however.
-	idsOfDocsWithMatchingQueryIndexName, err := c.findDocsMatchingQueryIndexName(query.Name)
-	if err != nil {
-		return nil, err
+	var indexName string
+	if query.Has != "" {
+		indexName = query.Has
+	} else {
+		indexName = query.Name
 	}
 
-	if len(idsOfDocsWithMatchingQueryIndexName) == 0 { // No documents have the encrypted index name tag
+	docIDsSetMatchingQueryIndexName, err := c.findDocsMatchingQueryIndexName(indexName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get doc IDs matching query index name: %w", err)
+	}
+
+	if len(docIDsSetMatchingQueryIndexName) == 0 { // No documents have the encrypted index name tag
 		return nil, nil
 	}
 
-	idsOfMatchingDocs, err := c.filterDocsByQuery(idsOfDocsWithMatchingQueryIndexName, query)
-	if err != nil {
-		return nil, fmt.Errorf(failFilterDocsByQueryErrMsg, err)
+	docIDsSliceMatchingQueryIndexName := convertSetToSlice(docIDsSetMatchingQueryIndexName)
+
+	idsOfFullyMatchingDocs := docIDsSliceMatchingQueryIndexName
+
+	if query.Value != "" {
+		idsOfFullyMatchingDocs, err = c.filterDocsByQuery(docIDsSliceMatchingQueryIndexName, query)
+		if err != nil {
+			return nil, fmt.Errorf(failFilterDocsByQueryErrMsg, err)
+		}
 	}
 
-	if len(idsOfMatchingDocs) == 0 { // No documents match the query
+	if len(idsOfFullyMatchingDocs) == 0 { // No documents match the query
 		return nil, nil
 	}
 
-	matchingEncryptedDocs := make([]models.EncryptedDocument, len(idsOfMatchingDocs))
+	matchingEncryptedDocs := make([]models.EncryptedDocument, len(idsOfFullyMatchingDocs))
 
-	encryptedDocsBytes, err := c.coreStore.GetBulk(idsOfMatchingDocs...)
+	encryptedDocsBytes, err := c.coreStore.GetBulk(idsOfFullyMatchingDocs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all documents with matching IDs: %w", err)
 	}
@@ -330,7 +345,7 @@ func (c *CouchDBEDVStore) Query(query *models.Query) ([]models.EncryptedDocument
 		err = json.Unmarshal(encryptedDocBytes, &matchingEncryptedDoc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal matching encrypted document with ID %s: %w",
-				idsOfMatchingDocs[i], err)
+				idsOfFullyMatchingDocs[i], err)
 		}
 
 		matchingEncryptedDocs[i] = matchingEncryptedDoc
@@ -728,17 +743,10 @@ func (c *CouchDBEDVStore) generateStringForMappingDocumentQuery(queryIndexName, 
 		strconv.FormatUint(uint64(c.retrievalPageSize), 10), bookmark)
 }
 
-// Given a set of documents, returns the document IDs that satisfy the query.
-func (c *CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *models.Query) ([]string, error) {
-	matchingDocIDs := make([]string, 0)
+func (c *CouchDBEDVStore) filterDocsByQuery(docIDs []string, query *models.Query) ([]string, error) {
+	var docIDsMatchingNameAndValue []string
 
-	var docIDsList []string
-
-	for docID := range docIDs {
-		docIDsList = append(docIDsList, docID)
-	}
-
-	documentsBytes, err := c.coreStore.GetBulk(docIDsList...)
+	documentsBytes, err := c.coreStore.GetBulk(docIDs...)
 	if err != nil {
 		if errors.Is(err, storage.ErrValueNotFound) {
 			return nil, messages.ErrDocumentNotFound
@@ -756,11 +764,11 @@ func (c *CouchDBEDVStore) filterDocsByQuery(docIDs map[string]struct{}, query *m
 		}
 
 		if documentMatchesQuery(foundEncryptedDoc, query) {
-			matchingDocIDs = append(matchingDocIDs, foundEncryptedDoc.ID)
+			docIDsMatchingNameAndValue = append(docIDsMatchingNameAndValue, foundEncryptedDoc.ID)
 		}
 	}
 
-	return matchingDocIDs, nil
+	return docIDsMatchingNameAndValue, nil
 }
 
 func documentMatchesQuery(document models.EncryptedDocument, query *models.Query) bool {
@@ -783,4 +791,17 @@ func attributeCollectionSatisfiesQuery(attrCollection models.IndexedAttributeCol
 	}
 
 	return false
+}
+
+func convertSetToSlice(docIDsSetMatchingQueryIndexName map[string]struct{}) []string {
+	docIDsSliceMatchingQueryIndexName := make([]string, len(docIDsSetMatchingQueryIndexName))
+
+	var counter int
+
+	for docIDMatchingQueryIndexName := range docIDsSetMatchingQueryIndexName {
+		docIDsSliceMatchingQueryIndexName[counter] = docIDMatchingQueryIndexName
+		counter++
+	}
+
+	return docIDsSliceMatchingQueryIndexName
 }

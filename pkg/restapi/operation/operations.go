@@ -238,9 +238,7 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.QueryReceiveRequest,
 		vaultID), requestBody)
 
-	var incomingQuery models.Query
-
-	err = json.Unmarshal(requestBody, &incomingQuery)
+	incomingQuery, err := parseQuery(requestBody)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID, requestBody)
 		return
@@ -918,4 +916,30 @@ func validateEncryptedDocument(doc models.EncryptedDocument) error {
 	}
 
 	return nil
+}
+
+func parseQuery(requestBody []byte) (models.Query, error) {
+	var incomingQuery models.Query
+
+	err := json.Unmarshal(requestBody, &incomingQuery)
+	if err != nil {
+		return models.Query{}, fmt.Errorf("failed to unmarshal request body: %w", err)
+	}
+
+	if incomingQuery.Has == "" {
+		// See if it's an "index + equals" query instead of a "has" query.
+		if incomingQuery.Name == "" || incomingQuery.Value == "" {
+			return models.Query{}, errors.New("invalid query format")
+		}
+
+		// This is a valid "index + equals" query.
+		return incomingQuery, nil
+	}
+
+	if incomingQuery.Name != "" || incomingQuery.Value != "" {
+		return models.Query{}, errors.New(`query cannot be a mix of "index + equals" and "has" formats`)
+	}
+
+	// This is a valid "has" query.
+	return incomingQuery, nil
 }

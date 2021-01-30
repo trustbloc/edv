@@ -65,6 +65,7 @@ type EDVStore interface {
 	CreateEncryptedDocIDIndex() error
 
 	// Query does an EDV encrypted index query.
+	// If query.Value is blank, then any documents tagged with query.Name will be returned regardless of value.
 	Query(query *models.Query) ([]models.EncryptedDocument, error)
 
 	// CreateReferenceIDIndex creates index for the referenceId field in config documents
