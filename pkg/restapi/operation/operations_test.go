@@ -62,6 +62,27 @@ const (
   "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
 }`
 
+	testQueryBlankName = `{
+  "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+}`
+	testQueryBlankValue = `{
+  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
+}`
+
+	testHasQuery = `{
+  "has": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
+}`
+
+	testInvalidQueryMixOfFormats = `{
+  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+  "has": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
+}`
+
+	testHasQueryWithReturnFullDocuments = `{
+  "returnFullDocuments": true,
+  "has": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
+}`
+
 	testDocID      = "VJYHHJx4C8J9Fsgz7rZqSp"
 	testDocID2     = "AJYHHJx4C8J9Fsgz7rZqSp"
 	testIndexName1 = "indexName1"
@@ -515,29 +536,120 @@ func testValidateIncomingDataVaultConfiguration(t *testing.T) {
 
 func TestQueryVault(t *testing.T) {
 	t.Run("Success, returning document IDs", func(t *testing.T) {
-		op := New(&Config{Provider: &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4}})
+		t.Run(`"index + equals" query`, func(t *testing.T) {
+			op := New(&Config{Provider: &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4}})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+			vaultID, _ := createDataVaultExpectSuccess(t, op)
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
-		require.NoError(t, err)
+			req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
+			require.NoError(t, err)
 
-		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = vaultID
+			urlVars := make(map[string]string)
+			urlVars[vaultIDPathVariable] = vaultID
 
-		req = mux.SetURLVars(req, urlVars)
+			req = mux.SetURLVars(req, urlVars)
 
-		rr := httptest.NewRecorder()
+			rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
-		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+
-			`docID1","/encrypted-data-vaults/`+vaultID+`/documents/docID2"]`,
-			rr.Body.String())
-		require.Equal(t, http.StatusOK, rr.Code)
+			require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+
+				`docID1","/encrypted-data-vaults/`+vaultID+`/documents/docID2"]`,
+				rr.Body.String())
+			require.Equal(t, http.StatusOK, rr.Code)
+		})
+		t.Run(`"has" query`, func(t *testing.T) {
+			op := New(&Config{Provider: &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4}})
+
+			vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+			req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testHasQuery)))
+			require.NoError(t, err)
+
+			urlVars := make(map[string]string)
+			urlVars[vaultIDPathVariable] = vaultID
+
+			req = mux.SetURLVars(req, urlVars)
+
+			rr := httptest.NewRecorder()
+
+			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+			require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+
+				`docID1","/encrypted-data-vaults/`+vaultID+`/documents/docID2"]`,
+				rr.Body.String())
+			require.Equal(t, http.StatusOK, rr.Code)
+		})
 	})
 	t.Run("Success, returning full documents", func(t *testing.T) {
+		t.Run(`"index + equals" query`, func(t *testing.T) {
+			op := New(&Config{
+				Provider:          &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
+				EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+			})
+
+			vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+			req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryWithReturnFullDocuments)))
+			require.NoError(t, err)
+
+			urlVars := make(map[string]string)
+			urlVars[vaultIDPathVariable] = vaultID
+
+			req = mux.SetURLVars(req, urlVars)
+
+			rr := httptest.NewRecorder()
+
+			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+			docsBytes := rr.Body.Bytes()
+
+			var docs []models.EncryptedDocument
+
+			err = json.Unmarshal(docsBytes, &docs)
+			require.NoError(t, err)
+
+			require.Equal(t, "docID1", docs[0].ID)
+			require.Equal(t, "docID2", docs[1].ID)
+			require.Equal(t, http.StatusOK, rr.Code)
+		})
+		t.Run(`"has" query`, func(t *testing.T) {
+			op := New(&Config{
+				Provider:          &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
+				EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+			})
+
+			vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+			req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testHasQueryWithReturnFullDocuments)))
+			require.NoError(t, err)
+
+			urlVars := make(map[string]string)
+			urlVars[vaultIDPathVariable] = vaultID
+
+			req = mux.SetURLVars(req, urlVars)
+
+			rr := httptest.NewRecorder()
+
+			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+			docsBytes := rr.Body.Bytes()
+
+			var docs []models.EncryptedDocument
+
+			err = json.Unmarshal(docsBytes, &docs)
+			require.NoError(t, err)
+
+			require.Equal(t, "docID1", docs[0].ID)
+			require.Equal(t, "docID2", docs[1].ID)
+			require.Equal(t, http.StatusOK, rr.Code)
+		})
+	})
+	t.Run(`Error: "index + equals" query with blank index name`, func(t *testing.T) {
 		op := New(&Config{
 			Provider:          &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
 			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
@@ -545,7 +657,7 @@ func TestQueryVault(t *testing.T) {
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op)
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryWithReturnFullDocuments)))
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryBlankName)))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
@@ -558,16 +670,86 @@ func TestQueryVault(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		docsBytes := rr.Body.Bytes()
+		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
+			"invalid query format.", rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run(`Error: "index + equals" query with blank equals value`, func(t *testing.T) {
+		op := New(&Config{
+			Provider:          &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
+			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+		})
 
-		var docs []models.EncryptedDocument
+		vaultID, _ := createDataVaultExpectSuccess(t, op)
 
-		err = json.Unmarshal(docsBytes, &docs)
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryBlankValue)))
 		require.NoError(t, err)
 
-		require.Equal(t, "docID1", docs[0].ID)
-		require.Equal(t, "docID2", docs[1].ID)
-		require.Equal(t, http.StatusOK, rr.Code)
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		rr := httptest.NewRecorder()
+
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
+			`invalid query format.`, rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run(`Error: other unrecognized query format (no "index", "equals", or "has" fields)`, func(t *testing.T) {
+		op := New(&Config{
+			Provider:          &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
+			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+		})
+
+		vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(`{}`)))
+		require.NoError(t, err)
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		rr := httptest.NewRecorder()
+
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
+			`invalid query format.`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+	t.Run(`Error: query is a mix of both query formats`, func(t *testing.T) {
+		op := New(&Config{
+			Provider:          &mockEDVProvider{numTimesOpenStoreCalledBeforeErr: 4},
+			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+		})
+
+		vaultID, _ := createDataVaultExpectSuccess(t, op)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testInvalidQueryMixOfFormats)))
+		require.NoError(t, err)
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		rr := httptest.NewRecorder()
+
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
+			`query cannot be a mix of "index + equals" and "has" formats.`,
+			rr.Body.String())
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Provider doesn't support querying", func(t *testing.T) {
 		op := New(&Config{Provider: memedvprovider.NewProvider()})
@@ -679,8 +861,8 @@ func TestQueryVault(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, fmt.Sprintf(messages.InvalidQuery, testVaultID, "unexpected end of JSON input"),
-			rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidQuery, testVaultID,
+			"failed to unmarshal request body: unexpected end of JSON input"), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Fail to write response when unable to unmarshal query JSON", func(t *testing.T) {

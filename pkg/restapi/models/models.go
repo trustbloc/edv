@@ -62,12 +62,24 @@ type IDTypePair struct {
 	Type string `json:"type"`
 }
 
-// Query represents a name+value pair that can be used to query the encrypted indices for specific data.
+// Query represents an incoming vault query.
+// Two types of queries are supported:
+// 1. "index + equals": Matches any documents that have index attributes matching both Name and Value.
+// 2. has: Matches any documents that contain that have index attributes matching Has, regardless of the Value.
+// It's invalid for an incoming query to mix both query formats.
 // ReturnFullDocuments is optional and can only be used if the "ReturnFullDocumentsOnQuery" extension is enabled.
 type Query struct {
 	ReturnFullDocuments bool   `json:"returnFullDocuments"`
 	Name                string `json:"index"`
 	Value               string `json:"equals"`
+	Has                 string `json:"has"`
+}
+
+// HasQuery represents a simpler version of Query above that matches all documents that are tagged with the index name
+// specified in "has", regardless of index value.
+// ReturnFullDocuments is optional and can only be used if the "ReturnFullDocumentsOnQuery" extension is enabled.
+type HasQuery struct {
+	ReturnFullDocuments bool `json:"returnFullDocuments"`
 }
 
 // Batch represents a batch of operations to be performed in a vault.
