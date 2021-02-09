@@ -32,10 +32,15 @@ type addHeaders func(req *http.Request) (*http.Header, error)
 
 type marshalFunc func(interface{}) ([]byte, error)
 
+// HTTPClient interface for the http client.
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Client is used to interact with an EDV server.
 type Client struct {
 	edvServerURL string
-	httpClient   *http.Client
+	httpClient   HTTPClient
 	marshal      marshalFunc
 	headersFunc  addHeaders
 }
@@ -44,9 +49,30 @@ type Client struct {
 type Option func(opts *Client)
 
 // WithTLSConfig option is for definition of secured HTTP transport using a tls.Config instance
+// Deprecated: Use WithHTTPClient instead.
 func WithTLSConfig(tlsConfig *tls.Config) Option {
 	return func(opts *Client) {
-		opts.httpClient.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+		if opts.httpClient == nil {
+			logger.Errorf("WithTLSConfig: http client is nil")
+
+			return
+		}
+
+		client, ok := opts.httpClient.(*http.Client)
+		if !ok {
+			logger.Errorf("WithTLSConfig: http client is not *http.Client")
+
+			return
+		}
+
+		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
+}
+
+// WithHTTPClient option is for setting http client.
+func WithHTTPClient(client HTTPClient) Option {
+	return func(opts *Client) {
+		opts.httpClient = client
 	}
 }
 
