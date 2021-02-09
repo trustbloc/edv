@@ -57,14 +57,52 @@ const (
 
 var errFailingMarshal = errors.New("failingMarshal always fails")
 
+type mockHTTPClient struct{}
+
+func (*mockHTTPClient) Do(_ *http.Request) (*http.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
 func TestClient_New(t *testing.T) {
-	client := New("", WithHeaders(func(req *http.Request) (*http.Header, error) {
-		return nil, nil
-	}), WithTLSConfig(&tls.Config{ServerName: "name", MinVersion: tls.VersionTLS12}))
+	t.Run("WithTLSConfig", func(t *testing.T) {
+		client := New("", WithHeaders(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}), WithTLSConfig(&tls.Config{ServerName: "name", MinVersion: tls.VersionTLS12}))
 
-	require.NotNil(t, client)
+		require.NotNil(t, client)
 
-	require.NotNil(t, client.httpClient.Transport)
+		hClient, ok := client.httpClient.(*http.Client)
+		require.True(t, ok)
+
+		require.NotNil(t, hClient.Transport)
+	})
+	t.Run("WithTLSConfig (with custom client)", func(t *testing.T) {
+		hClient := &mockHTTPClient{}
+
+		client := New("",
+			WithHTTPClient(hClient),
+			WithTLSConfig(&tls.Config{ServerName: "name"}),
+		)
+
+		require.NotNil(t, client)
+		require.Equal(t, hClient, client.httpClient)
+	})
+	t.Run("WithTLSConfig (nil client)", func(t *testing.T) {
+		client := New("",
+			WithHTTPClient(nil),
+			WithTLSConfig(&tls.Config{ServerName: "name"}),
+		)
+
+		require.NotNil(t, client)
+		require.Nil(t, client.httpClient)
+	})
+	t.Run("WithHTTPClient", func(t *testing.T) {
+		hClient := &http.Client{}
+
+		client := New("", WithHTTPClient(hClient))
+
+		require.Equal(t, hClient, client.httpClient)
+	})
 }
 
 func TestClient_CreateDataVault_ValidConfig(t *testing.T) {
