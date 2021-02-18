@@ -20,7 +20,7 @@ require (
 	github.com/hyperledger/aries-framework-go v0.1.6-0.20210212132055-b94cce120dda
 	github.com/igor-pavlenko/httpsignatures-go v0.0.21
 	github.com/tidwall/gjson v1.6.7
-	github.com/trustbloc/edge-core v0.1.6-0.20210212172534-81ab3a5abf5b
+	github.com/trustbloc/edge-core v0.1.6-0.20210218132256-ea94ce52be69
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 	gotest.tools/v3 v3.0.3 // indirect
 )
