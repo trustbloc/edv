@@ -16,10 +16,11 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/hyperledger/aries-framework-go v0.1.6-0.20210212132055-b94cce120dda
 	github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20201119153638-fc5d5e680587
+	github.com/hyperledger/aries-framework-go-ext/component/vdr/trustbloc v0.0.0-20210209170459-14c492334960
 	github.com/rs/cors v1.7.0
 	github.com/spf13/cobra v0.0.6
 	github.com/stretchr/testify v1.6.1
-	github.com/trustbloc/edge-core v0.1.6-0.20210218132256-ea94ce52be69
+	github.com/trustbloc/edge-core v0.1.6-0.20210224175343-275d0e0370c4
 	github.com/trustbloc/edv v0.0.0
 )
 

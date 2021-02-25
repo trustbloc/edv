@@ -503,6 +503,35 @@ func TestGetTimeout(t *testing.T) {
 	})
 }
 
+func TestStartCmdEmptyDomain(t *testing.T) {
+	startCmd := GetStartCmd(&mockServer{})
+
+	args := []string{
+		"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+		"--" + databaseTimeoutFlagName, "NotAnInt",
+		"--" + didDomainFlagName, "",
+	}
+
+	startCmd.SetArgs(args)
+
+	err := startCmd.Execute()
+	require.EqualError(t, err, "did-domain value is empty")
+}
+
+func TestStartCmdInvalidSystemCertPool(t *testing.T) {
+	startCmd := GetStartCmd(&mockServer{})
+
+	args := []string{
+		"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+		"--" + tlsSystemCertPoolFlagName, "test",
+	}
+
+	startCmd.SetArgs(args)
+
+	err := startCmd.Execute()
+	require.EqualError(t, err, "strconv.ParseBool: parsing \"test\": invalid syntax")
+}
+
 func checkFlagPropertiesCorrect(t *testing.T, cmd *cobra.Command, flagName, flagShorthand, flagUsage string) {
 	flag := cmd.Flag(flagName)
 

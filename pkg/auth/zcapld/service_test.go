@@ -27,6 +27,7 @@ func TestNew(t *testing.T) {
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
@@ -37,6 +38,7 @@ func TestNew(t *testing.T) {
 			&mockcrypto.Crypto{},
 			&mockstorage.MockStoreProvider{ErrOpenStoreHandle: fmt.Errorf("failed to open")},
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to open")
@@ -50,6 +52,7 @@ func TestService_Create(t *testing.T) {
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -66,6 +69,7 @@ func TestService_Create(t *testing.T) {
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -80,8 +84,11 @@ func TestService_Create(t *testing.T) {
 			&mockstorage.MockStoreProvider{
 				Store: &mockstorage.MockStore{
 					Store:  make(map[string][]byte),
-					ErrPut: fmt.Errorf("failed to store")}},
+					ErrPut: fmt.Errorf("failed to store"),
+				},
+			},
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -97,6 +104,7 @@ func TestService_Handler(t *testing.T) {
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -118,6 +126,7 @@ func TestService_Handler(t *testing.T) {
 			&mockcrypto.Crypto{},
 			s,
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -133,6 +142,7 @@ func TestCapabilityResolver_Resolve(t *testing.T) {
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -155,6 +165,7 @@ func TestCapabilityResolver_Resolve(t *testing.T) {
 			&mockcrypto.Crypto{},
 			s,
 			verifiable.CachingJSONLDLoader(),
+			nil,
 		)
 		require.NoError(t, err)
 

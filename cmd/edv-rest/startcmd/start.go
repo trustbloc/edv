@@ -8,6 +8,7 @@ package startcmd
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
 	ariescouchdbstorage "github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
+	"github.com/hyperledger/aries-framework-go-ext/component/vdr/trustbloc"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
@@ -28,12 +30,16 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/local"
 	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
 	ariesmemstorage "github.com/hyperledger/aries-framework-go/pkg/storage/mem"
+	ariesvdr "github.com/hyperledger/aries-framework-go/pkg/vdr"
+	vdrkey "github.com/hyperledger/aries-framework-go/pkg/vdr/key"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/restapi/logspec"
 	"github.com/trustbloc/edge-core/pkg/storage"
 	cmdutils "github.com/trustbloc/edge-core/pkg/utils/cmd"
+	tlsutils "github.com/trustbloc/edge-core/pkg/utils/tls"
+	zcapldcore "github.com/trustbloc/edge-core/pkg/zcapld"
 
 	"github.com/trustbloc/edv/pkg/auth/zcapld"
 	"github.com/trustbloc/edv/pkg/edvprovider"
@@ -109,6 +115,15 @@ const (
 	logLevelInfo     = "info"
 	logLevelDebug    = "debug"
 
+	tlsSystemCertPoolFlagName  = "tls-systemcertpool"
+	tlsSystemCertPoolFlagUsage = "Use system certificate pool. Possible values [true] [false]. " +
+		"Defaults to false if not set. " + commonEnvVarUsageText + tlsSystemCertPoolEnvKey
+	tlsSystemCertPoolEnvKey = "EDV_TLS_SYSTEMCERTPOOL"
+
+	tlsCACertsFlagName  = "tls-cacerts"
+	tlsCACertsFlagUsage = "Comma-separated list of CA certs path. " + commonEnvVarUsageText + tlsCACertsEnvKey
+	tlsCACertsEnvKey    = "EDV_TLS_CACERTS"
+
 	tlsCertFileFlagName      = "tls-cert-file"
 	tlsCertFileFlagShorthand = ""
 	tlsCertFileFlagUsage     = "TLS certificate file." +
@@ -165,6 +180,11 @@ const (
 		"EDV functionality or non-extension-aware clients." + commonEnvVarUsageText + extensionsEnvKey
 	extensionsEnvKey = "EDV_EXTENSIONS"
 
+	didDomainFlagName  = "did-domain"
+	didDomainFlagUsage = "URL to the did consortium's domain." +
+		" Alternatively, this can be set with the following environment variable: " + didDomainEnvKey
+	didDomainEnvKey = "EDV_DID_DOMAIN"
+
 	dataVaultConfigurationStoreName = "data_vault_configurations"
 
 	sleep = time.Second
@@ -215,6 +235,7 @@ type edvParameters struct {
 	databaseTimeout           uint64
 	databaseRetrievalPageSize uint
 	logLevel                  string
+	didDomain                 string
 	tlsConfig                 *tlsConfig
 	authEnable                bool
 	corsEnable                bool
@@ -229,8 +250,10 @@ type storageParameters struct {
 }
 
 type tlsConfig struct {
-	certFile string
-	keyFile  string
+	certFile             string
+	keyFile              string
+	tlsUseSystemCertPool bool
+	tlsCACerts           []string
 }
 
 type kmsProvider struct {
@@ -283,6 +306,11 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 		Long:  "Start EDV",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			hostURL, err := cmdutils.GetUserSetVarFromString(cmd, hostURLFlagName, hostURLEnvKey, false)
+			if err != nil {
+				return err
+			}
+
+			didDomain, err := cmdutils.GetUserSetVarFromString(cmd, didDomainFlagName, didDomainEnvKey, true)
 			if err != nil {
 				return err
 			}
@@ -362,6 +390,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				corsEnable:                corsEnable,
 				localKMSSecretsStorage:    localKMSSecretsStorage,
 				extensionsToEnable:        enabledExtensions,
+				didDomain:                 didDomain,
 			}
 			return startEDV(parameters)
 		},
@@ -504,7 +533,28 @@ func getTLS(cmd *cobra.Command) (*tlsConfig, error) {
 		return nil, err
 	}
 
-	return &tlsConfig{certFile: tlsCertFile, keyFile: tlsKeyFile}, nil
+	tlsSystemCertPoolString := cmdutils.GetUserSetOptionalVarFromString(cmd, tlsSystemCertPoolFlagName,
+		tlsSystemCertPoolEnvKey)
+
+	tlsUseSystemCertPool := false
+
+	if tlsSystemCertPoolString != "" {
+		var err error
+		tlsUseSystemCertPool, err = strconv.ParseBool(tlsSystemCertPoolString)
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	tlsCACerts := cmdutils.GetUserSetOptionalVarFromArrayString(cmd, tlsCACertsFlagName, tlsCACertsEnvKey)
+
+	return &tlsConfig{
+		certFile:             tlsCertFile,
+		keyFile:              tlsKeyFile,
+		tlsUseSystemCertPool: tlsUseSystemCertPool,
+		tlsCACerts:           tlsCACerts,
+	}, nil
 }
 
 func createFlags(startCmd *cobra.Command) {
@@ -527,6 +577,9 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(authEnableFlagName, "", "", authEnableFlagUsage)
 	startCmd.Flags().StringP(extensionsFlagName, "", "", extensionsFlagUsage)
 	startCmd.Flags().StringP(corsEnableFlagName, "", "", corsEnableFlagUsage)
+	startCmd.Flags().StringP(didDomainFlagName, "", "", didDomainFlagUsage)
+	startCmd.Flags().StringP(tlsSystemCertPoolFlagName, "", "", tlsSystemCertPoolFlagUsage)
+	startCmd.Flags().StringArrayP(tlsCACertsFlagName, "", []string{}, tlsCACertsFlagUsage)
 }
 
 func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
@@ -547,7 +600,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	// create auth service
 	var authSvc authService
 
-	if parameters.authEnable {
+	if parameters.authEnable { // nolint: nestif
 		keyManager, errCreate := createKeyManager(parameters)
 		if errCreate != nil {
 			return errCreate
@@ -567,7 +620,12 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errCreate
 		}
 
-		authSvc, err = zcapld.New(keyManager, crypto, storageProvider, verifiable.CachingJSONLDLoader())
+		vdrResolver, errVDR := prepareVDR(keyManager, parameters)
+		if errVDR != nil {
+			return errVDR
+		}
+
+		authSvc, err = zcapld.New(keyManager, crypto, storageProvider, verifiable.CachingJSONLDLoader(), vdrResolver)
 		if err != nil {
 			return err
 		}
@@ -607,6 +665,31 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	return parameters.srv.ListenAndServe(parameters.hostURL,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(parameters.corsEnable,
 			authSvc, router))
+}
+
+type kmsCtx struct{ kms.KeyManager }
+
+func (c *kmsCtx) KMS() kms.KeyManager {
+	return c.KeyManager
+}
+
+func prepareVDR(km kms.KeyManager, params *edvParameters) (zcapldcore.VDRResolver, error) {
+	rootCAs, err := tlsutils.GetCertPool(params.tlsConfig.tlsUseSystemCertPool, params.tlsConfig.tlsCACerts)
+	if err != nil {
+		return nil, err
+	}
+
+	trustblocVDR, err := trustbloc.New(nil, trustbloc.WithDomain(params.didDomain),
+		trustbloc.WithTLSConfig(&tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return ariesvdr.New(&kmsCtx{KeyManager: km},
+		ariesvdr.WithVDR(vdrkey.New()),
+		ariesvdr.WithVDR(trustblocVDR),
+	), nil
 }
 
 func setLogLevel(userLogLevel string) {
