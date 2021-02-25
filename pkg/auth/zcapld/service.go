@@ -38,18 +38,19 @@ type Service struct {
 	crypto       cryptoapi.Crypto
 	store        ariesstorage.Store
 	jsonLDLoader ld.DocumentLoader
+	vdrResolver  zcapld.VDRResolver
 }
 
 // New return zcap service
 func New(keyManager kms.KeyManager, crypto cryptoapi.Crypto, storeProv ariesstorage.Provider,
-	jsonLDLoader ld.DocumentLoader) (*Service, error) {
+	jsonLDLoader ld.DocumentLoader, vdrResolver zcapld.VDRResolver) (*Service, error) {
 	store, err := storeProv.OpenStore(storeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open store %s: %w", storeName, err)
 	}
 
 	return &Service{
-		keyManager: keyManager, crypto: crypto, store: store, jsonLDLoader: jsonLDLoader,
+		keyManager: keyManager, crypto: crypto, store: store, jsonLDLoader: jsonLDLoader, vdrResolver: vdrResolver,
 	}, nil
 }
 
@@ -107,7 +108,8 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 	return zcapld.NewHTTPSigAuthHandler(
 		&zcapld.HTTPSigAuthConfig{
 			CapabilityResolver: capabilityResolver{svc: s},
-			KeyResolver:        &zcapld.DIDKeyResolver{},
+			KeyResolver:        zcapld.NewDIDKeyResolver(s.vdrResolver),
+			VDRResolver:        s.vdrResolver,
 			VerifierOptions: []zcapld.VerificationOption{
 				zcapld.WithSignatureSuites(
 					ed25519signature2018.New(suite.WithVerifier(ed25519signature2018.NewPublicKeyVerifier())),

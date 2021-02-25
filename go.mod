@@ -14,7 +14,7 @@ require (
 	github.com/piprate/json-gold v0.3.1-0.20201222165305-f4ce31c02ca3
 	github.com/square/go-jose v2.4.1+incompatible
 	github.com/stretchr/testify v1.6.1
-	github.com/trustbloc/edge-core v0.1.6-0.20210218132256-ea94ce52be69
+	github.com/trustbloc/edge-core v0.1.6-0.20210224175343-275d0e0370c4
 )
 
 replace github.com/kilic/bls12-381 => github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8
