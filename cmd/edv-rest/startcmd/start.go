@@ -20,23 +20,22 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
-	ariescouchdbstorage "github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
+	"github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
 	"github.com/hyperledger/aries-framework-go-ext/component/vdr/trustbloc"
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/local"
-	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
-	ariesmemstorage "github.com/hyperledger/aries-framework-go/pkg/storage/mem"
 	ariesvdr "github.com/hyperledger/aries-framework-go/pkg/vdr"
 	vdrkey "github.com/hyperledger/aries-framework-go/pkg/vdr/key"
+	"github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/restapi/logspec"
-	"github.com/trustbloc/edge-core/pkg/storage"
 	cmdutils "github.com/trustbloc/edge-core/pkg/utils/cmd"
 	tlsutils "github.com/trustbloc/edge-core/pkg/utils/tls"
 	zcapldcore "github.com/trustbloc/edge-core/pkg/zcapld"
@@ -174,8 +173,8 @@ const (
 	extensionsFlagName  = "with-extensions"
 	extensionsFlagUsage = "Enables features that are extensions of the spec. " +
 		"If set, must be a comma-separated list of some or all of the following possible values: " +
-		"[" + returnFullDocumentOnQueryExtensionName + "," + batchExtensionName + "," +
-		readAllDocumentsExtensionName + "]. " + "If not set, then no extensions will be used and the EDV server will be " +
+		"[" + returnFullDocumentOnQueryExtensionName + "," + batchExtensionName + "]. " +
+		"If not set, then no extensions will be used and the EDV server will be " +
 		"strictly conformant with the spec. These can all be safely enabled without breaking any core " +
 		"EDV functionality or non-extension-aware clients." + commonEnvVarUsageText + extensionsEnvKey
 	extensionsEnvKey = "EDV_EXTENSIONS"
@@ -184,8 +183,6 @@ const (
 	didDomainFlagUsage = "URL to the did consortium's domain." +
 		" Alternatively, this can be set with the following environment variable: " + didDomainEnvKey
 	didDomainEnvKey = "EDV_DID_DOMAIN"
-
-	dataVaultConfigurationStoreName = "data_vault_configurations"
 
 	sleep = time.Second
 
@@ -217,12 +214,12 @@ var supportedEDVStorageProviders = map[string]func(string, string, uint) (edvpro
 }
 
 // nolint:gochecknoglobals
-var supportedAriesStorageProviders = map[string]func(string, string) (ariesstorage.Provider, error){
-	databaseTypeCouchDBOption: func(databaseURL, prefix string) (ariesstorage.Provider, error) {
-		return ariescouchdbstorage.NewProvider(databaseURL, ariescouchdbstorage.WithDBPrefix(prefix))
+var supportedAriesStorageProviders = map[string]func(string, string) (storage.Provider, error){
+	databaseTypeCouchDBOption: func(databaseURL, prefix string) (storage.Provider, error) {
+		return couchdb.NewProvider(databaseURL, couchdb.WithDBPrefix(prefix))
 	},
-	databaseTypeMemOption: func(_, _ string) (ariesstorage.Provider, error) { // nolint:unparam
-		return ariesmemstorage.NewProvider(), nil
+	databaseTypeMemOption: func(_, _ string) (storage.Provider, error) { // nolint:unparam
+		return mem.NewProvider(), nil
 	},
 }
 
@@ -257,11 +254,11 @@ type tlsConfig struct {
 }
 
 type kmsProvider struct {
-	storageProvider   ariesstorage.Provider
+	storageProvider   storage.Provider
 	secretLockService secretlock.Service
 }
 
-func (k kmsProvider) StorageProvider() ariesstorage.Provider {
+func (k kmsProvider) StorageProvider() storage.Provider {
 	return k.storageProvider
 }
 
@@ -471,8 +468,6 @@ func getEnabledExtensions(cmd *cobra.Command) (*operation.EnabledExtensions, err
 		switch {
 		case strings.EqualFold(extensionToEnable, returnFullDocumentOnQueryExtensionName):
 			enabledExtensions.ReturnFullDocumentsOnQuery = true
-		case strings.EqualFold(extensionToEnable, readAllDocumentsExtensionName):
-			enabledExtensions.ReadAllDocumentsEndpoint = true
 		case strings.EqualFold(extensionToEnable, batchExtensionName):
 			enabledExtensions.Batch = true
 		}
@@ -612,7 +607,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errCreate
 		}
 
-		storageProvider, errCreate := createAriesStorageProvider(&storageParameters{
+		storageProvider, errCreate := createStorageProvider(&storageParameters{
 			storageType: parameters.databaseType,
 			storageURL:  parameters.databaseURL, storagePrefix: parameters.databasePrefix,
 		}, parameters.databaseTimeout)
@@ -733,27 +728,15 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 
 // createConfigStore creates the config store and creates indices if supported.
 func createConfigStore(provider edvprovider.EDVProvider) error {
-	err := provider.CreateStore(dataVaultConfigurationStoreName)
-	if err != nil {
-		if errors.Is(err, storage.ErrDuplicateStore) {
-			return nil
-		}
-
-		return fmt.Errorf(errCreateConfigStore, err)
-	}
-
-	store, err := provider.OpenStore(dataVaultConfigurationStoreName)
+	_, err := provider.OpenStore(edvprovider.VaultConfigurationStoreName)
 	if err != nil {
 		return fmt.Errorf(errCreateConfigStore, err)
 	}
 
-	err = store.CreateReferenceIDIndex()
+	err = provider.SetStoreConfig(edvprovider.VaultConfigurationStoreName,
+		storage.StoreConfiguration{TagNames: []string{edvprovider.VaultConfigReferenceIDTagName}})
 	if err != nil {
-		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
-			return nil
-		}
-
-		return fmt.Errorf(errCreateConfigStore, err)
+		return fmt.Errorf("failed to set store config: %w", err)
 	}
 
 	return nil
@@ -784,7 +767,7 @@ func retry(fn func() error, numRetries uint64) error {
 }
 
 func createKeyManager(parameters *edvParameters) (kms.KeyManager, error) {
-	localKMSSecretsStorageProvider, err := createAriesStorageProvider(parameters.localKMSSecretsStorage,
+	localKMSSecretsStorageProvider, err := createStorageProvider(parameters.localKMSSecretsStorage,
 		parameters.databaseTimeout)
 	if err != nil {
 		return nil, err
@@ -798,7 +781,7 @@ func createKeyManager(parameters *edvParameters) (kms.KeyManager, error) {
 	return localKMS, nil
 }
 
-func createLocalKMS(kmsSecretsStoreProvider ariesstorage.Provider) (*localkms.LocalKMS, error) {
+func createLocalKMS(kmsSecretsStoreProvider storage.Provider) (*localkms.LocalKMS, error) {
 	masterKeyReader, err := prepareMasterKeyReader(kmsSecretsStoreProvider)
 	if err != nil {
 		return nil, err
@@ -818,7 +801,7 @@ func createLocalKMS(kmsSecretsStoreProvider ariesstorage.Provider) (*localkms.Lo
 }
 
 // prepareMasterKeyReader prepares a master key reader for secret lock usage
-func prepareMasterKeyReader(kmsSecretsStoreProvider ariesstorage.Provider) (*bytes.Reader, error) {
+func prepareMasterKeyReader(kmsSecretsStoreProvider storage.Provider) (*bytes.Reader, error) {
 	masterKeyStore, err := kmsSecretsStoreProvider.OpenStore(masterKeyStoreName)
 	if err != nil {
 		return nil, err
@@ -826,7 +809,7 @@ func prepareMasterKeyReader(kmsSecretsStoreProvider ariesstorage.Provider) (*byt
 
 	masterKey, err := masterKeyStore.Get(masterKeyDBKeyName)
 	if err != nil {
-		if errors.Is(err, ariesstorage.ErrDataNotFound) {
+		if errors.Is(err, storage.ErrDataNotFound) {
 			masterKeyRaw := random.GetRandomBytes(uint32(masterKeyNumBytes))
 			masterKey = []byte(base64.URLEncoding.EncodeToString(masterKeyRaw))
 
@@ -844,8 +827,8 @@ func prepareMasterKeyReader(kmsSecretsStoreProvider ariesstorage.Provider) (*byt
 	return masterKeyReader, nil
 }
 
-func createAriesStorageProvider(parameters *storageParameters, databaseTimeout uint64) (ariesstorage.Provider, error) {
-	var prov ariesstorage.Provider
+func createStorageProvider(parameters *storageParameters, databaseTimeout uint64) (storage.Provider, error) {
+	var prov storage.Provider
 
 	if parameters.storageType == databaseTypeMemOption {
 		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")

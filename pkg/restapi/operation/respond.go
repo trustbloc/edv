@@ -8,7 +8,6 @@ package operation
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -54,10 +53,8 @@ func writeCreateDataVaultFailure(rw http.ResponseWriter, errVaultCreation error,
 	switch {
 	case strings.Contains(errVaultCreation.Error(), string(messages.ErrDuplicateVault)):
 		rw.WriteHeader(http.StatusConflict)
-	case strings.Contains(errVaultCreation.Error(), messages.ConfigStoreNotFound):
-		rw.WriteHeader(http.StatusInternalServerError)
 	default:
-		rw.WriteHeader(http.StatusBadRequest)
+		rw.WriteHeader(http.StatusInternalServerError)
 	}
 
 	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.VaultCreationFailure, errVaultCreation)))
@@ -221,21 +218,6 @@ func writeErrorWithVaultIDAndDocID(rw http.ResponseWriter, statusCode int, messa
 	_, errWrite := rw.Write([]byte(fmt.Sprintf(message, docID, vaultID, err)))
 	if errWrite != nil {
 		logger.Errorf(message+messages.FailWriteResponse, docID, vaultID, err, errWrite)
-	}
-}
-
-func writeReadAllDocumentsFailure(rw http.ResponseWriter, errReadDoc error, vaultID string) {
-	logger.Infof(messages.ReadAllDocumentsFailure, vaultID, errReadDoc)
-
-	if errors.Is(errReadDoc, messages.ErrVaultNotFound) {
-		rw.WriteHeader(http.StatusNotFound)
-	} else {
-		rw.WriteHeader(http.StatusInternalServerError)
-	}
-
-	_, errWrite := rw.Write([]byte(fmt.Sprintf(messages.ReadAllDocumentsFailure, vaultID, errReadDoc)))
-	if errWrite != nil {
-		logger.Errorf(messages.ReadAllDocumentsFailure+messages.FailWriteResponse, vaultID, errReadDoc, errWrite)
 	}
 }
 

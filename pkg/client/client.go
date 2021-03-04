@@ -21,10 +21,7 @@ import (
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-const (
-	failSendRequestForAllDocuments = "failure while sending request to retrieve all documents from vault %s: %w"
-	failSendRequestForDocument     = "failure while sending request to vault %s to retrieve document %s: %w"
-)
+const failSendRequestForDocument = "failure while sending request to vault %s to retrieve document %s: %w"
 
 var logger = log.New("edv-client")
 
@@ -168,37 +165,6 @@ func (c *Client) CreateDocument(vaultID string, document *models.EncryptedDocume
 
 	return "", fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
 		statusCode, respBytes)
-}
-
-// ReadAllDocuments sends the EDV server a request to retrieve all the documents within the specified vault.
-func (c *Client) ReadAllDocuments(vaultID string, opts ...ReqOption) ([]models.EncryptedDocument, error) {
-	reqOpt := &ReqOpts{}
-
-	for _, o := range opts {
-		o(reqOpt)
-	}
-
-	endpoint := fmt.Sprintf("%s/%s/documents", c.edvServerURL, url.PathEscape(vaultID))
-
-	statusCode, _, respBody, err := c.sendHTTPRequest(http.MethodGet, endpoint, nil, c.getHeaderFunc(reqOpt))
-	if err != nil {
-		return nil, fmt.Errorf(failSendRequestForAllDocuments, vaultID, err)
-	}
-
-	switch statusCode {
-	case http.StatusOK:
-		var documents []models.EncryptedDocument
-
-		err = json.Unmarshal(respBody, &documents)
-		if err != nil {
-			return nil, err
-		}
-
-		return documents, nil
-	default:
-		return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
-			statusCode, respBody)
-	}
 }
 
 // ReadDocument sends the EDV server a request to retrieve the specified document.

@@ -16,8 +16,10 @@ go 1.15
 require (
 	github.com/cucumber/godog v0.9.0
 	github.com/fsouza/go-dockerclient v1.6.6
-	github.com/google/uuid v1.1.2
-	github.com/hyperledger/aries-framework-go v0.1.6-0.20210212132055-b94cce120dda
+	github.com/google/uuid v1.2.0
+	github.com/hyperledger/aries-framework-go v0.1.6-0.20210303180208-4bb3ae8b32c9
+	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210304152953-16ffd16ca955
+	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210226235232-298aa129d822
 	github.com/igor-pavlenko/httpsignatures-go v0.0.21
 	github.com/tidwall/gjson v1.6.7
 	github.com/trustbloc/edge-core v0.1.6-0.20210224175343-275d0e0370c4

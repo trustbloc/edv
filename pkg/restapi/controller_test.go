@@ -23,14 +23,16 @@ func TestController_New(t *testing.T) {
 }
 
 func TestController_GetOperations(t *testing.T) {
-	controller, err := New(&operation.Config{Provider: memedvprovider.NewProvider(),
-		EnabledExtensions: &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true}})
+	controller, err := New(&operation.Config{
+		Provider:          memedvprovider.NewProvider(),
+		EnabledExtensions: &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true},
+	})
 	require.NoError(t, err)
 	require.NotNil(t, controller)
 
 	ops := controller.GetOperations()
 
-	require.Equal(t, 7, len(ops))
+	require.Equal(t, 6, len(ops))
 
 	// Create vault
 	require.Equal(t, "/encrypted-data-vaults", ops[0].Path())
@@ -61,9 +63,4 @@ func TestController_GetOperations(t *testing.T) {
 	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[5].Path())
 	require.Equal(t, http.MethodDelete, ops[5].Method())
 	require.NotNil(t, ops[5].Handle())
-
-	// Read all documents
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents", ops[6].Path())
-	require.Equal(t, http.MethodGet, ops[6].Method())
-	require.NotNil(t, ops[6].Handle())
 }

@@ -21,9 +21,4 @@ Allows query results to be full documents instead of document locations. This al
 
 Queries must include a "returnFullDocuments" field in the JSON set to true for this endpoint to return full documents.
 
-The request in the spec repo to add this feature can be found [here](https://github.com/decentralized-identity/confidential-storage/issues/137).
-
-## Return All Documents from Vault Endpoint
-Allows all documents to be retrieved from a vault in a single call.
-
-The request in the spec repo to add this feature can be found [here](https://github.com/decentralized-identity/confidential-storage/issues/111).
+The request in the spec repo to add this feature can be found [here](https://github.com/decentralized-identity/confidential-storage/issues/137).∂
