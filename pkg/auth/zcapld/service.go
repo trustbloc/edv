@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/jsonld"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/jsonwebsignature2020"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
@@ -112,6 +113,7 @@ func (s *Service) Handler(resourceID string, req *http.Request, w http.ResponseW
 			VDRResolver:        s.vdrResolver,
 			VerifierOptions: []zcapld.VerificationOption{
 				zcapld.WithSignatureSuites(
+					jsonwebsignature2020.New(suite.WithVerifier(jsonwebsignature2020.NewPublicKeyVerifier())),
 					ed25519signature2018.New(suite.WithVerifier(ed25519signature2018.NewPublicKeyVerifier())),
 				), zcapld.WithLDDocumentLoaders(s.jsonLDLoader),
 			},
