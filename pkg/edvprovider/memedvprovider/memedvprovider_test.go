@@ -12,71 +12,84 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mock"
+	"github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/stretchr/testify/require"
-	"github.com/trustbloc/edge-core/pkg/storage"
-	"github.com/trustbloc/edge-core/pkg/storage/mockstore"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-const testStoreName = "TestStore"
-const testVaultID = "9ANbuHxeBcicymvRZfcKB2"
+const (
+	testStoreName = "TestStore"
+	testVaultID   = "9ANbuHxeBcicymvRZfcKB2"
+)
 
 func TestNewProvider(t *testing.T) {
 	prov := NewProvider()
 	require.NotNil(t, prov)
 }
 
-func TestMemEDVStore_GetAll(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		store := createAndOpenStoreExpectSuccess(t)
+func TestMemEDVProvider_StoreExists(t *testing.T) {
+	t.Run("Success: store exists", func(t *testing.T) {
+		provider := NewProvider()
 
-		testDocument1 := models.EncryptedDocument{
-			ID:                          "Doc1",
-			Sequence:                    0,
-			IndexedAttributeCollections: nil,
-			JWE:                         []byte(`{"SomeJWEKey1":"SomeJWEValue1"}`),
-		}
-
-		testDocument2 := models.EncryptedDocument{
-			ID:                          "Doc2",
-			Sequence:                    0,
-			IndexedAttributeCollections: nil,
-			JWE:                         []byte(`{"SomeJWEKey2":"SomeJWEValue2"}`),
-		}
-
-		err := store.Put(testDocument1)
+		_, err := provider.OpenStore("storename")
 		require.NoError(t, err)
 
-		err = store.Put(testDocument2)
+		exists, err := provider.StoreExists("storename")
 		require.NoError(t, err)
-
-		expectedValue1, err := json.Marshal(testDocument1)
-		require.NoError(t, err)
-
-		expectedValue2, err := json.Marshal(testDocument2)
-		require.NoError(t, err)
-
-		allValues, err := store.GetAll()
-		require.NoError(t, err)
-		require.Contains(t, allValues, expectedValue1)
-		require.Contains(t, allValues, expectedValue2)
-		require.Len(t, allValues, 2)
+		require.True(t, exists)
 	})
-	t.Run("Fail to get all key value pairs from core store", func(t *testing.T) {
-		errGetAll := errors.New("get all error")
-		store := MemEDVStore{coreStore: &mockstore.MockStore{ErrGetAll: errGetAll}}
+	t.Run("Success: store does not exist", func(t *testing.T) {
+		provider := NewProvider()
 
-		values, err := store.GetAll()
-		require.EqualError(t, err, fmt.Errorf(failGetKeyValuePairsFromCoreStoreErrMsg, errGetAll).Error())
-		require.Nil(t, values)
+		exists, err := provider.StoreExists("storename")
+		require.NoError(t, err)
+		require.False(t, exists)
+	})
+	t.Run("Unexpected error while getting store config", func(t *testing.T) {
+		provider := &MemEDVProvider{
+			coreProvider: &mock.Provider{ErrGetStoreConfig: errors.New("get store config failure")},
+		}
+
+		exists, err := provider.StoreExists("storename")
+		require.EqualError(t, err, "unexpected error while getting store config: get store config failure")
+		require.False(t, exists)
+	})
+}
+
+func TestMemEDVProvider_OpenStore(t *testing.T) {
+	t.Run("Failed to open store in core provider", func(t *testing.T) {
+		provider := MemEDVProvider{coreProvider: &mock.Provider{ErrOpenStore: errors.New("open store failure")}}
+
+		store, err := provider.OpenStore("storename")
+		require.EqualError(t, err, "failed to open store in core provider: open store failure")
+		require.Nil(t, store)
+	})
+}
+
+func TestMemEDVProvider_SetStoreConfig(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		provider := NewProvider()
+
+		_, err := provider.OpenStore("storename")
+		require.NoError(t, err)
+
+		err = provider.SetStoreConfig("storename", storage.StoreConfiguration{})
+		require.NoError(t, err)
+	})
+	t.Run("Success", func(t *testing.T) {
+		provider := NewProvider()
+
+		err := provider.SetStoreConfig("storename", storage.StoreConfiguration{})
+		require.EqualError(t, err, "failed to set store config in core provider: "+storage.ErrStoreNotFound.Error())
 	})
 }
 
 func TestMemEDVStore_Get(t *testing.T) {
-	store := createAndOpenStoreExpectSuccess(t)
+	store := openStoreExpectSuccess(t)
 
 	testDocument := models.EncryptedDocument{
 		ID:                          "Doc1",
@@ -96,28 +109,45 @@ func TestMemEDVStore_Get(t *testing.T) {
 	require.Equal(t, expectedValue, value)
 }
 
-func TestMemEDVStore_StoreDataVaultConfiguration(t *testing.T) {
+func TestMemEDVStore_UpsertBulk(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		store := createAndOpenStoreExpectSuccess(t)
-		testVaultConfig := buildTestDataVaultConfig()
+		store := openStoreExpectSuccess(t)
 
-		testConfigEntry := models.DataVaultConfigurationMapping{
-			DataVaultConfiguration: testVaultConfig,
-			VaultID:                testVaultID,
+		testDocument := models.EncryptedDocument{
+			ID:                          "Doc1",
+			Sequence:                    0,
+			IndexedAttributeCollections: nil,
+			JWE:                         []byte(`{"SomeJWEKey1":"SomeJWEValue1"}`),
 		}
 
-		expectedValue, err := json.Marshal(testConfigEntry)
+		err := store.UpsertBulk([]models.EncryptedDocument{testDocument})
 		require.NoError(t, err)
+	})
+	t.Run("Fail to store document", func(t *testing.T) {
+		store := &MemEDVStore{coreStore: &mock.Store{ErrPut: errors.New("put failure")}}
 
-		err = store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
-		require.NoError(t, err)
+		testDocument := models.EncryptedDocument{
+			ID:                          "Doc1",
+			Sequence:                    0,
+			IndexedAttributeCollections: nil,
+			JWE:                         []byte(`{"SomeJWEKey1":"SomeJWEValue1"}`),
+		}
 
-		allValues, err := store.GetAll()
+		err := store.UpsertBulk([]models.EncryptedDocument{testDocument})
+		require.EqualError(t, err, "failed to store document: put failure")
+	})
+}
+
+func TestMemEDVStore_StoreDataVaultConfiguration(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		store := openStoreExpectSuccess(t)
+		testVaultConfig := buildTestDataVaultConfig()
+
+		err := store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
 		require.NoError(t, err)
-		require.Contains(t, allValues, expectedValue)
 	})
 	t.Run("ReferenceID already exists", func(t *testing.T) {
-		store := createAndOpenStoreExpectSuccess(t)
+		store := openStoreExpectSuccess(t)
 		testVaultConfig := buildTestDataVaultConfig()
 
 		err := store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
@@ -128,31 +158,26 @@ func TestMemEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 	})
 	t.Run("Fail to store vaultID and vaultName key value pair", func(t *testing.T) {
 		errTest := errors.New("error putting key value pair in coreStore")
-		store := MemEDVStore{coreStore: &mockstore.MockStore{Store: make(map[string][]byte), ErrPut: errTest}}
+		store := MemEDVStore{coreStore: &mock.Store{ErrGet: storage.ErrDataNotFound, ErrPut: errTest}}
 
 		testVaultConfig := buildTestDataVaultConfig()
 		err := store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
 
 		require.Equal(t, errTest, err)
 	})
-	t.Run("Other error in checking duplicate referenceID", func(t *testing.T) {
-		errTest := errors.New("other error in getting referenceID in coreStore")
-		store := MemEDVStore{coreStore: &mockstore.MockStore{Store: make(map[string][]byte), ErrGet: errTest}}
-
+	t.Run("Unexpected error while checking for duplicate reference ID", func(t *testing.T) {
+		store := &MemEDVStore{coreStore: &mock.Store{ErrGet: errors.New("get failure")}}
 		testVaultConfig := buildTestDataVaultConfig()
-		err := store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
-		require.NoError(t, err)
 
-		// Needs to store twice because Get() in mockstore returns ErrValueNotFound if the key does not exist,
-		// ErrGet can only be returned if the key is found
-		err = store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
-		require.Equal(t, fmt.Errorf(messages.CheckDuplicateRefIDFailure, errTest), err)
+		err := store.StoreDataVaultConfiguration(&testVaultConfig, testVaultID)
+		require.EqualError(t, err, "an error occurred while querying reference IDs: "+
+			"unexpected error while trying to get existing data vault configuration: get failure")
 	})
 }
 
 func TestMemEDVStore_Update(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		store := createAndOpenStoreExpectSuccess(t)
+		store := openStoreExpectSuccess(t)
 		origDoc := models.EncryptedDocument{
 			ID:       "Doc1",
 			Sequence: 0,
@@ -197,7 +222,7 @@ func TestMemEDVStore_Update(t *testing.T) {
 
 func TestMemEDVStore_Delete(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		store := createAndOpenStoreExpectSuccess(t)
+		store := openStoreExpectSuccess(t)
 		origDoc := models.EncryptedDocument{
 			ID:       "Doc1",
 			Sequence: 0,
@@ -211,28 +236,21 @@ func TestMemEDVStore_Delete(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = store.Get("Doc1")
-		require.Error(t, err, storage.ErrValueNotFound)
+		require.Error(t, err, storage.ErrDataNotFound)
 	})
 }
 
-func TestMemEDVStore_CreateReferenceIDIndex(t *testing.T) {
-	store := createAndOpenStoreExpectSuccess(t)
-	err := store.CreateReferenceIDIndex()
-	require.Equal(t, edvprovider.ErrIndexingNotSupported, err)
+func TestMemEDVStore_Query(t *testing.T) {
+	store := MemEDVStore{}
+
+	documents, err := store.Query(nil)
+	require.Equal(t, ErrQueryingNotSupported, err)
+	require.Nil(t, documents)
 }
 
-func TestMemEDVStore_CreateEncryptedDocIDIndex(t *testing.T) {
-	store := createAndOpenStoreExpectSuccess(t)
-	err := store.CreateEncryptedDocIDIndex()
-	require.Equal(t, edvprovider.ErrIndexingNotSupported, err)
-}
-
-func createAndOpenStoreExpectSuccess(t *testing.T) edvprovider.EDVStore {
+func openStoreExpectSuccess(t *testing.T) edvprovider.EDVStore {
 	prov := NewProvider()
 	require.NotNil(t, prov)
-
-	err := prov.CreateStore(testStoreName)
-	require.NoError(t, err)
 
 	store, err := prov.OpenStore(testStoreName)
 	require.NoError(t, err)

@@ -83,7 +83,7 @@ func TestService_Create(t *testing.T) {
 			&mockcrypto.Crypto{},
 			&mockstorage.MockStoreProvider{
 				Store: &mockstorage.MockStore{
-					Store:  make(map[string][]byte),
+					Store:  make(map[string]mockstorage.DBEntry),
 					ErrPut: fmt.Errorf("failed to store"),
 				},
 			},

@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 
+	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
 	"github.com/trustbloc/edv/pkg/restapi"
@@ -30,8 +31,6 @@ import (
 )
 
 const (
-	dataVaultConfigurationStoreName = "data_vault_configurations"
-
 	testReferenceID        = "testRefID"
 	testVaultIDNonExistent = "testVaultIDImpossible"
 	testDocumentID         = "VJYHHJx4C8J9Fsgz7rZqSp"
@@ -218,127 +217,6 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 	// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
 	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
 	require.True(t, testPassed)
-}
-
-func TestClient_ReadAllDocuments(t *testing.T) {
-	t.Run("Status OK", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true})
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		validConfig := getTestValidDataVaultConfiguration()
-		vaultLocationURL, _, err := client.CreateDataVault(&validConfig,
-			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-				return nil, nil
-			}))
-		require.NoError(t, err)
-
-		vaultID := getVaultIDFromURL(vaultLocationURL)
-
-		testEncryptedDoc1 := getTestValidEncryptedDocument(testJWE)
-
-		_, err = client.CreateDocument(vaultID, testEncryptedDoc1)
-		require.NoError(t, err)
-
-		testEncryptedDoc2 := models.EncryptedDocument{
-			ID:       testDocumentID2,
-			Sequence: 1,
-			JWE:      []byte(testJWE2),
-		}
-
-		_, err = client.CreateDocument(vaultID, &testEncryptedDoc2)
-		require.NoError(t, err)
-
-		documents, err := client.ReadAllDocuments(vaultID)
-		require.NoError(t, err)
-		require.Len(t, documents, 2)
-
-		// Marshal to bytes so that we can compare with the expected docs easily
-		actualDocumentsBytes1, err := json.Marshal(documents[0])
-		require.NoError(t, err)
-
-		actualDocumentsBytes2, err := json.Marshal(documents[1])
-		require.NoError(t, err)
-
-		expectedDocumentBytes1, err := json.Marshal(*testEncryptedDoc1)
-		require.NoError(t, err)
-
-		expectedDocumentBytes2, err := json.Marshal(testEncryptedDoc2)
-		require.NoError(t, err)
-
-		var gotExpectedDocs bool
-
-		// The order of the returned docs can vary - either order is acceptable
-		if string(actualDocumentsBytes1) == string(expectedDocumentBytes1) &&
-			string(actualDocumentsBytes2) == string(expectedDocumentBytes2) {
-			gotExpectedDocs = true
-		} else if string(actualDocumentsBytes1) == string(expectedDocumentBytes2) &&
-			string(actualDocumentsBytes2) == string(expectedDocumentBytes1) {
-			gotExpectedDocs = true
-		}
-
-		require.True(t, gotExpectedDocs, `Expected these two documents (in any order):
-Expected document 1: %s
-
-Expected document 2: %s
-
-Actual document 1: %s
-Actual document 2: %s`, string(expectedDocumentBytes1), string(expectedDocumentBytes2),
-			string(actualDocumentsBytes1), string(actualDocumentsBytes2))
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
-	})
-	t.Run("Status not found", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true})
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
-		require.EqualError(t, err, "the EDV server returned status code 404 along with the following "+
-			"message: Failed to read all documents in vault "+testVaultIDNonExistent+
-			": specified vault does not exist.")
-		require.Nil(t, documents)
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
-	})
-	t.Run("Failure while sending GET request", func(t *testing.T) {
-		client := New("BadURL")
-
-		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "unsupported protocol scheme")
-		require.Nil(t, documents)
-	})
-	t.Run("Failure while unmarshalling response body", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		mockReadAllDocumentsHTTPHandler :=
-			support.NewHTTPHandler("/encrypted-data-vaults/{vaultIDPathVariable}/documents", http.MethodGet,
-				mockReadAllDocumentsHandler)
-
-		srv := startMockEDVServer(srvAddr, mockReadAllDocumentsHTTPHandler)
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		documents, err := client.ReadAllDocuments(testVaultIDNonExistent)
-		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
-		require.Nil(t, documents)
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
-	})
 }
 
 func TestClient_ReadDocument(t *testing.T) {
@@ -924,7 +802,7 @@ func getTestValidEncryptedDocument(testJWE string) *models.EncryptedDocument {
 // Returns a reference to the server so the caller can stop it.
 func startEDVServer(t *testing.T, srvAddr string, enabledExtensions *operation.EnabledExtensions) *http.Server {
 	memProv := memedvprovider.NewProvider()
-	err := memProv.CreateStore(dataVaultConfigurationStoreName)
+	_, err := memProv.OpenStore(edvprovider.VaultConfigurationStoreName)
 	require.NoError(t, err)
 
 	edvService, err := restapi.New(&operation.Config{Provider: memProv, EnabledExtensions: enabledExtensions})
@@ -966,14 +844,6 @@ func startMockEDVServer(srvAddr string, httpHandler operation.Handler) *http.Ser
 	}(&srv)
 
 	return &srv
-}
-
-// Just writes some invalid JSON to the response.
-func mockReadAllDocumentsHandler(rw http.ResponseWriter, _ *http.Request) {
-	_, err := rw.Write([]byte("this is invalid JSON and will cause a json.Unmarshal to fail"))
-	if err != nil {
-		logger.Fatalf("failed to write in mock read all documents handler")
-	}
 }
 
 // Just writes some invalid JSON to the response.

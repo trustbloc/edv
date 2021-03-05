@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 
+	ariesmemstorage "github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
@@ -23,9 +24,8 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/noop"
-	ariesstorage "github.com/hyperledger/aries-framework-go/pkg/storage"
-	ariesmemstorage "github.com/hyperledger/aries-framework-go/pkg/storage/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
+	ariesstorage "github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/igor-pavlenko/httpsignatures-go"
 	tlsutils "github.com/trustbloc/edge-core/pkg/utils/tls"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
@@ -271,8 +271,10 @@ func createProxyEDVClient(ctx *BDDContext) (*edvclient.Client, error) {
 		return nil, err
 	}
 
-	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs,
-		MinVersion: tls.VersionTLS12}), edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
+	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{
+		RootCAs:    rootCAs,
+		MinVersion: tls.VersionTLS12,
+	}), edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
 		compressedZcap, err := compressZCAP(ctx.Capability)
 		if err != nil {
 			return nil, err
@@ -307,8 +309,10 @@ func createTrustBlocEDVClient(ctx *BDDInteropContext) (*edvclient.Client, error)
 		return nil, err
 	}
 
-	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{RootCAs: rootCAs,
-		MinVersion: tls.VersionTLS12}), edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
+	return edvclient.New("https://"+trustBlocEDVHostURL, edvclient.WithTLSConfig(&tls.Config{
+		RootCAs:    rootCAs,
+		MinVersion: tls.VersionTLS12,
+	}), edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
 		compressedZcap, err := compressZCAP(ctx.Capability)
 		if err != nil {
 			return nil, err

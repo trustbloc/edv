@@ -13,13 +13,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/log"
-	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
 	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
@@ -31,13 +30,16 @@ func (s *mockServer) ListenAndServe(host, certFile, keyFile string, handler http
 }
 
 type mockEDVProvider struct {
-	errCreateStore                 error
 	errOpenStore                   error
 	errStoreCreateReferenceIDIndex error
 }
 
-func (m *mockEDVProvider) CreateStore(string) error {
-	return m.errCreateStore
+func (m *mockEDVProvider) SetStoreConfig(name string, config storage.StoreConfiguration) error {
+	return nil
+}
+
+func (m *mockEDVProvider) StoreExists(name string) (bool, error) {
+	return true, nil
 }
 
 func (m *mockEDVProvider) OpenStore(string) (edvprovider.EDVStore, error) {
@@ -121,7 +123,8 @@ func TestStartCmdWithMissingArg(t *testing.T) {
 
 		err := startCmd.Execute()
 
-		require.Equal(t, fmt.Errorf("failed to connect to couchdb: %w", couchdbedvprovider.ErrMissingDatabaseURL), err)
+		require.EqualError(t, err, "failed to connect to couchdb: "+
+			"failed to create new CouchDB storage provider: failed to ping couchDB: url can't be blank")
 	})
 	t.Run("test missing kms database url arg - couchdb", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
@@ -350,15 +353,17 @@ func TestCreateProvider(t *testing.T) {
 
 		provider, err := createEDVProvider(&parameters)
 		require.Nil(t, provider)
-		require.Equal(t, fmt.Errorf("failed to connect to couchdb: %w", couchdbedvprovider.ErrMissingDatabaseURL), err)
+		require.EqualError(t, err, "failed to connect to couchdb: "+
+			"failed to create new CouchDB storage provider: failed to ping couchDB: url can't be blank")
 	})
 	t.Run("Error - CouchDB url is invalid", func(t *testing.T) {
 		parameters := edvParameters{databaseType: databaseTypeCouchDBOption, databaseURL: "%", databaseTimeout: 1}
 
 		provider, err := createEDVProvider(&parameters)
 		require.Nil(t, provider)
-		require.EqualError(t, err, fmt.Sprintf("failed to connect to couchdb: %s",
-			`failure while instantiate Kivik CouchDB client: parse "http://%": invalid URL escape "%"`))
+		require.EqualError(t, err, "failed to connect to couchdb: "+
+			"failed to create new CouchDB storage provider: "+
+			`failed to ping couchDB: parse "http://%": invalid URL escape "%"`)
 	})
 }
 
@@ -458,30 +463,10 @@ func TestCreateConfigStore(t *testing.T) {
 		err := createConfigStore(provider)
 		require.NoError(t, err)
 	})
-	t.Run("Success - other providers", func(t *testing.T) {
-		err := createConfigStore(&mockEDVProvider{})
-		require.NoError(t, err)
-	})
-	t.Run("Success - create duplicate store", func(t *testing.T) {
-		err := createConfigStore(&mockEDVProvider{errCreateStore: storage.ErrDuplicateStore})
-		require.Nil(t, err)
-	})
-	t.Run("failure - other error in create store", func(t *testing.T) {
-		errTest := errors.New("error in create store")
-
-		err := createConfigStore(&mockEDVProvider{errCreateStore: errTest})
-		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
-	})
 	t.Run("failure - open store error", func(t *testing.T) {
 		errTest := errors.New("error in open store")
 
 		err := createConfigStore(&mockEDVProvider{errOpenStore: errTest})
-		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
-	})
-	t.Run("failure - create referenceID index error", func(t *testing.T) {
-		errTest := errors.New("error in create refID index")
-
-		err := createConfigStore(&mockEDVProvider{errStoreCreateReferenceIDIndex: errTest})
 		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
 	})
 }

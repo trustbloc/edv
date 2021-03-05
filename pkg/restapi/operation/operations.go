@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/trustbloc/edge-core/pkg/log"
-	"github.com/trustbloc/edge-core/pkg/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvutils"
@@ -26,8 +26,7 @@ import (
 )
 
 const (
-	logModuleName                   = "restapi"
-	dataVaultConfigurationStoreName = "data_vault_configurations"
+	logModuleName = "restapi"
 
 	edvCommonEndpointPathRoot = "/encrypted-data-vaults"
 	vaultIDPathVariable       = "vaultID"
@@ -38,11 +37,10 @@ const (
 	// See: https://github.com/decentralized-identity/secure-data-store/issues/110.
 	// The endpoint listed below is the correct one (per the comment made by one of the spec contributors).
 	// This also matches the one used by Transmute's EDV implementation.
-	queryVaultEndpoint       = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/query"
-	createDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
-	batchEndpoint            = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/batch"
-	readAllDocumentsEndpoint = createDocumentEndpoint
-	readDocumentEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
+	queryVaultEndpoint     = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/query"
+	createDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents"
+	batchEndpoint          = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/batch"
+	readDocumentEndpoint   = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
 	updateDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
@@ -117,11 +115,6 @@ func (c *Operation) registerHandler() {
 		support.NewHTTPHandler(deleteDocumentEndpoint, http.MethodDelete, c.deleteDocumentHandler),
 	}
 	if c.enabledExtensions != nil {
-		if c.enabledExtensions.ReadAllDocumentsEndpoint {
-			c.handlers = append(c.handlers,
-				support.NewHTTPHandler(readAllDocumentsEndpoint, http.MethodGet, c.readAllDocumentsHandler))
-		}
-
 		if c.enabledExtensions.Batch {
 			c.handlers = append(c.handlers,
 				support.NewHTTPHandler(batchEndpoint, http.MethodPost, c.batchHandler))
@@ -295,36 +288,6 @@ func (c *Operation) createDocumentHandler(rw http.ResponseWriter, req *http.Requ
 		requestBody)
 
 	c.createDocument(rw, requestBody, req.Host, vaultID)
-}
-
-// Read All Documents swagger:route GET /encrypted-data-vaults/{vaultID}/documents readAllDocumentsReq
-//
-// Retrieves all encrypted documents from the specified vault.
-//
-// Responses:
-//    default: genericError
-//        201: readAllDocumentsRes
-func (c *Operation) readAllDocumentsHandler(rw http.ResponseWriter, req *http.Request) {
-	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
-	if !success {
-		return
-	}
-
-	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.ReadAllDocumentsReceiveRequest, vaultID))
-
-	allDocuments, err := c.vaultCollection.readAllDocuments(vaultID)
-	if err != nil {
-		writeReadAllDocumentsFailure(rw, err, vaultID)
-		return
-	}
-
-	var allDocumentsJSONRawMessage []json.RawMessage
-
-	for _, document := range allDocuments {
-		allDocumentsJSONRawMessage = append(allDocumentsJSONRawMessage, document)
-	}
-
-	writeReadAllDocumentsSuccess(rw, allDocumentsJSONRawMessage, vaultID)
 }
 
 // Read Document swagger:route GET /encrypted-data-vaults/{vaultID}/documents/{docID} readDocumentReq
@@ -580,45 +543,17 @@ func validateBatch(incomingBatch models.Batch, responses []string) error {
 }
 
 func (vc *VaultCollection) createDataVault(vaultID string) error {
-	err := vc.provider.CreateStore(vaultID)
+	_, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrDuplicateStore) {
-			return messages.ErrDuplicateVault
-		}
-
-		return err
+		return fmt.Errorf("failed to open store for vault: %w", err)
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	err = vc.provider.SetStoreConfig(vaultID, storage.StoreConfiguration{TagNames: []string{
+		edvprovider.MappingDocumentTagName,
+		edvprovider.MappingDocumentMatchingEncryptedDocIDTagName,
+	}})
 	if err != nil {
-		return err
-	}
-
-	err = vc.createIndices(store)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (vc *VaultCollection) createIndices(store edvprovider.EDVStore) error {
-	err := store.CreateEDVIndex()
-	if err != nil {
-		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
-			return nil
-		}
-
-		return err
-	}
-
-	err = store.CreateEncryptedDocIDIndex()
-	if err != nil {
-		if err == edvprovider.ErrIndexingNotSupported { // Allow the EDV to still operate without index support
-			return nil
-		}
-
-		return err
+		return fmt.Errorf("failed to set store config: %w", err)
 	}
 
 	return nil
@@ -626,18 +561,18 @@ func (vc *VaultCollection) createIndices(store edvprovider.EDVStore) error {
 
 // storeDataVaultConfiguration stores a given DataVaultConfiguration and vaultID
 func (vc *VaultCollection) storeDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
-	store, err := vc.provider.OpenStore(dataVaultConfigurationStoreName)
+	store, err := vc.provider.OpenStore(edvprovider.VaultConfigurationStoreName)
 	if err != nil {
 		if errors.Is(err, storage.ErrStoreNotFound) {
 			return errors.New(messages.ConfigStoreNotFound)
 		}
 
-		return err
+		return fmt.Errorf("failed to open store for vault configurations: %w", err)
 	}
 
 	err = store.StoreDataVaultConfiguration(config, vaultID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to store data vault configuration in store: %w", err)
 	}
 
 	return nil
@@ -682,12 +617,17 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 }
 
 func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {
+	exists, err := vc.provider.StoreExists(vaultID)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return messages.ErrVaultNotFound
+	}
+
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return messages.ErrVaultNotFound
-		}
-
 		return err
 	}
 
@@ -699,7 +639,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 		return messages.ErrDuplicateDocument
 	}
 
-	if !errors.Is(err, storage.ErrValueNotFound) {
+	if !errors.Is(err, storage.ErrDataNotFound) {
 		return err
 	}
 
@@ -707,49 +647,41 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 }
 
 func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.EncryptedDocument) error {
+	exists, err := vc.provider.StoreExists(vaultID)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return messages.ErrVaultNotFound
+	}
+
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return messages.ErrVaultNotFound
-		}
-
 		return err
 	}
 
 	return store.UpsertBulk(documents)
 }
 
-func (vc *VaultCollection) readAllDocuments(vaultName string) ([][]byte, error) {
-	store, err := vc.provider.OpenStore(vaultName)
+func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
+	exists, err := vc.provider.StoreExists(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return nil, messages.ErrVaultNotFound
-		}
-
 		return nil, err
 	}
 
-	documentBytes, err := store.GetAll()
-	if err != nil {
-		return nil, fmt.Errorf(messages.FailWhileGetAllDocsFromStoreErrMsg, err)
+	if !exists {
+		return nil, messages.ErrVaultNotFound
 	}
 
-	return documentBytes, err
-}
-
-func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return nil, messages.ErrVaultNotFound
-		}
-
 		return nil, err
 	}
 
 	documentBytes, err := store.Get(docID)
 	if err != nil {
-		if errors.Is(err, storage.ErrValueNotFound) {
+		if errors.Is(err, storage.ErrDataNotFound) {
 			return nil, messages.ErrDocumentNotFound
 		}
 
@@ -760,12 +692,17 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 }
 
 func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]models.EncryptedDocument, error) {
+	exists, err := vc.provider.StoreExists(vaultID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		return nil, messages.ErrVaultNotFound
+	}
+
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return nil, messages.ErrVaultNotFound
-		}
-
 		return nil, err
 	}
 
@@ -802,18 +739,23 @@ func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, d
 }
 
 func (vc *VaultCollection) updateDocument(docID, vaultID string, document models.EncryptedDocument) error {
+	exists, err := vc.provider.StoreExists(vaultID)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return messages.ErrVaultNotFound
+	}
+
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return messages.ErrVaultNotFound
-		}
-
 		return err
 	}
 
 	_, err = store.Get(docID)
 	if err != nil {
-		if errors.Is(err, storage.ErrValueNotFound) {
+		if errors.Is(err, storage.ErrDataNotFound) {
 			return messages.ErrDocumentNotFound
 		}
 
@@ -824,18 +766,23 @@ func (vc *VaultCollection) updateDocument(docID, vaultID string, document models
 }
 
 func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
+	exists, err := vc.provider.StoreExists(vaultID)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return messages.ErrVaultNotFound
+	}
+
 	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return messages.ErrVaultNotFound
-		}
-
 		return err
 	}
 
 	_, err = store.Get(docID)
 	if err != nil {
-		if errors.Is(err, storage.ErrValueNotFound) {
+		if errors.Is(err, storage.ErrDataNotFound) {
 			return messages.ErrDocumentNotFound
 		}
 

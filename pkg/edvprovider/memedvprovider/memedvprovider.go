@@ -11,54 +11,70 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/trustbloc/edge-core/pkg/storage"
-	"github.com/trustbloc/edge-core/pkg/storage/memstore"
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
+	"github.com/hyperledger/aries-framework-go/spi/storage"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
-const failGetKeyValuePairsFromCoreStoreErrMsg = "failure while getting all key value pairs from core storage: %w"
-
 // ErrQueryingNotSupported is used when an attempt is made to query a vault backed by a memstore.
 var ErrQueryingNotSupported = errors.New("querying is not supported by memstore")
 
 // MemEDVProvider represents an in-memory provider with functionality needed for EDV data storage.
-// It wraps an edge-core memstore provider with additional functionality that's needed for EDV operations,
-// however this additional functionality is not supported in memstore.
+// It wraps an edge-core memstore provider with additional functionality that's needed for EDV operations.
 type MemEDVProvider struct {
 	coreProvider storage.Provider
 }
 
 // NewProvider instantiates Provider
 func NewProvider() *MemEDVProvider {
-	return &MemEDVProvider{coreProvider: memstore.NewProvider()}
+	return &MemEDVProvider{coreProvider: mem.NewProvider()}
 }
 
-// CreateStore creates a new store with the given name.
-func (m MemEDVProvider) CreateStore(name string) error {
-	return m.coreProvider.CreateStore(name)
+// StoreExists returns a boolean indicating whether a given store already exists.
+func (m *MemEDVProvider) StoreExists(name string) (bool, error) {
+	_, err := m.coreProvider.GetStoreConfig(name)
+	if err != nil {
+		if errors.Is(err, storage.ErrStoreNotFound) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("unexpected error while getting store config: %w", err)
+	}
+
+	return true, nil
 }
 
 // OpenStore opens an existing store and returns it.
-func (m MemEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error) {
+func (m *MemEDVProvider) OpenStore(name string) (edvprovider.EDVStore, error) {
 	coreStore, err := m.coreProvider.OpenStore(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open store in core provider: %w", err)
 	}
 
 	return &MemEDVStore{coreStore: coreStore}, nil
 }
 
+// SetStoreConfig sets the store configuration in the underlying core provider.
+func (m *MemEDVProvider) SetStoreConfig(name string, config storage.StoreConfiguration) error {
+	err := m.coreProvider.SetStoreConfig(name, config)
+	if err != nil {
+		return fmt.Errorf("failed to set store config in core provider: %w", err)
+	}
+
+	return nil
+}
+
 // MemEDVStore represents an in-memory store with functionality needed for EDV data storage.
-// It wraps an edge-core in-memory store with additional functionality that's needed for EDV operations.
+// It wraps an Aries in-memory store with additional functionality that's needed for EDV operations.
 type MemEDVStore struct {
 	coreStore storage.Store
 }
 
 // Put stores the given document.
-func (m MemEDVStore) Put(document models.EncryptedDocument) error {
+func (m *MemEDVStore) Put(document models.EncryptedDocument) error {
 	documentBytes, err := json.Marshal(document)
 	if err != nil {
 		return err
@@ -68,69 +84,39 @@ func (m MemEDVStore) Put(document models.EncryptedDocument) error {
 }
 
 // UpsertBulk stores the given documents, creating or updating them as needed.
-func (m MemEDVStore) UpsertBulk(documents []models.EncryptedDocument) error {
-	if documents == nil {
-		return fmt.Errorf("documents array cannot be nil")
-	}
-
+func (m *MemEDVStore) UpsertBulk(documents []models.EncryptedDocument) error {
 	for _, document := range documents {
 		err := m.Put(document)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to store document: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// GetAll fetches all the documents within this store.
-func (m MemEDVStore) GetAll() ([][]byte, error) {
-	allKeyValuePairs, err := m.coreStore.GetAll()
-	if err != nil {
-		return nil, fmt.Errorf(failGetKeyValuePairsFromCoreStoreErrMsg, err)
-	}
-
-	var allDocuments [][]byte
-
-	for _, value := range allKeyValuePairs {
-		allDocuments = append(allDocuments, value)
-	}
-
-	return allDocuments, nil
-}
-
 // Get fetches the document associated with the given key.
-func (m MemEDVStore) Get(k string) ([]byte, error) {
+func (m *MemEDVStore) Get(k string) ([]byte, error) {
 	return m.coreStore.Get(k)
 }
 
 // Update updates the given document
-func (m MemEDVStore) Update(newDoc models.EncryptedDocument) error {
+func (m *MemEDVStore) Update(newDoc models.EncryptedDocument) error {
 	return m.Put(newDoc)
 }
 
 // Delete deletes the given document
-func (m MemEDVStore) Delete(docID string) error {
+func (m *MemEDVStore) Delete(docID string) error {
 	return m.coreStore.Delete(docID)
 }
 
-// CreateEDVIndex is not supported in memstore, and calling it will always return an error.
-func (m MemEDVStore) CreateEDVIndex() error {
-	return edvprovider.ErrIndexingNotSupported
-}
-
-// CreateEncryptedDocIDIndex is not supported in memstore, and calling it will always return an error.
-func (m MemEDVStore) CreateEncryptedDocIDIndex() error {
-	return edvprovider.ErrIndexingNotSupported
-}
-
 // Query is not supported in memstore, and calling it will always return an error.
-func (m MemEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) {
+func (m *MemEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) {
 	return nil, ErrQueryingNotSupported
 }
 
 // StoreDataVaultConfiguration stores the given dataVaultConfiguration and vaultID
-func (m MemEDVStore) StoreDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
+func (m *MemEDVStore) StoreDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
 	err := m.checkDuplicateReferenceID(config.ReferenceID)
 	if err != nil {
 		return fmt.Errorf(messages.CheckDuplicateRefIDFailure, err)
@@ -149,20 +135,15 @@ func (m MemEDVStore) StoreDataVaultConfiguration(config *models.DataVaultConfigu
 	return m.coreStore.Put(config.ReferenceID, configBytes)
 }
 
-func (m MemEDVStore) checkDuplicateReferenceID(referenceID string) error {
+func (m *MemEDVStore) checkDuplicateReferenceID(referenceID string) error {
 	_, err := m.coreStore.Get(referenceID)
 	if err == nil {
 		return messages.ErrDuplicateVault
 	}
 
-	if !errors.Is(err, storage.ErrValueNotFound) {
-		return err
+	if !errors.Is(err, storage.ErrDataNotFound) {
+		return fmt.Errorf("unexpected error while trying to get existing data vault configuration: %w", err)
 	}
 
 	return nil
-}
-
-// CreateReferenceIDIndex is not supported in memstore, and calling it will always return an error.
-func (m MemEDVStore) CreateReferenceIDIndex() error {
-	return edvprovider.ErrIndexingNotSupported
 }
