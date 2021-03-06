@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/hyperledger/aries-framework-go v0.1.6-0.20210303180208-4bb3ae8b32c9
-	github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20210303194824-a55a12f8d063
+	github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20210305233053-d3d22c802c12
 	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210304152953-16ffd16ca955
 	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210226235232-298aa129d822
 	github.com/piprate/json-gold v0.3.1-0.20201222165305-f4ce31c02ca3
