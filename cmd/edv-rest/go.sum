@@ -754,6 +754,10 @@ github.com/pierrec/lz4 v2.0.5+incompatible/go.mod h1:pdkljMzZIN41W+lC3N2tnIh5sFi
 github.com/pierrec/lz4 v2.2.5+incompatible/go.mod h1:pdkljMzZIN41W+lC3N2tnIh5sFi+IEE17M5jbnwPHcY=
 github.com/pierrec/lz4 v2.2.6+incompatible/go.mod h1:pdkljMzZIN41W+lC3N2tnIh5sFi+IEE17M5jbnwPHcY=
 github.com/pierrec/lz4 v2.5.2+incompatible/go.mod h1:pdkljMzZIN41W+lC3N2tnIh5sFi+IEE17M5jbnwPHcY=
+github.com/piprate/json-gold v0.3.0/go.mod h1:OK1z7UgtBZk06n2cDE2OSq1kffmjFFp5/2yhLLCz9UM=
+github.com/piprate/json-gold v0.3.1-0.20201222165305-f4ce31c02ca3/go.mod h1:OK1z7UgtBZk06n2cDE2OSq1kffmjFFp5/2yhLLCz9UM=
+github.com/piprate/json-gold v0.4.0 h1:XQ6ZMLCjuXhtvqr60IrGl2uNYojl64B/dIUmI2iqThs=
+github.com/piprate/json-gold v0.4.0/go.mod h1:OK1z7UgtBZk06n2cDE2OSq1kffmjFFp5/2yhLLCz9UM=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1-0.20171018195549-f15c970de5b7/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
@@ -885,8 +889,6 @@ github.com/trustbloc/edge-core v0.1.4-0.20200709143857-e104bb29f6c6/go.mod h1:SZ
 github.com/trustbloc/edge-core v0.1.5/go.mod h1:YnXB2tOVOcW+zK5Xs9RZLhWSGujUzSeZUXrwDOouPgA=
 github.com/trustbloc/edge-core v0.1.6 h1:h+FWfBCvx/sMNvrb3TXOaB2HP023bGnVSOthNYKBduI=
 github.com/trustbloc/edge-core v0.1.6/go.mod h1:dZOe6xQN/jWHIsRJzZW0hqmRXT+GmYYkN4O/yHAYQII=
-github.com/trustbloc/json-gold v0.3.1-0.20200414173446-30d742ee949e h1:i+hGa8C1MKGO71j3jIV7e2aKX72/DTrzLjq9R8kc6xk=
-github.com/trustbloc/json-gold v0.3.1-0.20200414173446-30d742ee949e/go.mod h1:OK1z7UgtBZk06n2cDE2OSq1kffmjFFp5/2yhLLCz9UM=
 github.com/trustbloc/sidetree-core-go v0.1.6-0.20210301232849-50c4792e1ca1/go.mod h1:prRWqxBavkSxgKtPmUriSxCemrvl47yStMbW4jMFuRs=
 github.com/trustbloc/sidetree-core-go v0.6.0 h1:fXXVcaTm5Ceq1FQYSaynmvgP4xCh4AO4paMOXTakG5E=
 github.com/trustbloc/sidetree-core-go v0.6.0/go.mod h1:prRWqxBavkSxgKtPmUriSxCemrvl47yStMbW4jMFuRs=
