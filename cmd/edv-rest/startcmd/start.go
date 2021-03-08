@@ -874,13 +874,13 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.RequestURI == createVaultPath || r.RequestURI == healthCheckPath {
+	s := strings.SplitAfter(r.RequestURI, "/")
+
+	if r.RequestURI == createVaultPath || r.RequestURI == healthCheckPath || len(s) < 3 {
 		h.routerHandler.ServeHTTP(w, r)
 
 		return
 	}
-
-	s := strings.SplitAfter(r.RequestURI, "/")
 
 	authHandler, err := h.authSvc.Handler(strings.TrimSuffix(s[2], "/"), r, w,
 		func(writer http.ResponseWriter, request *http.Request) {

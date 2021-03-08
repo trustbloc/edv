@@ -8,8 +8,6 @@ replace github.com/trustbloc/edv => ../..
 
 replace github.com/kilic/bls12-381 => github.com/trustbloc/bls12-381 v0.0.0-20201104214312-31de2a204df8
 
-replace github.com/piprate/json-gold => github.com/trustbloc/json-gold v0.3.1-0.20200414173446-30d742ee949e
-
 require (
 	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible
