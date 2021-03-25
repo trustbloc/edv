@@ -85,6 +85,7 @@ const (
 
 	testDocID      = "VJYHHJx4C8J9Fsgz7rZqSp"
 	testDocID2     = "AJYHHJx4C8J9Fsgz7rZqSp"
+	testDocID3     = "CJYHHJx4C8J9Fsgz7rZqSp"
 	testIndexName1 = "indexName1"
 	testIndexName2 = "indexName2"
 	testIndexName3 = "indexName3"
@@ -1604,6 +1605,11 @@ func TestBatch(t *testing.T) {
 		DocumentID: testDocID,
 	}
 
+	deleteNonExistentDoc := models.VaultOperation{
+		Operation:  models.DeleteDocumentVaultOperation,
+		DocumentID: testDocID3,
+	}
+
 	invalidOperation := models.VaultOperation{
 		Operation: "invalidOperationName",
 	}
@@ -1633,6 +1639,15 @@ func TestBatch(t *testing.T) {
 
 		require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID+`"`+
 			`,"/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID2+`",""]`,
+			rr.Body.String())
+		require.Equal(t, http.StatusOK, rr.Code)
+	})
+	t.Run("Success: upsert (create), delete non-existent doc, upsert (create)", func(t *testing.T) {
+		rr, vaultID := doBatchCall(t, &models.Batch{upsertNewDoc1, deleteNonExistentDoc, upsertNewDoc2},
+			memedvprovider.NewProvider())
+
+		require.Equal(t, `["/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID+`","`+
+			messages.ErrDocumentNotFound.Error()+`","/encrypted-data-vaults/`+vaultID+`/documents/`+testDocID2+`"]`,
 			rr.Body.String())
 		require.Equal(t, http.StatusOK, rr.Code)
 	})

@@ -422,6 +422,8 @@ func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
 	c.executeBatchedOperations(rw, req.Host, vaultID, incomingBatch, responses, requestBody)
 }
 
+// nolint: gocyclo // Can't find a way to cleanly reduce the cyclomatic complexity without some sort of large, risky
+// rework. If/when this batch implementation gets reworked, we should try to improve on the code below.
 func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vaultID string,
 	vaultOperations models.Batch, responses []string, requestBody []byte) {
 	// To improve performance, we gather as many document upsert operations as we can before we hit a
@@ -458,14 +460,17 @@ func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vault
 			}
 
 			err := c.vaultCollection.deleteDocument(vaultOperation.DocumentID, vaultID)
-			if err != nil {
+			if err == nil {
+				responses[vaultOperationIndex] = ""
+			} else {
 				responses[vaultOperationIndex] = err.Error()
-				writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
+				if !errors.Is(err, messages.ErrDocumentNotFound) {
+					writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)
 
-				return
+					return
+				}
 			}
 
-			responses[vaultOperationIndex] = ""
 			numOperationsCompleted++
 		default: // Validation check should ensure that this can't happen.
 			err := fmt.Errorf("%s is not a valid vault operation", vaultOperation.Operation)
