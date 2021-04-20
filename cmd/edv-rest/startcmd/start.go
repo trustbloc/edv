@@ -21,7 +21,7 @@ import (
 	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
 	"github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
-	"github.com/hyperledger/aries-framework-go-ext/component/vdr/trustbloc"
+	"github.com/hyperledger/aries-framework-go-ext/component/vdr/orb"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
@@ -615,7 +615,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errCreate
 		}
 
-		vdrResolver, errVDR := prepareVDR(keyManager, parameters)
+		vdrResolver, errVDR := prepareVDR(parameters)
 		if errVDR != nil {
 			return errVDR
 		}
@@ -662,28 +662,22 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			authSvc, router))
 }
 
-type kmsCtx struct{ kms.KeyManager }
-
-func (c *kmsCtx) KMS() kms.KeyManager {
-	return c.KeyManager
-}
-
-func prepareVDR(km kms.KeyManager, params *edvParameters) (zcapldcore.VDRResolver, error) {
+func prepareVDR(params *edvParameters) (zcapldcore.VDRResolver, error) {
 	rootCAs, err := tlsutils.GetCertPool(params.tlsConfig.tlsUseSystemCertPool, params.tlsConfig.tlsCACerts)
 	if err != nil {
 		return nil, err
 	}
 
-	trustblocVDR, err := trustbloc.New(nil, trustbloc.WithDomain(params.didDomain),
-		trustbloc.WithTLSConfig(&tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}),
+	orbVDR, err := orb.New(nil, orb.WithDomain(params.didDomain),
+		orb.WithTLSConfig(&tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return ariesvdr.New(&kmsCtx{KeyManager: km},
+	return ariesvdr.New(
 		ariesvdr.WithVDR(vdrkey.New()),
-		ariesvdr.WithVDR(trustblocVDR),
+		ariesvdr.WithVDR(orbVDR),
 	), nil
 }
 

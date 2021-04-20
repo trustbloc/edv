@@ -17,6 +17,7 @@ import (
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
+	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
@@ -186,7 +187,7 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 		return err
 	}
 
-	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, jose.DIDCommEncType, "", nil,
+	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, packer.ContentEncodingTypeV2, "", "", nil,
 		[]*cryptoapi.PublicKey{ecPubKey}, e.bddContext.Crypto)
 	if err != nil {
 		return err
