@@ -498,12 +498,7 @@ func (c *CouchDBEDVStore) updateMappingDocuments(encryptedDocID string,
 		return err
 	}
 
-	if err := c.checkAndCreateNewMappingDocuments(encryptedDocID, newIndexedAttributeCollections,
-		mappingDocuments); err != nil {
-		return err
-	}
-
-	return nil
+	return c.checkAndCreateNewMappingDocuments(encryptedDocID, newIndexedAttributeCollections, mappingDocuments)
 }
 
 // checkAndCreateNewMappingDocuments checks if an indexName from the new indexedAttributeCollections already exists

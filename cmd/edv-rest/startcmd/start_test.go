@@ -518,6 +518,8 @@ func TestStartCmdInvalidSystemCertPool(t *testing.T) {
 }
 
 func checkFlagPropertiesCorrect(t *testing.T, cmd *cobra.Command, flagName, flagShorthand, flagUsage string) {
+	t.Helper()
+
 	flag := cmd.Flag(flagName)
 
 	require.NotNil(t, flag)

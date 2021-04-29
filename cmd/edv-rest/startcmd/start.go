@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/aries-framework-go-ext/component/vdr/orb"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/jsonld"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
@@ -620,7 +620,12 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errVDR
 		}
 
-		authSvc, err = zcapld.New(keyManager, crypto, storageProvider, verifiable.CachingJSONLDLoader(), vdrResolver)
+		loader, errLoader := jsonld.NewDocumentLoader(storageProvider)
+		if errLoader != nil {
+			return errLoader
+		}
+
+		authSvc, err = zcapld.New(keyManager, crypto, storageProvider, loader, vdrResolver)
 		if err != nil {
 			return err
 		}

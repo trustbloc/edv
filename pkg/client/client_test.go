@@ -80,7 +80,7 @@ func TestClient_New(t *testing.T) {
 
 		client := New("",
 			WithHTTPClient(hClient),
-			WithTLSConfig(&tls.Config{ServerName: "name"}),
+			WithTLSConfig(&tls.Config{ServerName: "name"}), //nolint:gosec
 		)
 
 		require.NotNil(t, client)
@@ -89,7 +89,7 @@ func TestClient_New(t *testing.T) {
 	t.Run("WithTLSConfig (nil client)", func(t *testing.T) {
 		client := New("",
 			WithHTTPClient(nil),
-			WithTLSConfig(&tls.Config{ServerName: "name"}),
+			WithTLSConfig(&tls.Config{ServerName: "name"}), //nolint:gosec
 		)
 
 		require.NotNil(t, client)
@@ -801,6 +801,8 @@ func getTestValidEncryptedDocument(testJWE string) *models.EncryptedDocument {
 
 // Returns a reference to the server so the caller can stop it.
 func startEDVServer(t *testing.T, srvAddr string, enabledExtensions *operation.EnabledExtensions) *http.Server {
+	t.Helper()
+
 	memProv := memedvprovider.NewProvider()
 	_, err := memProv.OpenStore(edvprovider.VaultConfigurationStoreName)
 	require.NoError(t, err)
@@ -888,6 +890,8 @@ func failingMarshal(_ interface{}) ([]byte, error) {
 }
 
 func waitForServerToStart(t *testing.T, srvAddr string) {
+	t.Helper()
+
 	if err := listenFor(srvAddr); err != nil {
 		t.Fatal(err)
 	}

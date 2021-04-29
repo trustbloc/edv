@@ -82,6 +82,15 @@ linters:
     - godot
     - gofumpt
     - noctx
+    - interfacer # deprecated by the author https://github.com/mvdan/interfacer#interfacer
+    - scopelint # deprecated by the author https://github.com/kyoh86/scopelint#obsoleted
+    - exhaustivestruct
+    - paralleltest
+    - tparallel
+    - cyclop # for calculating cyclomatic complexities `gocyclo` is used
+    - gomoddirectives
+    - forbidigo
+    - wrapcheck # TODO: Enable
 
 issues:
   exclude-use-default: false
@@ -97,7 +106,7 @@ issues:
 
   exclude:
     # Allow package logger variables (for now)
-    - \`logger\` is a global variable
+    - logger is a global variable
     -  Line contains TODO/BUG/FIXME
     # Add comments for package
     -  at least one file in a package should have a package comment

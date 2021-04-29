@@ -423,8 +423,7 @@ func (c *Client) getHeaderFunc(reqOpt *ReqOpts) addHeaders {
 }
 
 func closeReadCloser(respBody io.ReadCloser) {
-	err := respBody.Close()
-	if err != nil {
+	if err := respBody.Close(); err != nil {
 		logger.Errorf("Failed to close response body: %s", err)
 	}
 }

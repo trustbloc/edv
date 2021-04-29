@@ -12,7 +12,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/jsonld"
 	mockcrypto "github.com/hyperledger/aries-framework-go/pkg/mock/crypto"
 	mockkms "github.com/hyperledger/aries-framework-go/pkg/mock/kms"
 	mockstorage "github.com/hyperledger/aries-framework-go/pkg/mock/storage"
@@ -26,7 +26,7 @@ func TestNew(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestNew(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			&mockstorage.MockStoreProvider{ErrOpenStoreHandle: fmt.Errorf("failed to open")},
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.Error(t, err)
@@ -51,7 +51,7 @@ func TestService_Create(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestService_Create(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{CreateKeyErr: fmt.Errorf("failed to create key")},
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestService_Create(t *testing.T) {
 					ErrPut: fmt.Errorf("failed to store"),
 				},
 			},
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestService_Handler(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestService_Handler(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			s,
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestCapabilityResolver_Resolve(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			mockstorage.NewMockStoreProvider(),
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestCapabilityResolver_Resolve(t *testing.T) {
 		svc, err := New(&mockkms.KeyManager{},
 			&mockcrypto.Crypto{},
 			s,
-			verifiable.CachingJSONLDLoader(),
+			createTestDocumentLoader(t),
 			nil,
 		)
 		require.NoError(t, err)
@@ -185,4 +185,13 @@ func TestLogError_Log(t *testing.T) {
 
 		require.Contains(t, responseWriter.Body.String(), "error")
 	})
+}
+
+func createTestDocumentLoader(t *testing.T) *jsonld.DocumentLoader {
+	t.Helper()
+
+	loader, err := jsonld.NewDocumentLoader(mockstorage.NewMockStoreProvider())
+	require.NoError(t, err)
+
+	return loader
 }

@@ -249,6 +249,8 @@ func TestMemEDVStore_Query(t *testing.T) {
 }
 
 func openStoreExpectSuccess(t *testing.T) edvprovider.EDVStore {
+	t.Helper()
+
 	prov := NewProvider()
 	require.NotNil(t, prov)
 
