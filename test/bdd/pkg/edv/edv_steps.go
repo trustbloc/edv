@@ -16,9 +16,12 @@ import (
 
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
+	jld "github.com/hyperledger/aries-framework-go/pkg/doc/jsonld"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/jsonld"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
@@ -145,10 +148,16 @@ func (e *Steps) createChainCapability(capability *zcapld.Capability, capabilityS
 
 	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
 
+	loader, err := jld.NewDocumentLoader(mem.NewProvider())
+	if err != nil {
+		return nil, fmt.Errorf("create document loader: %w", err)
+	}
+
 	return zcapld.NewCapability(&zcapld.Signer{
 		SignatureSuite:     ed25519signature2018.New(suite.WithSigner(capabilitySigner)),
 		SuiteType:          ed25519signature2018.SignatureType,
 		VerificationMethod: capability.Invoker,
+		ProcessorOpts:      []jsonld.ProcessorOpts{jsonld.WithDocumentLoader(loader)},
 	}, zcapld.WithParent(capability.ID), zcapld.WithInvoker(didKeyURL), zcapld.WithAllowedActions("read", "write"),
 		zcapld.WithInvocationTarget(vaultID, edvResource), zcapld.WithCapabilityChain(capability.Parent, capability.ID))
 }
@@ -213,7 +222,7 @@ func (e *Steps) storeDocumentInVaultWithoutSignature() error {
 
 	errMsg := "signature header not found"
 	if !strings.Contains(err.Error(), errMsg) {
-		return fmt.Errorf("error msg %s didn't contains %s", err.Error(), errMsg)
+		return fmt.Errorf("error msg %s didn't contains %s", err.Error(), errMsg) //nolint:errorlint
 	}
 
 	return nil
@@ -274,9 +283,8 @@ func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
 	}
 
 	numDocumentsFound := len(docURLs)
-	expectedDocumentsFound := 1
 
-	if numDocumentsFound != expectedDocumentsFound {
+	if expectedDocumentsFound := 1; numDocumentsFound != expectedDocumentsFound {
 		return errors.New("expected query to find " + strconv.Itoa(expectedDocumentsFound) +
 			" document(s), but " + strconv.Itoa(numDocumentsFound) + " were found instead")
 	}
@@ -366,7 +374,8 @@ func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *models.Enc
 	}
 
 	if retrievedDocument.Sequence != expectedDocument.Sequence {
-		return common.UnexpectedValueError(string(expectedDocument.Sequence), string(retrievedDocument.Sequence))
+		return common.UnexpectedValueError(fmt.Sprint(expectedDocument.Sequence),
+			fmt.Sprint(retrievedDocument.Sequence))
 	}
 
 	err := verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument)

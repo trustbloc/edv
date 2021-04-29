@@ -460,6 +460,8 @@ func TestCreateDataVault(t *testing.T) {
 }
 
 func testValidateIncomingDataVaultConfiguration(t *testing.T) {
+	t.Helper()
+
 	t.Run("Invalid incoming data vault configuration - missing controller", func(t *testing.T) {
 		config := getDataVaultConfig("", testValidURI, testKEKType, testValidURI,
 			testHMACType, []string{}, []string{})
@@ -1761,6 +1763,8 @@ func TestBatch(t *testing.T) {
 
 func doBatchCall(t *testing.T, batch *models.Batch,
 	provider edvprovider.EDVProvider) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+
 	op := New(&Config{
 		Provider:          provider,
 		EnabledExtensions: &EnabledExtensions{Batch: true},
@@ -1796,6 +1800,8 @@ func doBatchCall(t *testing.T, batch *models.Batch,
 
 func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, pathVarVaultID,
 	pathVarDocID, expectedErrorString string, expectedErrorCode int) {
+	t.Helper()
+
 	req, err := http.NewRequest("POST", "", bytes.NewBuffer(requestBody))
 	require.NoError(t, err)
 
@@ -1815,6 +1821,8 @@ func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, 
 
 func deleteDocumentExpectError(t *testing.T, op *Operation, pathVarVaultID, pathVarDocID, expectedErrorString string,
 	expectedErrorCode int) {
+	t.Helper()
+
 	urlVars := make(map[string]string)
 	urlVars[vaultIDPathVariable] = pathVarVaultID
 	urlVars[docIDPathVariable] = pathVarDocID
@@ -1832,11 +1840,15 @@ func deleteDocumentExpectError(t *testing.T, op *Operation, pathVarVaultID, path
 }
 
 func createConfigStoreExpectSuccess(t *testing.T, op *Operation) {
+	t.Helper()
+
 	_, err := op.vaultCollection.provider.OpenStore(edvprovider.VaultConfigurationStoreName)
 	require.NoError(t, err)
 }
 
 func storeSampleConfigExpectSuccess(t *testing.T, op *Operation) {
+	t.Helper()
+
 	store, err := op.vaultCollection.provider.OpenStore(edvprovider.VaultConfigurationStoreName)
 	require.NoError(t, err)
 
@@ -1847,6 +1859,8 @@ func storeSampleConfigExpectSuccess(t *testing.T, op *Operation) {
 
 // returns created test vault ID
 func createDataVaultExpectSuccess(t *testing.T, op *Operation) (string, []byte) {
+	t.Helper()
+
 	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
 	require.NoError(t, err)
 
@@ -1864,6 +1878,8 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation) (string, []byte) 
 }
 
 func createDataVaultExpectError(t *testing.T, request *models.DataVaultConfiguration, expectedError string) {
+	t.Helper()
+
 	op := New(&Config{Provider: memedvprovider.NewProvider()})
 
 	configBytes, err := json.Marshal(request)
@@ -1882,6 +1898,8 @@ func createDataVaultExpectError(t *testing.T, request *models.DataVaultConfigura
 }
 
 func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation, testDocID, encryptedDoc, vaultID string) {
+	t.Helper()
+
 	req, err := http.NewRequest("POST", "",
 		bytes.NewBuffer([]byte(encryptedDoc)))
 	require.NoError(t, err)
@@ -1903,6 +1921,8 @@ func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation, testDocID,
 }
 
 func readDocumentExpectSuccess(t *testing.T, op *Operation) {
+	t.Helper()
+
 	vaultID, _ := createDataVaultExpectSuccess(t, op)
 
 	storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
@@ -1928,14 +1948,20 @@ func readDocumentExpectSuccess(t *testing.T, op *Operation) {
 }
 
 func getHandler(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+	t.Helper()
+
 	return getHandlerWithError(t, op, pathToLookup, methodToLookup)
 }
 
 func getHandlerWithError(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+	t.Helper()
+
 	return handlerLookup(t, op, pathToLookup, methodToLookup)
 }
 
 func handlerLookup(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+	t.Helper()
+
 	handlers := op.GetRESTHandlers()
 	require.NotEmpty(t, handlers)
 

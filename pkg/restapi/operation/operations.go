@@ -422,8 +422,6 @@ func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
 	c.executeBatchedOperations(rw, req.Host, vaultID, incomingBatch, responses, requestBody)
 }
 
-// nolint: gocyclo // Can't find a way to cleanly reduce the cyclomatic complexity without some sort of large, risky
-// rework. If/when this batch implementation gets reworked, we should try to improve on the code below.
 func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vaultID string,
 	vaultOperations models.Batch, responses []string, requestBody []byte) {
 	// To improve performance, we gather as many document upsert operations as we can before we hit a
@@ -851,11 +849,7 @@ func checkFieldsWithURIArray(arr []string) error {
 		return nil
 	}
 
-	if err := edvutils.CheckIfArrayIsURI(arr); err != nil {
-		return err
-	}
-
-	return nil
+	return edvutils.CheckIfArrayIsURI(arr)
 }
 
 func validateEncryptedDocument(doc models.EncryptedDocument) error {

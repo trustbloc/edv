@@ -71,7 +71,7 @@ func Base58Encoded128BitToUUID(name string) (string, error) {
 
 	storeNameUUID, err := uuid.FromBytes(decodedBytes)
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 
 	return storeNameUUID.String(), nil
@@ -109,11 +109,7 @@ func ValidateJWE(rawJWE []byte) error {
 		return err
 	}
 
-	if err := checkAlg(&jwe); err != nil {
-		return err
-	}
-
-	return nil
+	return checkAlg(&jwe)
 }
 
 func checkAlg(jwe *models.JSONWebEncryption) error {

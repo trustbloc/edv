@@ -8,6 +8,7 @@ package operation
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -151,7 +152,7 @@ func writeCreateDocumentFailure(rw http.ResponseWriter, errCreateDoc error, vaul
 		fmt.Sprintf(messages.CreateDocumentFailure, vaultID, errCreateDoc),
 		docBytesForLog)
 
-	if errCreateDoc == messages.ErrDuplicateDocument {
+	if errors.Is(errCreateDoc, messages.ErrDuplicateDocument) {
 		rw.WriteHeader(http.StatusConflict)
 	} else {
 		rw.WriteHeader(http.StatusBadRequest)
@@ -241,10 +242,10 @@ func writeReadAllDocumentsSuccess(rw http.ResponseWriter, allDocuments []json.Ra
 	}
 }
 
-func writeReadDocumentFailure(rw http.ResponseWriter, errReadDoc error, docID, vaultID string) {
+func writeReadDocumentFailure(rw http.ResponseWriter, errReadDoc error, docID, vaultID string) { //nolint:dupl
 	logger.Infof(messages.ReadDocumentFailure, docID, vaultID, errReadDoc)
 
-	if errReadDoc == messages.ErrDocumentNotFound || errReadDoc == messages.ErrVaultNotFound {
+	if errors.Is(errReadDoc, messages.ErrDocumentNotFound) || errors.Is(errReadDoc, messages.ErrVaultNotFound) {
 		rw.WriteHeader(http.StatusNotFound)
 	} else {
 		rw.WriteHeader(http.StatusBadRequest)
@@ -270,10 +271,10 @@ func writeReadDocumentSuccess(rw http.ResponseWriter, documentBytes []byte, docI
 	}
 }
 
-func writeUpdateDocumentFailure(rw http.ResponseWriter, errUpdateDoc error, docID, vaultID string) {
+func writeUpdateDocumentFailure(rw http.ResponseWriter, errUpdateDoc error, docID, vaultID string) { //nolint:dupl
 	logger.Infof(messages.UpdateDocumentFailure, docID, vaultID, errUpdateDoc)
 
-	if errUpdateDoc == messages.ErrDocumentNotFound || errUpdateDoc == messages.ErrVaultNotFound {
+	if errors.Is(errUpdateDoc, messages.ErrDocumentNotFound) || errors.Is(errUpdateDoc, messages.ErrVaultNotFound) {
 		rw.WriteHeader(http.StatusNotFound)
 	} else {
 		rw.WriteHeader(http.StatusBadRequest)
@@ -285,10 +286,10 @@ func writeUpdateDocumentFailure(rw http.ResponseWriter, errUpdateDoc error, docI
 	}
 }
 
-func writeDeleteDocumentFailure(rw http.ResponseWriter, errDeleteDoc error, docID, vaultID string) {
+func writeDeleteDocumentFailure(rw http.ResponseWriter, errDeleteDoc error, docID, vaultID string) { //nolint:dupl
 	logger.Infof(messages.DeleteDocumentFailure, docID, vaultID, errDeleteDoc)
 
-	if errDeleteDoc == messages.ErrDocumentNotFound || errDeleteDoc == messages.ErrVaultNotFound {
+	if errors.Is(errDeleteDoc, messages.ErrDocumentNotFound) || errors.Is(errDeleteDoc, messages.ErrVaultNotFound) {
 		rw.WriteHeader(http.StatusNotFound)
 	} else {
 		rw.WriteHeader(http.StatusBadRequest)

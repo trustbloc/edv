@@ -754,6 +754,8 @@ func TestCouchDBEDVStore_createAndStoreMappingDocument(t *testing.T) {
 
 func storeDocumentsWithEncryptedIndices(t *testing.T,
 	firstDocumentIndexedAttribute, secondDocumentIndexedAttribute models.IndexedAttribute) error {
+	t.Helper()
+
 	mockCoreStore := mock.Store{QueryReturn: &mockIterator{}}
 	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
 

@@ -97,6 +97,11 @@ func TestBase58Encoded128BitToUUID(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, testConvertedUUIDString, uuidString)
 	})
+	t.Run("Failure - invalid UUID", func(t *testing.T) {
+		uuidString, err := Base58Encoded128BitToUUID("")
+		require.Empty(t, uuidString)
+		require.Error(t, err)
+	})
 }
 
 func TestCheckIfURI(t *testing.T) {
