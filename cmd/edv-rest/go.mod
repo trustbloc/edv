@@ -10,9 +10,9 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/google/tink/go v1.5.0
 	github.com/gorilla/mux v1.8.0
-	github.com/hyperledger/aries-framework-go v0.1.7-0.20210429205242-c5e97865879c
+	github.com/hyperledger/aries-framework-go v0.1.7-0.20210517160459-a72f856f36b8
 	github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20210505173234-006b2f4723fd
-	github.com/hyperledger/aries-framework-go-ext/component/vdr/orb v0.1.0
+	github.com/hyperledger/aries-framework-go-ext/component/vdr/orb v0.0.0-20210517231016-de60084e8513
 	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210510053848-903ac6748b72
 	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210510053848-903ac6748b72
 	github.com/rs/cors v1.7.0
