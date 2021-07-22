@@ -73,7 +73,7 @@ func (e *Steps) trustBlocCreateDataVault() error {
 		return err
 	}
 
-	trustBlocEDVLocationWithTrailingSlash := e.bddInteropContext.TrustBlocEDVHostURL + "/"
+	trustBlocEDVLocationWithTrailingSlash := "edv/encrypted-data-vaults/"
 	if !strings.HasPrefix(trustBlocEDVLocation, trustBlocEDVLocationWithTrailingSlash) {
 		return errors.New("the trustBloc data vault location is " + trustBlocEDVLocation +
 			". It was expected to start with " + trustBlocEDVLocationWithTrailingSlash + " but it didn't")
@@ -149,7 +149,7 @@ func (e *Steps) createDocument() error {
 		return err
 	}
 
-	expectedTrustBlocDocLocation := e.bddInteropContext.TrustBlocEDVHostURL + "/" +
+	expectedTrustBlocDocLocation := "edv/encrypted-data-vaults/" +
 		e.bddInteropContext.TrustBlocEDVDataVaultID + "/documents/" + e.bddInteropContext.SampleDocToStore.ID
 	if trustBlocDocLocation != expectedTrustBlocDocLocation {
 		return common.UnexpectedValueError(expectedTrustBlocDocLocation, trustBlocDocLocation)

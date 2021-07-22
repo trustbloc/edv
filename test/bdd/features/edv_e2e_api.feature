@@ -8,8 +8,7 @@
 @edv_rest
 Feature: Using EDV REST API
 
-  @e2e
-  Scenario: Full end-to-end flow. Create a data vault, store an encrypted document, and then retrieve the encrypted document. Query using an encrypted index. Update an encrypted document, and then retrieve the encrypted document.
+  Scenario: Full end-to-end flow. Create a data vault, store an encrypted document, and then retrieve the encrypted document. Query using an encrypted index. Update an encrypted document and then retrieve the encrypted document.
     Then Client sends request to create a new data vault and receives the vault location
     Then Client constructs a Structured Document with id "VJYHHJx4C8J9Fsgz7rZqSp"
     Then Client encrypts the Structured Document and uses it to construct an Encrypted Document
@@ -24,3 +23,7 @@ Feature: Using EDV REST API
     Then Client decrypts the Encrypted Document it received in order to reconstruct the original Structured Document
     Then Client deletes the Encrypted Document with id "VJYHHJx4C8J9Fsgz7rZqSp" from the vault
     Then Client stores the Encrypted Document again
+
+  Scenario: Creating documents in parallel.
+    Then Client sends request to create a new data vault and receives the vault location
+    Then Client stores 100 documents using 10 threads

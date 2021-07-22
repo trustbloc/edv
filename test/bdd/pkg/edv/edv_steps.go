@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
@@ -31,6 +32,7 @@ import (
 	"github.com/trustbloc/edge-core/pkg/zcapld"
 
 	"github.com/trustbloc/edv/pkg/client"
+	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	"github.com/trustbloc/edv/test/bdd/pkg/context"
@@ -49,6 +51,9 @@ const (
 	documentTypeDecryptedStructuredDoc = "decrypted Structured Document"
 
 	edvResource = "urn:edv:vault"
+
+	numDocumentsForParallelTest = 100
+	numThreadsForParallelTest   = 10
 )
 
 // Steps is steps for EDV BDD tests
@@ -89,6 +94,7 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
 	s.Step(`^Client deletes the Encrypted Document with id "([^"]*)" from the vault$`, e.deleteDocument)
 	s.Step(`^Client stores the Encrypted Document again$`, e.storeDocumentInVault)
+	s.Step(`^Client stores (\d+) documents using (\d+) threads$`, e.clientStoresDocumentsInParallel)
 }
 
 func (e *Steps) createDataVault() error {
@@ -163,19 +169,23 @@ func (e *Steps) createChainCapability(capability *zcapld.Capability, capabilityS
 }
 
 func (e *Steps) clientConstructsAStructuredDocument(docID string) error {
+	e.bddContext.StructuredDocToBeEncrypted = constructStructuredDocument(docID)
+
+	return nil
+}
+
+func constructStructuredDocument(docID string) *models.StructuredDocument {
 	meta := make(map[string]interface{})
 	meta["created"] = "2020-01-10"
 
 	content := make(map[string]interface{})
 	content["message"] = "In Bloc we trust"
 
-	e.bddContext.StructuredDocToBeEncrypted = &models.StructuredDocument{
+	return &models.StructuredDocument{
 		ID:      docID,
 		Meta:    meta,
 		Content: content,
 	}
-
-	return nil
 }
 
 func (e *Steps) clientEncryptsTheStructuredDocument() error {
@@ -289,7 +299,7 @@ func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
 			" document(s), but " + strconv.Itoa(numDocumentsFound) + " were found instead")
 	}
 
-	expectedDocURL := "localhost:8080/encrypted-data-vaults/" + e.bddContext.VaultID +
+	expectedDocURL := "edv/encrypted-data-vaults/" + e.bddContext.VaultID +
 		"/documents/VJYHHJx4C8J9Fsgz7rZqSp"
 
 	if docURLs[0] != expectedDocURL {
@@ -366,6 +376,89 @@ func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
 	}
 
 	return encryptedDocToStore, nil
+}
+
+// Currently hardcoded to use 100 documents and 10 threads (10 documents per thread).
+func (e *Steps) clientStoresDocumentsInParallel(_, _ int) error {
+	println("Creating key to encrypt documents with.")
+
+	_, ecPubKeyBytes, err := e.bddContext.KeyManager.CreateAndExportPubKeyBytes(kms.NISTP256ECDHKWType)
+	if err != nil {
+		return err
+	}
+
+	ecPubKey := new(cryptoapi.PublicKey)
+
+	err = json.Unmarshal(ecPubKeyBytes, ecPubKey)
+	if err != nil {
+		return err
+	}
+
+	jweEncrypter, err := jose.NewJWEEncrypt(jose.A256GCM, packer.ContentEncodingTypeV2, "", "", nil,
+		[]*cryptoapi.PublicKey{ecPubKey}, e.bddContext.Crypto)
+	if err != nil {
+		return err
+	}
+
+	encryptedDocuments, err := generateEncryptedDocuments(jweEncrypter)
+	if err != nil {
+		return fmt.Errorf("failed to generate encrypted documents: %w", err)
+	}
+
+	encryptedDocumentLocations := e.storeDocumentsInParallel(encryptedDocuments)
+
+	for i := 0; i < numDocumentsForParallelTest; i++ {
+		expectedDocumentLocation := fmt.Sprintf("edv/encrypted-data-vaults/%s/documents/%s",
+			e.bddContext.VaultID, encryptedDocuments[i].ID)
+
+		if encryptedDocumentLocations[i] != expectedDocumentLocation {
+			return fmt.Errorf("document %d's location was expected to be %s but got %s instead",
+				i, expectedDocumentLocation, encryptedDocumentLocations[i])
+		}
+	}
+
+	return nil
+}
+
+func (e *Steps) storeDocumentsInParallel(encryptedDocuments []models.EncryptedDocument) []string {
+	encryptedDocumentLocations := make([]string, numDocumentsForParallelTest)
+
+	var waitGroup sync.WaitGroup
+
+	for i := 0; i < numThreadsForParallelTest; i++ {
+		i := i
+
+		waitGroup.Add(1)
+
+		store10Documents := func() {
+			defer waitGroup.Done()
+
+			firstDocumentIndexToSend := i * numThreadsForParallelTest
+			lastDocumentIndexToSend := firstDocumentIndexToSend + (numThreadsForParallelTest - 1)
+
+			println(fmt.Sprintf("Thread %d will store documents %d through %d.",
+				i, firstDocumentIndexToSend, lastDocumentIndexToSend))
+
+			for j := firstDocumentIndexToSend; j <= lastDocumentIndexToSend; j++ {
+				location, err := e.bddContext.EDVClient.CreateDocument(e.bddContext.VaultID, &encryptedDocuments[j])
+				if err != nil {
+					println("Failed to create document in EDV: " + err.Error())
+				}
+
+				encryptedDocumentLocations[j] = location
+			}
+
+			println(fmt.Sprintf("Thread %d has finished storing documents %d through %d.",
+				i, firstDocumentIndexToSend, lastDocumentIndexToSend))
+		}
+		go store10Documents()
+	}
+
+	waitGroup.Wait()
+
+	println("All documents done storing.")
+
+	return encryptedDocumentLocations
 }
 
 func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *models.EncryptedDocument) error {
@@ -555,4 +648,45 @@ func fieldNotFoundError(fieldName, documentType string) error {
 
 func unableToAssertAsStringError(fieldName string) error {
 	return fmt.Errorf("unable to assert `" + fieldName + "` field value type as string")
+}
+
+func generateEncryptedDocuments(jweEncrypter *jose.JWEEncrypt) ([]models.EncryptedDocument, error) {
+	println("Generating encrypted documents.")
+
+	encryptedDocuments := make([]models.EncryptedDocument, numDocumentsForParallelTest)
+
+	for i := 0; i < numDocumentsForParallelTest; i++ {
+		docID, err := edvutils.GenerateEDVCompatibleID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate an EDV document ID: %w", err)
+		}
+
+		structuredDocument := constructStructuredDocument(docID)
+
+		marshalledStructuredDoc, err := json.Marshal(structuredDocument)
+		if err != nil {
+			return nil, err
+		}
+
+		jwe, err := jweEncrypter.Encrypt(marshalledStructuredDoc)
+		if err != nil {
+			return nil, err
+		}
+
+		encryptedStructuredDoc, err := jwe.FullSerialize(json.Marshal)
+		if err != nil {
+			return nil, err
+		}
+
+		encryptedDoc := models.EncryptedDocument{
+			ID:  docID,
+			JWE: []byte(encryptedStructuredDoc),
+		}
+
+		encryptedDocuments[i] = encryptedDoc
+	}
+
+	println("Done generating encrypted documents.")
+
+	return encryptedDocuments, nil
 }

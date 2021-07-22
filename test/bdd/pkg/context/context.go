@@ -121,7 +121,7 @@ const (
     "sequence": 0
 }`
 
-	trustBlocEDVHostURL = "localhost:8080/encrypted-data-vaults"
+	trustBlocEDVHostURL = "localhost:8076/encrypted-data-vaults"
 )
 
 type kmsProvider struct {
