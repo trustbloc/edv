@@ -21,13 +21,14 @@ import (
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/packer"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/jose"
-	jld "github.com/hyperledger/aries-framework-go/pkg/doc/jsonld"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/ld"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/jsonld"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/signature/suite/ed25519signature2018"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/util/signature"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
+	ldstore "github.com/hyperledger/aries-framework-go/pkg/store/ld"
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
 
@@ -154,7 +155,7 @@ func (e *Steps) createChainCapability(capability *zcapld.Capability, capabilityS
 
 	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
 
-	loader, err := jld.NewDocumentLoader(mem.NewProvider())
+	loader, err := createJSONLDDocumentLoader()
 	if err != nil {
 		return nil, fmt.Errorf("create document loader: %w", err)
 	}
@@ -689,4 +690,41 @@ func generateEncryptedDocuments(jweEncrypter *jose.JWEEncrypt) ([]models.Encrypt
 	println("Done generating encrypted documents.")
 
 	return encryptedDocuments, nil
+}
+
+type ldStoreProvider struct {
+	ContextStore        ldstore.ContextStore
+	RemoteProviderStore ldstore.RemoteProviderStore
+}
+
+func (p *ldStoreProvider) JSONLDContextStore() ldstore.ContextStore {
+	return p.ContextStore
+}
+
+func (p *ldStoreProvider) JSONLDRemoteProviderStore() ldstore.RemoteProviderStore {
+	return p.RemoteProviderStore
+}
+
+func createJSONLDDocumentLoader() (*ld.DocumentLoader, error) {
+	contextStore, err := ldstore.NewContextStore(mem.NewProvider())
+	if err != nil {
+		return nil, fmt.Errorf("create JSON-LD context store: %w", err)
+	}
+
+	remoteProviderStore, err := ldstore.NewRemoteProviderStore(mem.NewProvider())
+	if err != nil {
+		return nil, fmt.Errorf("create remote provider store: %w", err)
+	}
+
+	ldStore := &ldStoreProvider{
+		ContextStore:        contextStore,
+		RemoteProviderStore: remoteProviderStore,
+	}
+
+	documentLoader, err := ld.NewDocumentLoader(ldStore)
+	if err != nil {
+		return nil, fmt.Errorf("new document loader: %w", err)
+	}
+
+	return documentLoader, nil
 }

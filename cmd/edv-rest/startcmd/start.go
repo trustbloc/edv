@@ -24,11 +24,12 @@ import (
 	"github.com/hyperledger/aries-framework-go-ext/component/vdr/orb"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
-	"github.com/hyperledger/aries-framework-go/pkg/doc/jsonld"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/ld"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/local"
+	ldstore "github.com/hyperledger/aries-framework-go/pkg/store/ld"
 	ariesvdr "github.com/hyperledger/aries-framework-go/pkg/vdr"
 	vdrkey "github.com/hyperledger/aries-framework-go/pkg/vdr/key"
 	"github.com/hyperledger/aries-framework-go/spi/storage"
@@ -620,7 +621,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errVDR
 		}
 
-		loader, errLoader := jsonld.NewDocumentLoader(storageProvider)
+		loader, errLoader := createJSONLDDocumentLoader(storageProvider)
 		if errLoader != nil {
 			return errLoader
 		}
@@ -897,4 +898,41 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authHandler.ServeHTTP(w, r)
+}
+
+type ldStoreProvider struct {
+	ContextStore        ldstore.ContextStore
+	RemoteProviderStore ldstore.RemoteProviderStore
+}
+
+func (p *ldStoreProvider) JSONLDContextStore() ldstore.ContextStore {
+	return p.ContextStore
+}
+
+func (p *ldStoreProvider) JSONLDRemoteProviderStore() ldstore.RemoteProviderStore {
+	return p.RemoteProviderStore
+}
+
+func createJSONLDDocumentLoader(provider storage.Provider) (*ld.DocumentLoader, error) {
+	contextStore, err := ldstore.NewContextStore(provider)
+	if err != nil {
+		return nil, fmt.Errorf("create JSON-LD context store: %w", err)
+	}
+
+	remoteProviderStore, err := ldstore.NewRemoteProviderStore(provider)
+	if err != nil {
+		return nil, fmt.Errorf("create remote provider store: %w", err)
+	}
+
+	ldStore := &ldStoreProvider{
+		ContextStore:        contextStore,
+		RemoteProviderStore: remoteProviderStore,
+	}
+
+	documentLoader, err := ld.NewDocumentLoader(ldStore)
+	if err != nil {
+		return nil, fmt.Errorf("new document loader: %w", err)
+	}
+
+	return documentLoader, nil
 }

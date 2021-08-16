@@ -128,6 +128,10 @@ func (m *mockIterator) Tags() ([]storage.Tag, error) {
 	return nil, nil
 }
 
+func (m *mockIterator) TotalItems() (int, error) {
+	return 0, nil
+}
+
 func TestNewProvider(t *testing.T) {
 	t.Run("Failure: blank URL", func(t *testing.T) {
 		prov, err := NewProvider("", "", 100)

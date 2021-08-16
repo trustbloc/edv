@@ -12,10 +12,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hyperledger/aries-framework-go/pkg/doc/jsonld"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/ld"
 	mockcrypto "github.com/hyperledger/aries-framework-go/pkg/mock/crypto"
 	mockkms "github.com/hyperledger/aries-framework-go/pkg/mock/kms"
+	mockldstore "github.com/hyperledger/aries-framework-go/pkg/mock/ld"
 	mockstorage "github.com/hyperledger/aries-framework-go/pkg/mock/storage"
+	ldstore "github.com/hyperledger/aries-framework-go/pkg/store/ld"
 	"github.com/square/go-jose/json"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
@@ -187,10 +189,28 @@ func TestLogError_Log(t *testing.T) {
 	})
 }
 
-func createTestDocumentLoader(t *testing.T) *jsonld.DocumentLoader {
+type mockProvider struct {
+	ContextStore        ldstore.ContextStore
+	RemoteProviderStore ldstore.RemoteProviderStore
+}
+
+func (m *mockProvider) JSONLDContextStore() ldstore.ContextStore {
+	return m.ContextStore
+}
+
+func (m *mockProvider) JSONLDRemoteProviderStore() ldstore.RemoteProviderStore {
+	return m.RemoteProviderStore
+}
+
+func createTestDocumentLoader(t *testing.T) *ld.DocumentLoader {
 	t.Helper()
 
-	loader, err := jsonld.NewDocumentLoader(mockstorage.NewMockStoreProvider())
+	p := &mockProvider{
+		ContextStore:        mockldstore.NewMockContextStore(),
+		RemoteProviderStore: mockldstore.NewMockRemoteProviderStore(),
+	}
+
+	loader, err := ld.NewDocumentLoader(p)
 	require.NoError(t, err)
 
 	return loader
