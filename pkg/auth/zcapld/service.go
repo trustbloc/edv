@@ -193,7 +193,6 @@ type logError struct {
 	w http.ResponseWriter
 }
 
-// Resolve resolves capabilities.
 func (l logError) Log(err error) {
 	l.w.WriteHeader(http.StatusBadRequest)
 

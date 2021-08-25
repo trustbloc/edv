@@ -4,7 +4,7 @@ Copyright SecureKey Technologies Inc. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package couchdbedvprovider
+package edvprovider
 
 import (
 	"encoding/json"
@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/stretchr/testify/require"
 
-	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
@@ -129,34 +128,17 @@ func (m *mockIterator) Tags() ([]storage.Tag, error) {
 }
 
 func (m *mockIterator) TotalItems() (int, error) {
-	return 0, nil
+	panic("implement me")
 }
 
 func TestNewProvider(t *testing.T) {
-	t.Run("Failure: blank URL", func(t *testing.T) {
-		prov, err := NewProvider("", "", 100)
-		require.EqualError(t, err, "failed to create new CouchDB storage provider: "+
-			"failed to ping couchDB: url can't be blank")
-		require.Nil(t, prov)
-	})
-	t.Run("Failure: invalid URL", func(t *testing.T) {
-		prov, err := NewProvider("%", "", 100)
-		require.EqualError(t, err, `failed to create new CouchDB storage provider: `+
-			`failed to ping couchDB: parse "http://%": invalid URL escape "%"`)
-		require.Nil(t, prov)
-	})
-	t.Run("Failure: connection refused", func(t *testing.T) {
-		prov, err := NewProvider("http://localhost:1234", "", 100)
-		require.EqualError(t, err, `failed to create new CouchDB storage provider: `+
-			`failed to ping couchDB: failed to probe couchdb for '_users' DB at http://localhost:1234: `+
-			`Head "http://localhost:1234/_users": dial tcp [::1]:1234: connect: connection refused`)
-		require.Nil(t, prov)
-	})
+	prov := NewProvider(mem.NewProvider(), 100)
+	require.NotNil(t, prov)
 }
 
 func TestCouchDBEDVProvider_StoreExists(t *testing.T) {
 	t.Run("Success: store exists - regular string store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -171,7 +153,7 @@ func TestCouchDBEDVProvider_StoreExists(t *testing.T) {
 		require.True(t, exists)
 	})
 	t.Run("Success: store exists - base58-encoded 128-bit store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -186,7 +168,7 @@ func TestCouchDBEDVProvider_StoreExists(t *testing.T) {
 		require.True(t, exists)
 	})
 	t.Run("Success: store does not exist", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -197,7 +179,7 @@ func TestCouchDBEDVProvider_StoreExists(t *testing.T) {
 		require.False(t, exists)
 	})
 	t.Run("Fail to determine store name to use", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID: func(string) (string, error) {
@@ -211,7 +193,7 @@ func TestCouchDBEDVProvider_StoreExists(t *testing.T) {
 		require.False(t, exists)
 	})
 	t.Run("unexpected error while getting store config", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider: &mock.Provider{
 				ErrGetStoreConfig: errors.New("get store config failure"),
 			},
@@ -228,7 +210,7 @@ func TestCouchDBEDVProvider_StoreExists(t *testing.T) {
 
 func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 	t.Run("Success - regular string store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -239,7 +221,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 		require.NotNil(t, store)
 	})
 	t.Run("Success - base58-encoded 128-bit store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -251,7 +233,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 	})
 	t.Run("Failure: other error in open store", func(t *testing.T) {
 		testErr := errors.New("test error")
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    &mock.Provider{ErrOpenStore: testErr},
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -261,7 +243,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 		require.Equal(t, testErr, err)
 	})
 	t.Run("Fail to determine store name to use", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID: func(string) (string, error) {
@@ -278,7 +260,7 @@ func TestCouchDBEDVProvider_OpenStore(t *testing.T) {
 
 func TestCouchDBEDVProvider_SetStoreConfig(t *testing.T) {
 	t.Run("Success - regular string store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -292,7 +274,7 @@ func TestCouchDBEDVProvider_SetStoreConfig(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Success - base58-encoded 128-bit store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -306,7 +288,7 @@ func TestCouchDBEDVProvider_SetStoreConfig(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Success - base58-encoded 128-bit store name", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -318,7 +300,7 @@ func TestCouchDBEDVProvider_SetStoreConfig(t *testing.T) {
 	})
 	t.Run("Failure: other error in open store", func(t *testing.T) {
 		testErr := errors.New("test error")
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    &mock.Provider{ErrOpenStore: testErr},
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
@@ -328,7 +310,7 @@ func TestCouchDBEDVProvider_SetStoreConfig(t *testing.T) {
 		require.Equal(t, testErr, err)
 	})
 	t.Run("Fail to determine store name to use", func(t *testing.T) {
-		prov := CouchDBEDVProvider{
+		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID: func(string) (string, error) {
@@ -347,7 +329,7 @@ func TestCouchDBEDVStore_Put(t *testing.T) {
 		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: memCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
 		err = store.Put(models.EncryptedDocument{ID: "someID"})
 		require.NoError(t, err)
@@ -373,20 +355,20 @@ func TestCouchDBEDVStore_Put(t *testing.T) {
 			err := storeDocumentsWithEncryptedIndices(t, uniqueIndexedAttribute, nonUniqueIndexedAttribute)
 			require.EqualError(t, err,
 				fmt.Errorf("failure during encrypted document validation: %w",
-					edvprovider.ErrIndexNameAndValueAlreadyDeclaredUnique).Error())
+					errIndexNameAndValueAlreadyDeclaredUnique).Error())
 		})
 		t.Run("Failure - new encrypted index+value pair is declared unique "+
 			"but can't be due to an existing index+value pair", func(t *testing.T) {
 			err := storeDocumentsWithEncryptedIndices(t, nonUniqueIndexedAttribute, uniqueIndexedAttribute)
 			require.EqualError(t, err,
 				fmt.Errorf("failure during encrypted document validation: %w",
-					edvprovider.ErrIndexNameAndValueCannotBeUnique).Error())
+					errIndexNameAndValueCannotBeUnique).Error())
 		})
 	})
 	t.Run("Fail: error while creating mapping document", func(t *testing.T) {
 		errTest := errors.New("testError")
 		mockCoreStore := mock.Store{ErrBatch: errTest}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		testDoc := models.EncryptedDocument{
 			ID:                          "someID",
@@ -394,8 +376,8 @@ func TestCouchDBEDVStore_Put(t *testing.T) {
 		}
 
 		err := store.Put(testDoc)
-		require.EqualError(t, err, fmt.Errorf("failed to put encrypted document(s) and their associated "+
-			"mapping document(s) into CouchDB: %w", errTest).Error())
+		require.EqualError(t, err, fmt.Errorf("failed to store encrypted document(s) and their associated "+
+			"mapping document(s): %w", errTest).Error())
 	})
 }
 
@@ -403,7 +385,7 @@ func TestCouchDBEDVStore_Get(t *testing.T) {
 	memCoreStore, err := mem.NewProvider().OpenStore("corestore")
 	require.NoError(t, err)
 
-	store := CouchDBEDVStore{coreStore: memCoreStore, retrievalPageSize: 100}
+	store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
 	value, err := store.Get("key")
 	require.Equal(t, storage.ErrDataNotFound, err)
@@ -422,7 +404,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		err := mockCoreStore.Put(testDocID1, []byte(testEncryptedDoc))
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -443,7 +425,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 				GetBulkReturn: [][]byte{[]byte(testEncryptedDoc)},
 			}
 
-			store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+			store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 			query := models.Query{
 				Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -464,7 +446,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 				GetBulkReturn: [][]byte{[]byte(testEncryptedDoc)},
 			}
 
-			store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+			store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 			query := models.Query{
 				Has: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -480,7 +462,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 		errTest := errors.New("queryError")
 		mockCoreStore := mock.Store{ErrQuery: errTest}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -494,7 +476,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -512,7 +494,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -526,7 +508,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 1, errValue: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -540,7 +522,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 1, valueReturn: []byte("")},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{}
 
@@ -559,7 +541,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			GetBulkReturn: [][]byte{[]byte("")},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -579,7 +561,7 @@ func TestCouchDBEDVStore_Query(t *testing.T) {
 			ErrGetBulk: errors.New("get bulk failure"),
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		query := models.Query{
 			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
@@ -598,7 +580,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: memCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
 		err = store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
@@ -608,7 +590,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 	t.Run("Failure: error during query in coreStore", func(t *testing.T) {
 		errTest := errors.New("coreStore query referenceID error")
 		mockCoreStore := mock.Store{ErrQuery: errTest}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
@@ -621,7 +603,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errTest},
 		}
 
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
 		}, testVaultID)
@@ -631,7 +613,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 		mockCoreStore := mock.Store{
 			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: false},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
 			ReferenceID: testReferenceID,
@@ -643,7 +625,7 @@ func TestCouchDBEDVStore_StoreDataVaultConfiguration(t *testing.T) {
 		mockCoreStore := mock.Store{
 			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: true}, ErrPut: errTest,
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		testConfig := models.DataVaultConfiguration{ReferenceID: testReferenceID}
 
@@ -657,7 +639,7 @@ func TestCouchDBEDVStore_Update(t *testing.T) {
 		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
 		require.NoError(t, err)
 
-		store := CouchDBEDVStore{coreStore: memCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
 		documentIndexedAttribute2 := buildIndexedAttribute(testIndexName2)
 		documentIndexedAttribute3 := buildIndexedAttribute(testIndexName3)
@@ -673,7 +655,7 @@ func TestCouchDBEDVStore_Update(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Failure during encrypted document validation", func(t *testing.T) {
-		store := &CouchDBEDVStore{coreStore: &mock.Store{ErrQuery: errors.New("query failure")}}
+		store := &Store{coreStore: &mock.Store{ErrQuery: errors.New("query failure")}}
 
 		err := store.Update(models.EncryptedDocument{
 			IndexedAttributeCollections: []models.IndexedAttributeCollection{
@@ -694,7 +676,7 @@ func TestCouchDBEDVStore_Update(t *testing.T) {
 			ErrDelete: errors.New("delete failure"),
 		}
 
-		store := &CouchDBEDVStore{coreStore: mockCoreStore}
+		store := &Store{coreStore: mockCoreStore}
 
 		documentIndexedAttribute2 := buildIndexedAttribute(testIndexName2)
 		documentIndexedAttribute3 := buildIndexedAttribute(testIndexName3)
@@ -717,7 +699,7 @@ func TestCouchDBEDVStore_Delete(t *testing.T) {
 		mockCoreStore := mock.Store{
 			QueryReturn: &mockIterator{},
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.Delete(testDocID1)
 		require.NoError(t, err)
@@ -726,7 +708,7 @@ func TestCouchDBEDVStore_Delete(t *testing.T) {
 		mockCoreStore := mock.Store{
 			ErrQuery: errors.New("query failure"),
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.Delete(testDocID1)
 		require.EqualError(t, err, "failed to get mapping documents: query failure")
@@ -739,7 +721,7 @@ func TestCouchDBEDVStore_Delete(t *testing.T) {
 			},
 			ErrDelete: errors.New("delete failure"),
 		}
-		store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 		err := store.Delete(testDocID1)
 		require.EqualError(t, err, "failed to delete mapping document: delete failure")
@@ -750,7 +732,7 @@ func TestCouchDBEDVStore_createAndStoreMappingDocument(t *testing.T) {
 	memCoreStore, err := mem.NewProvider().OpenStore("corestore")
 	require.NoError(t, err)
 
-	store := CouchDBEDVStore{coreStore: memCoreStore, retrievalPageSize: 100}
+	store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
 	err = store.createAndStoreMappingDocument("", "")
 	require.NoError(t, err)
@@ -761,7 +743,7 @@ func storeDocumentsWithEncryptedIndices(t *testing.T,
 	t.Helper()
 
 	mockCoreStore := mock.Store{QueryReturn: &mockIterator{}}
-	store := CouchDBEDVStore{coreStore: &mockCoreStore, retrievalPageSize: 100}
+	store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
 	indexedAttributeCollection1 := models.IndexedAttributeCollection{
 		Sequence:          0,

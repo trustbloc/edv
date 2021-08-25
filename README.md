@@ -13,22 +13,20 @@ An implementation of Encrypted Data Vaults [from the Confidential Storage 0.1 (0
 ## Limitations
 The following has not yet been implemented:
 * Service endpoint discovery
-* Index querying with the `has` keyword
 * Index querying with multiple name+value pairs (which is still a work in-progress in the [specification](https://identity.foundation/confidential-storage/))
 * Streams (also a work in-progress in the [specification](https://identity.foundation/confidential-storage/))
 
 ## Underlying Storage
-This EDV server is not by itself a database - a database provider must be chosen for it to work. This underlying database is used by the EDV server for storage of encrypted data. Currently, two database providers are supported:
+This EDV server is not by itself a database - a database provider must be chosen for it to work. This underlying database is used by the EDV server for storage of encrypted data. Currently, three database providers are supported:
 
-- CouchDB (Recommended)
-- In-memory storage*
-
-&ast;Does not support encrypted indices or querying.
+- MongoDB
+- CouchDB
+- In-memory storage
 
 See [here](docs/rest/edv_cli.md#edv-server-parameters) for information on how to choose the database provider.
 
 ## Extensions
-This EDV server implementation includes support for a number of optional features that, as of writing, are not in the specification (but have been requested). They are all disabled by default, but they can all be safely enabled without breaking any standard features. Non-extension-aware clients will still work seamlessly. See the [extensions documentation](docs/extensions.md) for more information.
+This EDV server implementation includes support for a number of optional features that, as of writing, are either recently added to the spec (and not in widespread use) or are features marked "at-risk". They are all disabled by default, but they can all be safely enabled without breaking any standard features. Non-extension-aware clients will still work seamlessly. See the [extensions documentation](docs/extensions.md) for more information.
 
 ## Documentation
 - [Build + BDD tests](docs/test/build.md)

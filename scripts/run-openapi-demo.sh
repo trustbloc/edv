@@ -4,6 +4,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+
+
+#TODO (#104): Fix OpenAPI demo
+
 set -e
 
 DEMO_COMPOSE_OP="${DEMO_COMPOSE_OP:-up --force-recreate}"
@@ -11,7 +15,6 @@ DEMO_COMPOSE_OP="${DEMO_COMPOSE_OP:-up --force-recreate}"
 FIXTURES_ABS_PATH="$PWD/$FIXTURES_PATH"
 
 declare -a features=(
-                "couchdb"
                 "edv-rest"
                 "openapi-demo"
                )

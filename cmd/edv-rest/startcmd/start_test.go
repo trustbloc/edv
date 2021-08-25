@@ -13,84 +13,18 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hyperledger/aries-framework-go/spi/storage"
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mock"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
-	"github.com/trustbloc/edv/pkg/restapi/models"
 )
 
 type mockServer struct{}
 
 func (s *mockServer) ListenAndServe(host, certFile, keyFile string, handler http.Handler) error {
-	return nil
-}
-
-type mockEDVProvider struct {
-	errOpenStore                   error
-	errStoreCreateReferenceIDIndex error
-}
-
-func (m *mockEDVProvider) SetStoreConfig(name string, config storage.StoreConfiguration) error {
-	return nil
-}
-
-func (m *mockEDVProvider) StoreExists(name string) (bool, error) {
-	return true, nil
-}
-
-func (m *mockEDVProvider) OpenStore(string) (edvprovider.EDVStore, error) {
-	return &mockEDVStore{errCreateReferenceIDIndex: m.errStoreCreateReferenceIDIndex}, m.errOpenStore
-}
-
-type mockEDVStore struct {
-	errCreateReferenceIDIndex error
-}
-
-func (m *mockEDVStore) Put(models.EncryptedDocument) error {
-	return nil
-}
-
-func (m *mockEDVStore) UpsertBulk(documents []models.EncryptedDocument) error {
-	return nil
-}
-
-func (m *mockEDVStore) GetAll() ([][]byte, error) {
-	return nil, nil
-}
-
-func (m *mockEDVStore) Get(string) ([]byte, error) {
-	return nil, nil
-}
-
-func (m *mockEDVStore) CreateEDVIndex() error {
-	return nil
-}
-
-func (m *mockEDVStore) Query(*models.Query) ([]models.EncryptedDocument, error) {
-	return nil, nil
-}
-
-func (m *mockEDVStore) CreateReferenceIDIndex() error {
-	return m.errCreateReferenceIDIndex
-}
-
-func (m *mockEDVStore) StoreDataVaultConfiguration(*models.DataVaultConfiguration, string) error {
-	return nil
-}
-
-func (m *mockEDVStore) CreateEncryptedDocIDIndex() error {
-	return nil
-}
-
-func (m *mockEDVStore) Update(document models.EncryptedDocument) error {
-	return nil
-}
-
-func (m *mockEDVStore) Delete(docID string) error {
 	return nil
 }
 
@@ -339,7 +273,7 @@ func TestCreateProvider(t *testing.T) {
 
 		provider, err := createEDVProvider(&parameters)
 		require.NoError(t, err)
-		require.IsType(t, &memedvprovider.MemEDVProvider{}, provider)
+		require.NotNil(t, provider)
 	})
 	t.Run("Error - invalid database type", func(t *testing.T) {
 		parameters := edvParameters{databaseType: "NotARealDatabaseType"}
@@ -458,7 +392,7 @@ func TestListenAndServe(t *testing.T) {
 
 func TestCreateConfigStore(t *testing.T) {
 	t.Run("Success - mem", func(t *testing.T) {
-		provider := memedvprovider.NewProvider()
+		provider := edvprovider.NewProvider(mem.NewProvider(), 100)
 
 		err := createConfigStore(provider)
 		require.NoError(t, err)
@@ -466,7 +400,7 @@ func TestCreateConfigStore(t *testing.T) {
 	t.Run("failure - open store error", func(t *testing.T) {
 		errTest := errors.New("error in open store")
 
-		err := createConfigStore(&mockEDVProvider{errOpenStore: errTest})
+		err := createConfigStore(edvprovider.NewProvider(&mock.Provider{ErrOpenStore: errTest}, 100))
 		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
 	})
 }

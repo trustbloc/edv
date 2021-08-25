@@ -18,8 +18,6 @@ services:
     depends_on:
       - edv-1.example.com
       - edv-2.example.com
-    networks:
-      - couchdb_bdd_net
 
   edv-1.example.com:
     container_name: edv-1.example.com
@@ -41,9 +39,6 @@ services:
     volumes:
       - ../keys/tls:/etc/tls
     command: start
-    networks:
-      - couchdb_bdd_net
-
 
   edv-2.example.com:
     container_name: edv-2.example.com
@@ -65,9 +60,20 @@ services:
     volumes:
       - ../keys/tls:/etc/tls
     command: start
-    networks:
-      - couchdb_bdd_net
 
-networks:
-  couchdb_bdd_net:
-    external: true
+  mongodb.example.com:
+    container_name: mongodb.example.com
+    image: mongo:4.0.0
+    ports:
+      - "27017:27017"
+
+  couchdb.example.com:
+    container_name: couchdb.example.com
+    image: ${COUCHDB_IMAGE}:${COUCHDB_IMAGE_TAG}
+    ports:
+      - "5984:5984"
+    environment:
+      - COUCHDB_USER=${COUCHDB_USERNAME}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+    volumes:
+      - ./couchdb-config/config.ini:/opt/couchdb/etc/local.d/config.ini
