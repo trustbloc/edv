@@ -21,6 +21,7 @@ import (
 	"github.com/google/tink/go/subtle/random"
 	"github.com/gorilla/mux"
 	"github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb"
+	"github.com/hyperledger/aries-framework-go-ext/component/storage/mongodb"
 	"github.com/hyperledger/aries-framework-go-ext/component/vdr/orb"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
@@ -43,8 +44,6 @@ import (
 
 	"github.com/trustbloc/edv/pkg/auth/zcapld"
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/edvprovider/couchdbedvprovider"
-	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/restapi"
 	"github.com/trustbloc/edv/pkg/restapi/healthcheck"
 	"github.com/trustbloc/edv/pkg/restapi/operation"
@@ -62,18 +61,19 @@ const (
 	databaseTypeFlagName      = "database-type"
 	databaseTypeEnvKey        = "EDV_DATABASE_TYPE"
 	databaseTypeFlagShorthand = "t"
-	databaseTypeFlagUsage     = "The type of database to use internally in the EDV. Supported options: mem, couchdb. " +
-		"Note that mem doesn't support encrypted index querying. Alternatively, this can be set with the following " +
-		"environment variable: " + databaseTypeEnvKey
+	databaseTypeFlagUsage     = "The type of database to use internally in the EDV. " +
+		"Supported options: mem, couchdb, mongodb. Note that mem doesn't support encrypted index querying. " +
+		"Alternatively, this can be set with the following environment variable: " + databaseTypeEnvKey
 
 	databaseTypeMemOption     = "mem"
 	databaseTypeCouchDBOption = "couchdb"
+	databaseTypeMongoDBOption = "mongodb"
 
 	databaseURLFlagName      = "database-url"
 	databaseURLEnvKey        = "EDV_DATABASE_URL"
 	databaseURLFlagShorthand = "r"
-	databaseURLFlagUsage     = "The URL of the database. Not needed if using memstore." +
-		" For CouchDB, include the username:password@ text." +
+	databaseURLFlagUsage     = "The URL (or connection string) of the database. Not needed if using memstore." +
+		" For CouchDB, include the username:password@ text if required." +
 		" Alternatively, this can be set with the following environment variable: " + databaseURLEnvKey
 
 	databasePrefixFlagName      = "database-prefix"
@@ -139,11 +139,11 @@ const (
 	localKMSSecretsDatabaseTypeFlagName  = "localkms-secrets-database-type"
 	localKMSSecretsDatabaseTypeEnvKey    = "EDV_LOCALKMS_SECRETS_DATABASE_TYPE" //nolint: gosec
 	localKMSSecretsDatabaseTypeFlagUsage = "The type of database to use for storing KMS secrets for Keystore. " +
-		"Supported options: mem, couchdb. " + commonEnvVarUsageText + localKMSSecretsDatabaseTypeEnvKey
+		"Supported options: mem, couchdb, mongodb " + commonEnvVarUsageText + localKMSSecretsDatabaseTypeEnvKey
 
 	localKMSSecretsDatabaseURLFlagName  = "localkms-secrets-database-url"
 	localKMSSecretsDatabaseURLEnvKey    = "EDV_LOCALKMS_SECRETS_DATABASE_URL" //nolint: gosec
-	localKMSSecretsDatabaseURLFlagUsage = "The URL of the database for KMS secrets. " +
+	localKMSSecretsDatabaseURLFlagUsage = "The URL (or connection string) of the database for KMS secrets. " +
 		"Not needed if using in-memory storage. " +
 		"For CouchDB, include the username:password@ text if required. " + commonEnvVarUsageText +
 		localKMSSecretsDatabaseURLEnvKey
@@ -205,12 +205,25 @@ var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type."
 var errCreateConfigStore = "failed to create data vault configuration store: %w"
 
 // nolint:gochecknoglobals
-var supportedEDVStorageProviders = map[string]func(string, string, uint) (edvprovider.EDVProvider, error){
-	databaseTypeCouchDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (edvprovider.EDVProvider, error) {
-		return couchdbedvprovider.NewProvider(databaseURL, prefix, retrievalPageSize)
+var supportedEDVStorageProviders = map[string]func(string, string, uint) (*edvprovider.Provider, error){
+	databaseTypeCouchDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (*edvprovider.Provider, error) {
+		couchDBProvider, err := couchdb.NewProvider(databaseURL, couchdb.WithDBPrefix(prefix))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create new CouchDB storage provider: %w", err)
+		}
+
+		return edvprovider.NewProvider(couchDBProvider, retrievalPageSize), nil
 	},
-	databaseTypeMemOption: func(_, _ string, _ uint) (edvprovider.EDVProvider, error) { // nolint:unparam
-		return memedvprovider.NewProvider(), nil
+	databaseTypeMemOption: func(_, _ string, retrievalPageSize uint) (*edvprovider.Provider, error) { // nolint:unparam
+		return edvprovider.NewProvider(mem.NewProvider(), retrievalPageSize), nil
+	},
+	databaseTypeMongoDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (*edvprovider.Provider, error) {
+		mongoDBProvider, err := mongodb.NewProvider(databaseURL, mongodb.WithDBPrefix(prefix))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create new MongoDB storage provider: %w", err)
+		}
+
+		return edvprovider.NewProvider(mongoDBProvider, retrievalPageSize), nil
 	},
 }
 
@@ -221,6 +234,9 @@ var supportedAriesStorageProviders = map[string]func(string, string) (storage.Pr
 	},
 	databaseTypeMemOption: func(_, _ string) (storage.Provider, error) { // nolint:unparam
 		return mem.NewProvider(), nil
+	},
+	databaseTypeMongoDBOption: func(databaseURL, prefix string) (storage.Provider, error) {
+		return mongodb.NewProvider(databaseURL, mongodb.WithDBPrefix(prefix))
 	},
 }
 
@@ -701,12 +717,8 @@ func setLogLevel(userLogLevel string) {
 	log.SetLevel("", logLevel)
 }
 
-func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, error) {
-	var edvProv edvprovider.EDVProvider
-
-	if parameters.databaseType == databaseTypeMemOption {
-		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")
-	}
+func createEDVProvider(parameters *edvParameters) (*edvprovider.Provider, error) {
+	var edvProv *edvprovider.Provider
 
 	providerFunc, supported := supportedEDVStorageProviders[parameters.databaseType]
 	if !supported {
@@ -726,8 +738,8 @@ func createEDVProvider(parameters *edvParameters) (edvprovider.EDVProvider, erro
 	return edvProv, nil
 }
 
-// createConfigStore creates the config store and creates indices if supported.
-func createConfigStore(provider edvprovider.EDVProvider) error {
+// createConfigStore creates the config store and indexes.
+func createConfigStore(provider *edvprovider.Provider) error {
 	_, err := provider.OpenStore(edvprovider.VaultConfigurationStoreName)
 	if err != nil {
 		return fmt.Errorf(errCreateConfigStore, err)
@@ -830,10 +842,6 @@ func prepareMasterKeyReader(kmsSecretsStoreProvider storage.Provider) (*bytes.Re
 func createStorageProvider(parameters *storageParameters, databaseTimeout uint64) (storage.Provider, error) {
 	var prov storage.Provider
 
-	if parameters.storageType == databaseTypeMemOption {
-		logger.Warnf("encrypted indexing and querying is disabled since they are not supported by memstore")
-	}
-
 	providerFunc, supported := supportedAriesStorageProviders[parameters.storageType]
 	if !supported {
 		return nil, errInvalidDatabaseType
@@ -867,7 +875,6 @@ type httpHandler struct {
 }
 
 func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// check if authSvc is nil
 	if h.authSvc == nil {
 		h.routerHandler.ServeHTTP(w, r)
 

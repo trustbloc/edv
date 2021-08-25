@@ -10,21 +10,24 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/stretchr/testify/require"
 
-	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
+	"github.com/trustbloc/edv/pkg/edvprovider"
 	"github.com/trustbloc/edv/pkg/restapi/operation"
 )
 
 func TestController_New(t *testing.T) {
-	controller, err := New(&operation.Config{Provider: memedvprovider.NewProvider()})
+	controller, err := New(&operation.Config{
+		Provider: edvprovider.NewProvider(mem.NewProvider(), 10),
+	})
 	require.NoError(t, err)
 	require.NotNil(t, controller)
 }
 
 func TestController_GetOperations(t *testing.T) {
 	controller, err := New(&operation.Config{
-		Provider:          memedvprovider.NewProvider(),
+		Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
 		EnabledExtensions: &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true},
 	})
 	require.NoError(t, err)

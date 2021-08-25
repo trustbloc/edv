@@ -65,7 +65,7 @@ type authService interface {
 
 // VaultCollection represents EDV storage.
 type VaultCollection struct {
-	provider edvprovider.EDVProvider
+	provider *edvprovider.Provider
 }
 
 // Handler represents an HTTP handler for each controller API endpoint.
@@ -84,7 +84,7 @@ type EnabledExtensions struct {
 
 // Config defines configuration for vcs operations
 type Config struct {
-	Provider          edvprovider.EDVProvider
+	Provider          *edvprovider.Provider
 	AuthService       authService
 	AuthEnable        bool
 	EnabledExtensions *EnabledExtensions
@@ -412,7 +412,7 @@ func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
 
 	responses := createInitialResponses(len(incomingBatch))
 
-	// Validate everything at the start so we can fail fast if need be
+	// Validate everything at the start, so we can fail fast if need be
 	err = validateBatch(incomingBatch, responses)
 	if err != nil {
 		writeBatchResponse(rw, messages.BatchResponseFailure, vaultID, requestBody, responses)

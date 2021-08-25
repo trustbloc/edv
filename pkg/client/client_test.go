@@ -19,10 +19,10 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/stretchr/testify/require"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/edvprovider/memedvprovider"
 	"github.com/trustbloc/edv/pkg/internal/common/support"
 	"github.com/trustbloc/edv/pkg/restapi"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
@@ -803,7 +803,7 @@ func getTestValidEncryptedDocument(testJWE string) *models.EncryptedDocument {
 func startEDVServer(t *testing.T, srvAddr string, enabledExtensions *operation.EnabledExtensions) *http.Server {
 	t.Helper()
 
-	memProv := memedvprovider.NewProvider()
+	memProv := edvprovider.NewProvider(mem.NewProvider(), 100)
 	_, err := memProv.OpenStore(edvprovider.VaultConfigurationStoreName)
 	require.NoError(t, err)
 

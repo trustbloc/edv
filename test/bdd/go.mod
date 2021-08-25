@@ -11,8 +11,8 @@ require (
 	github.com/fsouza/go-dockerclient v1.6.6
 	github.com/google/uuid v1.2.0
 	github.com/hyperledger/aries-framework-go v0.1.7-0.20210816113201-26c0665ef2b9
-	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210807121559-b41545a4f1e8
-	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210816113201-26c0665ef2b9
+	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210823231407-11c14052de4c
+	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210823231407-11c14052de4c
 	github.com/igor-pavlenko/httpsignatures-go v0.0.21
 	github.com/tidwall/gjson v1.6.7
 	github.com/trustbloc/edge-core v0.1.7-0.20210816120552-ed93662ac716

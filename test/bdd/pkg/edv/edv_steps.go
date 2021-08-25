@@ -481,7 +481,7 @@ func verifyEncryptedDocsAreEqual(retrievedDocument, expectedDocument *models.Enc
 }
 
 func verifyJWEFieldsAreEqual(expectedDocument, retrievedDocument *models.EncryptedDocument) error {
-	// CouchDB likes to switch around the order of the fields in the JSON.
+	// The database implementations can switch around the order of the fields in the JSON.
 	// This means that we can't do a direct string comparison of the JWE (json.rawmessage) fields
 	// in the EncryptedDocument structs. Instead we need to check each field manually.
 	var expectedJWEFields map[string]json.RawMessage

@@ -17,8 +17,6 @@ services:
       - 8089:8080
     volumes:
       - ./specs:/specs
-    networks:
-      - couchdb_bdd_net
 
 networks:
   couchdb_bdd_net:

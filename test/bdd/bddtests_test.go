@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 func runBDDTests(tags, format string) int { //nolint: gocognit
 	return godog.RunWithOptions("godogs", func(s *godog.Suite) {
 		var composition []*dockerutil.Composition
-		composeFiles := []string{"./fixtures/couchdb", "./fixtures/edv-rest"}
+		composeFiles := []string{"./fixtures/edv-rest"}
 		s.BeforeSuite(func() {
 			if os.Getenv("DISABLE_COMPOSITION") != "true" {
 				// Need a unique name, but docker does not allow '-' in names
