@@ -6,10 +6,9 @@
 
 @all
 @edv_interop_transmute
-Feature: Demonstrating TrustBloc's EDV REST API interoperability with Transmute's implementation.
+Feature: Demonstrating TrustBloc's EDV REST API interoperability with Transmute's implementation. [Temporarily disabled]
 
-# TODO fix Transmute's EDV calls then uncomment the test below. See https://github.com/w3c-ccg/did-method-web/issues/25
-# TODO Issue: https://github.com/trustbloc/edv/issues/224
+# TODO (#224) rework interop tests - the Transmute implementation we used to test against is no longer online
 #  @data_vault_creation
 #  Scenario: Use EDV client to check for interoperability.
 #    Then  Create a new data vault
