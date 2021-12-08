@@ -10,7 +10,7 @@ require (
 	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
-	github.com/hyperledger/aries-framework-go v0.1.7
+	github.com/hyperledger/aries-framework-go v0.1.8-0.20211203093644-b7d189cc06f4
 	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210907141159-23c785674547
 	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210907141159-23c785674547
 	github.com/piprate/json-gold v0.4.1-0.20210813112359-33b90c4ca86c

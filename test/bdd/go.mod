@@ -10,7 +10,7 @@ require (
 	github.com/cucumber/godog v0.9.0
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/google/uuid v1.2.0
-	github.com/hyperledger/aries-framework-go v0.1.7
+	github.com/hyperledger/aries-framework-go v0.1.8-0.20211203093644-b7d189cc06f4
 	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20210907141159-23c785674547
 	github.com/hyperledger/aries-framework-go/spi v0.0.0-20210907141159-23c785674547
 	github.com/igor-pavlenko/httpsignatures-go v0.0.21

@@ -740,8 +740,9 @@ github.com/hyperledger/aries-framework-go v0.1.7-0.20210603210127-e57b8c94e3cf/g
 github.com/hyperledger/aries-framework-go v0.1.7-0.20210811135743-532e65035d3b/go.mod h1:Y12MiErTDKHSCThrLdlEmrRiL2dV84J7/MVTHLBhLhM=
 github.com/hyperledger/aries-framework-go v0.1.7-0.20210813122903-2b268f3c37dd/go.mod h1:VmoqKNXXyYN3R0ObcGA8ZBdbcmKZJFCakuZGDezi+GQ=
 github.com/hyperledger/aries-framework-go v0.1.7-0.20210816113201-26c0665ef2b9/go.mod h1:VmoqKNXXyYN3R0ObcGA8ZBdbcmKZJFCakuZGDezi+GQ=
-github.com/hyperledger/aries-framework-go v0.1.7 h1:ZauGEVaBI4GnUDJcmbiCxbG/MHabMXMlAQee1B4nw8E=
 github.com/hyperledger/aries-framework-go v0.1.7/go.mod h1:uve8/q23AUnq4EM0vBkEr1lKZRC67q5RcaHXh0ZOt0Y=
+github.com/hyperledger/aries-framework-go v0.1.8-0.20211203093644-b7d189cc06f4 h1:UpRmhnvnqMZql8e2bS3HFah7bEUN5h318CLuQiQ7PYs=
+github.com/hyperledger/aries-framework-go v0.1.8-0.20211203093644-b7d189cc06f4/go.mod h1:uve8/q23AUnq4EM0vBkEr1lKZRC67q5RcaHXh0ZOt0Y=
 github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20210714131038-41b5bccef1f9/go.mod h1:We+7ZhPTzGrWLmaELzo8tvUT/ZqCa4v9SV961gH8b60=
 github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20210909220549-ce3a2ee13e22 h1:dzRPCOUIU/RKlGSGJsqpBh0uHOjMN4LC/c25fs7nnlE=
 github.com/hyperledger/aries-framework-go-ext/component/storage/couchdb v0.0.0-20210909220549-ce3a2ee13e22/go.mod h1:FtlFhPHMyLORgrPpvWSmEQSNhLiwAQ4V6rqNPfuDj0o=
