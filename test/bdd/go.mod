@@ -10,12 +10,12 @@ require (
 	github.com/cucumber/godog v0.9.0
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/google/uuid v1.3.0
-	github.com/hyperledger/aries-framework-go v0.1.8-0.20220324201531-18c87667df19
-	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20220324201531-18c87667df19
-	github.com/hyperledger/aries-framework-go/spi v0.0.0-20220324201531-18c87667df19
+	github.com/hyperledger/aries-framework-go v0.1.8
+	github.com/hyperledger/aries-framework-go/component/storageutil v0.0.0-20220330133350-1c2d9d65aea4
+	github.com/hyperledger/aries-framework-go/spi v0.0.0-20220330133350-1c2d9d65aea4
 	github.com/igor-pavlenko/httpsignatures-go v0.0.23
 	github.com/tidwall/gjson v1.6.7
-	github.com/trustbloc/edge-core v0.1.8-0.20220324215259-0ab3fd8db3f3
+	github.com/trustbloc/edge-core v0.1.8
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 )
 
