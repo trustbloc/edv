@@ -202,8 +202,6 @@ var logger = log.New("edv-rest")
 var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type." +
 	" run start --help to see the available options")
 
-var errCreateConfigStore = "failed to create data vault configuration store: %w"
-
 // nolint:gochecknoglobals
 var supportedEDVStorageProviders = map[string]func(string, string, uint) (*edvprovider.Provider, error){
 	databaseTypeCouchDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (*edvprovider.Provider, error) {
@@ -604,11 +602,6 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		return err
 	}
 
-	err = createConfigStore(provider)
-	if err != nil {
-		return err
-	}
-
 	// create auth service
 	var authSvc authService
 
@@ -736,22 +729,6 @@ func createEDVProvider(parameters *edvParameters) (*edvprovider.Provider, error)
 	}
 
 	return edvProv, nil
-}
-
-// createConfigStore creates the config store and indexes.
-func createConfigStore(provider *edvprovider.Provider) error {
-	_, err := provider.OpenStore(edvprovider.VaultConfigurationStoreName)
-	if err != nil {
-		return fmt.Errorf(errCreateConfigStore, err)
-	}
-
-	err = provider.SetStoreConfig(edvprovider.VaultConfigurationStoreName,
-		storage.StoreConfiguration{TagNames: []string{edvprovider.VaultConfigReferenceIDTagName}})
-	if err != nil {
-		return fmt.Errorf("failed to set store config: %w", err)
-	}
-
-	return nil
 }
 
 func constructHandlers(enableCORS bool, authSvc authService, routerHandler http.Handler) http.Handler {

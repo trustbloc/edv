@@ -226,12 +226,6 @@ func (m *mockProvider) Close() error {
 	panic("implement me")
 }
 
-type indexMappingDocument struct {
-	AttributeName          string `json:"attributeName"`
-	MatchingEncryptedDocID string `json:"matchingEncryptedDocID"`
-	MappingDocumentName    string `json:"mappingDocumentName"`
-}
-
 func TestMain(m *testing.M) {
 	log.Initialize(&mockLoggerProvider)
 
@@ -305,39 +299,6 @@ func TestCreateDataVault(t *testing.T) {
 			fmt.Sprintf(messages.CreateVaultFailReadRequestBody+messages.FailWriteResponse,
 				errFailingReadCloser, errFailingResponseWriter))
 	})
-	t.Run("Error when creating new store: duplicate data vault from duplicate referenceID", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
-
-		createConfigStoreExpectSuccess(t, op)
-
-		createDataVaultExpectSuccess(t, op)
-
-		rr := httptest.NewRecorder()
-		op.createDataVault(rr, &models.DataVaultConfiguration{ReferenceID: testReferenceID}, "",
-			nil)
-		require.Equal(t, http.StatusConflict, rr.Code)
-		require.Equal(t, "Failed to create a new data vault: "+
-			"failed to store data vault configuration: "+
-			"failed to store data vault configuration in store: an error occurred while querying reference IDs: "+
-			"vault already exists.", rr.Body.String())
-	})
-	t.Run("Response writer fails while writing duplicate data vault error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
-
-		createConfigStoreExpectSuccess(t, op)
-
-		createDataVaultExpectSuccess(t, op)
-
-		op.createDataVault(&failingResponseWriter{},
-			&models.DataVaultConfiguration{ReferenceID: testReferenceID}, "", nil)
-
-		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents,
-			fmt.Sprintf(messages.VaultCreationFailure+messages.FailWriteResponse,
-				fmt.Sprintf(messages.StoreVaultConfigFailure,
-					fmt.Sprintf("failed to store data vault configuration in store: %s",
-						fmt.Sprintf(messages.CheckDuplicateRefIDFailure, messages.ErrDuplicateVault))),
-				errFailingResponseWriter))
-	})
 	t.Run("Fail to store data vault configuration", func(t *testing.T) {
 		errTest := errors.New("put error")
 
@@ -356,53 +317,12 @@ func TestCreateDataVault(t *testing.T) {
 		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, "Failed to create a new data vault: failed to store data vault configuration: "+
-			"failed to store data vault configuration in store: put error.", rr.Body.String())
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
-	})
-	t.Run("Fail to store data vault configuration - config store not found", func(t *testing.T) {
-		mockProvider := mock.Provider{ErrOpenStore: storage.ErrStoreNotFound}
-
-		edvProvider := edvprovider.NewProvider(&mockProvider, 100)
-
-		op := New(&Config{Provider: edvProvider})
-
-		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-		require.Equal(t, fmt.Sprintf(messages.VaultCreationFailure,
-			fmt.Sprintf(messages.StoreVaultConfigFailure, messages.ConfigStoreNotFound)), rr.Body.String())
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
-	})
-	t.Run("Fail to store data vault configuration - other open store error", func(t *testing.T) {
-		errTest := errors.New("open store failure")
-
-		mockProv := mock.Provider{ErrOpenStore: errTest}
-
-		edvProvider := edvprovider.NewProvider(&mockProv, 100)
-
-		op := New(&Config{Provider: edvProvider})
-
-		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-		require.Equal(t, "Failed to create a new data vault: failed to store data vault configuration: "+
-			"failed to open store for vault configurations: open store failure.", rr.Body.String())
+			"put error.", rr.Body.String())
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
 	t.Run("Fail to open store for vault", func(t *testing.T) {
 		mockProv := mockProvider{
-			errOpenStore:                     errors.New("open store failure"),
-			numTimesOpenStoreCalledBeforeErr: 1,
+			errOpenStore: errors.New("open store failure"),
 		}
 
 		edvProvider := edvprovider.NewProvider(&mockProv, 100)
@@ -814,7 +734,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 	t.Run("Error: fail to open store", func(t *testing.T) {
 		testErr := errors.New("fail to open store")
 
-		provider := &mockProvider{numTimesOpenStoreCalledBeforeErr: 2, errOpenStore: testErr}
+		provider := &mockProvider{numTimesOpenStoreCalledBeforeErr: 1, errOpenStore: testErr}
 		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op)
@@ -1448,7 +1368,7 @@ func TestUpdateDocument(t *testing.T) {
 	})
 	t.Run("Failure - other error while opening store", func(t *testing.T) {
 		provider := &mockProvider{
-			numTimesOpenStoreCalledBeforeErr: 3,
+			numTimesOpenStoreCalledBeforeErr: 2,
 			errOpenStore:                     errors.New("test error"),
 		}
 
@@ -1550,7 +1470,7 @@ func TestDeleteDocument(t *testing.T) {
 	})
 	t.Run("Failure - other error while opening store", func(t *testing.T) {
 		provider := &mockProvider{
-			numTimesOpenStoreCalledBeforeErr: 3,
+			numTimesOpenStoreCalledBeforeErr: 2,
 			errOpenStore:                     errors.New("test error"),
 		}
 
@@ -1729,8 +1649,7 @@ func TestBatch(t *testing.T) {
 			errStoreBatch:                    errTestBatch,
 		})
 
-		require.Equal(t, `["failed to store encrypted document(s) and their associated mapping `+
-			`document(s): batch error"]`,
+		require.Equal(t, `["failed to store encrypted document(s): batch error"]`,
 			rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -1830,18 +1749,17 @@ func deleteDocumentExpectError(t *testing.T, op *Operation, pathVarVaultID, path
 func createConfigStoreExpectSuccess(t *testing.T, op *Operation) {
 	t.Helper()
 
-	_, err := op.vaultCollection.provider.OpenStore(edvprovider.VaultConfigurationStoreName)
+	_, err := op.vaultCollection.provider.OpenStore("Vault")
 	require.NoError(t, err)
 }
 
 func storeSampleConfigExpectSuccess(t *testing.T, op *Operation) {
 	t.Helper()
 
-	store, err := op.vaultCollection.provider.OpenStore(edvprovider.VaultConfigurationStoreName)
+	store, err := op.vaultCollection.provider.OpenStore("Vault")
 	require.NoError(t, err)
 
-	err = store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{ReferenceID: testReferenceID},
-		testVaultID)
+	err = store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{ReferenceID: testReferenceID})
 	require.NoError(t, err)
 }
 
@@ -1974,21 +1892,6 @@ func storeTestDataForQueryTests(t *testing.T, vaultID string, provider *mem.Prov
 	vaultStore, err := provider.OpenStore(storeName)
 	require.NoError(t, err)
 
-	mappingDocument1 := indexMappingDocument{
-		AttributeName:          "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-		MatchingEncryptedDocID: mockDocID1,
-	}
-
-	mappingDocument1Bytes, err := json.Marshal(mappingDocument1)
-	require.NoError(t, err)
-
-	err = vaultStore.Put("MappingDocument1", mappingDocument1Bytes,
-		storage.Tag{
-			Name:  edvprovider.MappingDocumentTagName,
-			Value: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-		})
-	require.NoError(t, err)
-
 	encryptedDoc1 := models.EncryptedDocument{
 		ID: mockDocID1,
 		IndexedAttributeCollections: []models.IndexedAttributeCollection{
@@ -2004,21 +1907,10 @@ func storeTestDataForQueryTests(t *testing.T, vaultID string, provider *mem.Prov
 	encryptedDoc1Bytes, err := json.Marshal(encryptedDoc1)
 	require.NoError(t, err)
 
-	err = vaultStore.Put(mockDocID1, encryptedDoc1Bytes)
-	require.NoError(t, err)
-
-	mappingDocument2 := indexMappingDocument{
-		AttributeName:          "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-		MatchingEncryptedDocID: mockDocID2,
-	}
-
-	mappingDocument2Bytes, err := json.Marshal(mappingDocument2)
-	require.NoError(t, err)
-
-	err = vaultStore.Put("MappingDocument2", mappingDocument2Bytes,
+	err = vaultStore.Put(mockDocID1, encryptedDoc1Bytes,
 		storage.Tag{
-			Name:  edvprovider.MappingDocumentTagName,
-			Value: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+			Value: encryptedDoc1TagValue,
 		})
 	require.NoError(t, err)
 
@@ -2037,7 +1929,11 @@ func storeTestDataForQueryTests(t *testing.T, vaultID string, provider *mem.Prov
 	encryptedDoc2Bytes, err := json.Marshal(encryptedDoc2)
 	require.NoError(t, err)
 
-	err = vaultStore.Put(mockDocID2, encryptedDoc2Bytes)
+	err = vaultStore.Put(mockDocID2, encryptedDoc2Bytes,
+		storage.Tag{
+			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+			Value: encryptedDoc2TagValue,
+		})
 	require.NoError(t, err)
 }
 
