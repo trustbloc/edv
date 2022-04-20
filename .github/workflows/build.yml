@@ -1,0 +1,92 @@
+#
+# Copyright SecureKey Technologies Inc. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+name: "edv vi"
+
+env:
+  GO_VERSION: 1.17
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  Checks:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run checks
+        run: |
+          echo $PATH
+          go env
+          echo ${{ github.workspace }}
+          make checks
+
+  UnitTest:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run unit test
+        run: make unit-test
+      - name: Upload coverage to Codecov
+        run: |
+          bash <(curl https://codecov.io/bash)
+        env:
+          CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+
+  BDDTest:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run BDD test
+        run: |
+          make bdd-test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  Publish:
+    needs: [Checks, UnitTest, BDDTest]
+    if: github.event_name == 'push' && (github.repository == 'trustbloc/edv' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - run: |
+          function logout {
+            docker logout
+          }
+          trap logout EXIT
+          source ci/version_var.sh
+          echo $DOCKER_PASSWORD | docker login ghcr.io --username $DOCKER_USER --password-stdin
+
+          make edv-docker
+          docker tag ghcr.io/trustbloc/edv:latest ${EDV_PKG}:${EDV_TAG}
+          docker push ${EDV_PKG}:${EDV_TAG}
+        env:
+          DOCKER_USER: ${{ secrets.CR_USER }}
+          DOCKER_PASSWORD: ${{ secrets.CR_PAT }}
