@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-name: "edv vi"
+name: "edv ci"
 
 env:
   GO_VERSION: 1.17
