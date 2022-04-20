@@ -6,20 +6,15 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
-	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
-	"github.com/hyperledger/aries-framework-go/component/storageutil/mock"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/log"
-
-	"github.com/trustbloc/edv/pkg/edvprovider"
 )
 
 type mockServer struct{}
@@ -388,21 +383,6 @@ func TestListenAndServe(t *testing.T) {
 	err := h.ListenAndServe("localhost:8080", "test.key", "test.cert", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "open test.key: no such file or directory")
-}
-
-func TestCreateConfigStore(t *testing.T) {
-	t.Run("Success - mem", func(t *testing.T) {
-		provider := edvprovider.NewProvider(mem.NewProvider(), 100)
-
-		err := createConfigStore(provider)
-		require.NoError(t, err)
-	})
-	t.Run("failure - open store error", func(t *testing.T) {
-		errTest := errors.New("error in open store")
-
-		err := createConfigStore(edvprovider.NewProvider(&mock.Provider{ErrOpenStore: errTest}, 100))
-		require.Equal(t, fmt.Errorf(errCreateConfigStore, errTest), err)
-	})
 }
 
 func TestGetTimeout(t *testing.T) {

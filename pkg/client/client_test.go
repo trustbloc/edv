@@ -804,8 +804,6 @@ func startEDVServer(t *testing.T, srvAddr string, enabledExtensions *operation.E
 	t.Helper()
 
 	memProv := edvprovider.NewProvider(mem.NewProvider(), 100)
-	_, err := memProv.OpenStore(edvprovider.VaultConfigurationStoreName)
-	require.NoError(t, err)
 
 	edvService, err := restapi.New(&operation.Config{Provider: memProv, EnabledExtensions: enabledExtensions})
 	require.NoError(t, err)

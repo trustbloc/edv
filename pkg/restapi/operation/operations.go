@@ -182,13 +182,7 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 		return
 	}
 
-	err = c.vaultCollection.storeDataVaultConfiguration(config, vaultID)
-	if err != nil {
-		writeCreateDataVaultFailure(rw, fmt.Errorf(messages.StoreVaultConfigFailure, err), configBytesForLog)
-		return
-	}
-
-	err = c.vaultCollection.createDataVault(vaultID)
+	err = c.vaultCollection.createDataVault(vaultID, config)
 	if err != nil {
 		writeCreateDataVaultFailure(rw, err, configBytesForLog)
 		return
@@ -545,37 +539,15 @@ func validateBatch(incomingBatch models.Batch, responses []string) error {
 	return nil
 }
 
-func (vc *VaultCollection) createDataVault(vaultID string) error {
-	_, err := vc.provider.OpenStore(vaultID)
+func (vc *VaultCollection) createDataVault(vaultID string, config *models.DataVaultConfiguration) error {
+	store, err := vc.provider.OpenStore(vaultID)
 	if err != nil {
 		return fmt.Errorf("failed to open store for vault: %w", err)
 	}
 
-	err = vc.provider.SetStoreConfig(vaultID, storage.StoreConfiguration{TagNames: []string{
-		edvprovider.MappingDocumentTagName,
-		edvprovider.MappingDocumentMatchingEncryptedDocIDTagName,
-	}})
+	err = store.StoreDataVaultConfiguration(config)
 	if err != nil {
-		return fmt.Errorf("failed to set store config: %w", err)
-	}
-
-	return nil
-}
-
-// storeDataVaultConfiguration stores a given DataVaultConfiguration and vaultID
-func (vc *VaultCollection) storeDataVaultConfiguration(config *models.DataVaultConfiguration, vaultID string) error {
-	store, err := vc.provider.OpenStore(edvprovider.VaultConfigurationStoreName)
-	if err != nil {
-		if errors.Is(err, storage.ErrStoreNotFound) {
-			return errors.New(messages.ConfigStoreNotFound)
-		}
-
-		return fmt.Errorf("failed to open store for vault configurations: %w", err)
-	}
-
-	err = store.StoreDataVaultConfiguration(config, vaultID)
-	if err != nil {
-		return fmt.Errorf("failed to store data vault configuration in store: %w", err)
+		return fmt.Errorf("failed to store data vault configuration: %w", err)
 	}
 
 	return nil
