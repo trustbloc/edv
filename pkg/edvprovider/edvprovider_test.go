@@ -79,8 +79,8 @@ const (
 	testReferenceID = "referenceID"
 	testVaultID     = "9ANbuHxeBcicymvRZfcKB2"
 
-	testIndexName2 = "indexName2"
-	testIndexName3 = "indexName3"
+	encryptedAttributeName1 = "attributeName1"
+	encryptedAttributeName2 = "attributeName2"
 )
 
 type mockIterator struct {
@@ -322,7 +322,7 @@ func TestEDVProvider_SetStoreConfig(t *testing.T) {
 }
 
 func TestEDVStore_Put(t *testing.T) {
-	t.Run("Success - no new encrypted indices", func(t *testing.T) {
+	t.Run("Success - document does not have encrypted attributes", func(t *testing.T) {
 		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
 		require.NoError(t, err)
 
@@ -331,16 +331,19 @@ func TestEDVStore_Put(t *testing.T) {
 		err = store.Put(models.EncryptedDocument{ID: "someID"})
 		require.NoError(t, err)
 	})
-	t.Run("Store documents with encrypted indices", func(t *testing.T) {
-		nonUniqueIndexedAttribute := models.IndexedAttribute{
-			Name:   "indexName1",
-			Value:  "indexValue1",
-			Unique: false,
-		}
-		t.Run("Success - new encrypted index doesn't conflict with existing ones", func(t *testing.T) {
-			err := storeDocumentsWithEncryptedIndices(t, nonUniqueIndexedAttribute, nonUniqueIndexedAttribute)
-			require.NoError(t, err)
-		})
+	t.Run("Success - document has encrypted attributes", func(t *testing.T) {
+		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
+		require.NoError(t, err)
+
+		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
+
+		var encryptedDocument models.EncryptedDocument
+
+		err = json.Unmarshal([]byte(testEncryptedDoc), &encryptedDocument)
+		require.NoError(t, err)
+
+		err = store.Put(encryptedDocument)
+		require.NoError(t, err)
 	})
 }
 
@@ -489,8 +492,8 @@ func TestEDVStore_Update(t *testing.T) {
 
 		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
-		documentIndexedAttribute2 := buildIndexedAttribute(testIndexName2)
-		documentIndexedAttribute3 := buildIndexedAttribute(testIndexName3)
+		documentIndexedAttribute2 := buildIndexedAttribute(encryptedAttributeName1)
+		documentIndexedAttribute3 := buildIndexedAttribute(encryptedAttributeName2)
 		indexedAttributeCollection2 := models.IndexedAttributeCollection{
 			Sequence:          0,
 			HMAC:              models.IDTypePair{},
@@ -514,56 +517,6 @@ func TestEDVStore_Delete(t *testing.T) {
 		err := store.Delete(testDocID1)
 		require.NoError(t, err)
 	})
-}
-
-func storeDocumentsWithEncryptedIndices(t *testing.T,
-	firstDocumentIndexedAttribute, secondDocumentIndexedAttribute models.IndexedAttribute) error {
-	t.Helper()
-
-	mockCoreStore := mock.Store{QueryReturn: &mockIterator{}}
-	store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
-
-	indexedAttributeCollection1 := models.IndexedAttributeCollection{
-		Sequence:          0,
-		HMAC:              models.IDTypePair{},
-		IndexedAttributes: []models.IndexedAttribute{firstDocumentIndexedAttribute},
-	}
-
-	testDoc1 := models.EncryptedDocument{
-		ID:                          "someID1",
-		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection1},
-	}
-
-	testDoc1Bytes, err := json.Marshal(testDoc1)
-	require.NoError(t, err)
-
-	mockCoreStore.GetBulkReturn = [][]byte{testDoc1Bytes}
-
-	mappingDoc := indexMappingDocument{
-		AttributeName:          "indexName1",
-		MatchingEncryptedDocID: "someID1",
-	}
-
-	marshalledMappingDoc, err := json.Marshal(mappingDoc)
-	require.NoError(t, err)
-
-	mockCoreStore.QueryReturn = &mockIterator{
-		maxTimesNextCanBeCalled: 1,
-		valueReturn:             marshalledMappingDoc,
-	}
-
-	indexedAttributeCollection2 := models.IndexedAttributeCollection{
-		Sequence:          0,
-		HMAC:              models.IDTypePair{},
-		IndexedAttributes: []models.IndexedAttribute{secondDocumentIndexedAttribute},
-	}
-
-	testDoc2 := models.EncryptedDocument{
-		ID:                          "someID2",
-		IndexedAttributeCollections: []models.IndexedAttributeCollection{indexedAttributeCollection2},
-	}
-
-	return store.Put(testDoc2)
 }
 
 func buildIndexedAttribute(name string) models.IndexedAttribute {

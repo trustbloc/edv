@@ -96,7 +96,7 @@ const (
 type VaultOperation struct {
 	Operation         string            `json:"operation"`          // Valid values: upsert,delete
 	DocumentID        string            `json:"id,omitempty"`       // Only used if Operation=delete
-	EncryptedDocument EncryptedDocument `json:"document,omitempty"` // Only used if Operation=createOrUpdate
+	EncryptedDocument EncryptedDocument `json:"document,omitempty"` // Only used if Operation=upsert
 }
 
 // JSONWebEncryption represents a JWE

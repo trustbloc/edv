@@ -13,7 +13,8 @@ An implementation of Encrypted Data Vaults [from the Confidential Storage 0.1 (0
 ## Limitations
 The following has not yet been implemented:
 * Service endpoint discovery
-* Index querying with multiple name+value pairs (which is still a work in-progress in the [specification](https://identity.foundation/confidential-storage/))
+* Encrypted attribute querying with multiple name+value pairs
+* Support for the unique property on an encrypted attribute pair
 * Streams (also a work in-progress in the [specification](https://identity.foundation/confidential-storage/))
 
 ## Underlying Storage
