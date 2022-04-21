@@ -373,13 +373,10 @@ func (c *Operation) deleteDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 // Response body will be an array of responses, one for each vault operation. Response for a successful upsert
 // will be the document location. No distinction is made between document creation and document updates.
-// TODO (#171): Address the limitations of this endpoint. Specifically...
-//  1. Updated documents must have the same encrypted indices (names+values) as the documents they're replacing,
-//  2. For new documents, encrypted indices will be created, but no uniqueness validation will occur.
-//     (No errors will be thrown if either of these limitations are not respected.
-//     The underlying database will just get in a bad state if you ignore them.)
-//  3. Delete operations are slow because they don't batch with other operations. They force any queued operations
-//     to execute early. Delete operations don't batch with other operations (including other deletes).
+// TODO (#171): Delete operations are slow because they don't batch with other operations. They force any queued
+//  operations to execute early. Delete operations don't batch with other operations (including other deletes).
+//  This limitation was here because of how the storage mechanism for encrypted attributes used to work. We don't need
+//  to do deletes separately anymore.
 func (c *Operation) batchHandler(rw http.ResponseWriter, req *http.Request) {
 	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
 	if !success {

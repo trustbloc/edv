@@ -85,14 +85,14 @@ const (
   "has": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
 }`
 
-	testDocID      = "VJYHHJx4C8J9Fsgz7rZqSp"
-	testDocID2     = "AJYHHJx4C8J9Fsgz7rZqSp"
-	testDocID3     = "CJYHHJx4C8J9Fsgz7rZqSp"
-	mockDocID1     = "docID1"
-	mockDocID2     = "docID2"
-	testIndexName1 = "indexName1"
-	testIndexName2 = "indexName2"
-	testIndexName3 = "indexName3"
+	testDocID               = "VJYHHJx4C8J9Fsgz7rZqSp"
+	testDocID2              = "AJYHHJx4C8J9Fsgz7rZqSp"
+	testDocID3              = "CJYHHJx4C8J9Fsgz7rZqSp"
+	mockDocID1              = "docID1"
+	mockDocID2              = "docID2"
+	encryptedAttributeName1 = "attributeName1"
+	encryptedAttributeName2 = "attributeName2"
+	encryptedAttributeName3 = "attributeName3"
 
 	testJWE1 = `{"protected":"eyJlbmMiOiJDMjBQIn0","recipients":[{"header":{"alg":"A256KW","kid":"https://exam` +
 		`ple.com/kms/z7BgF536GaR"},"encrypted_key":"OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"}],` +
@@ -105,10 +105,10 @@ const (
 		`3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tX_EFShS8iB7j6jiSdiwkIr3ajwQzaBtQD_A","tag":"XFBoMYUZodetZdvTiFvSkQ"}`
 
 	testIndexedAttributeCollections1 = `[{"sequence":0,"hmac":{"id":"","type":""},"attributes":[{"name":"` +
-		testIndexName1 + `","value":"testVal","unique":true},{"name":"` + testIndexName2 +
+		encryptedAttributeName1 + `","value":"testVal","unique":true},{"name":"` + encryptedAttributeName2 +
 		`","value":"testVal","unique":true}]}]`
 	testIndexedAttributeCollections2 = `[{"sequence":0,"hmac":{"id":"","type":""},"attributes":[{"name":"` +
-		testIndexName2 + `","value":"testVal","unique":true},{"name":"` + testIndexName3 +
+		encryptedAttributeName2 + `","value":"testVal","unique":true},{"name":"` + encryptedAttributeName3 +
 		`","value":"testVal","unique":true}]}]`
 
 	testEncryptedDocument = `{"id":"` + testDocID + `","sequence":0,"indexed":null,` +

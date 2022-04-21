@@ -82,7 +82,7 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 	s.Step(`^Client decrypts the Encrypted Document it received`+
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
 	s.Step(`^Client queries the vault to find the previously created document `+
-		`with an encrypted index named "([^"]*)" with associated value "([^"]*)"$`,
+		`with an encrypted attribute named "([^"]*)" with associated value "([^"]*)"$`,
 		e.queryVault)
 	s.Step(`^Client changes the Structured Document with id "([^"]*)" in order to update the`+
 		` Encrypted Document in the data vault$`, e.clientReconstructsAStructuredDocument)
@@ -287,8 +287,8 @@ func (e *Steps) decryptDocument() error {
 	return nil
 }
 
-func (e *Steps) queryVault(queryIndexName, queryIndexValue string) error {
-	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryIndexName, queryIndexValue)
+func (e *Steps) queryVault(queryAttributeName, queryAttributeValue string) error {
+	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryAttributeName, queryAttributeValue)
 	if err != nil {
 		return err
 	}

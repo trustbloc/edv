@@ -23,12 +23,6 @@ const logModuleName = "edv-provider"
 
 var logger = log.New(logModuleName)
 
-type indexMappingDocument struct {
-	AttributeName          string `json:"attributeName"`
-	MatchingEncryptedDocID string `json:"matchingEncryptedDocID"`
-	MappingDocumentName    string `json:"mappingDocumentName"`
-}
-
 type (
 	checkIfBase58Encoded128BitValueFunc func(id string) error
 	base58Encoded128BitToUUIDFunc       func(name string) (string, error)
@@ -173,7 +167,7 @@ func (c *Store) Delete(docID string) error {
 	return c.coreStore.Delete(docID)
 }
 
-// Query does an EDV encrypted index query.
+// Query queries for data based on Encrypted Document attributes..
 // If query.Has is not blank, then we assume it's a "has" query, and so any documents with an attribute name matching
 // query.Has will be returned regardless of value.
 // TODO (#168): Add support for pagination (not currently in the spec).
