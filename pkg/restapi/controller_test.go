@@ -35,7 +35,7 @@ func TestController_GetOperations(t *testing.T) {
 
 	ops := controller.GetOperations()
 
-	require.Equal(t, 6, len(ops))
+	require.Equal(t, 7, len(ops))
 
 	// Create vault
 	require.Equal(t, "/encrypted-data-vaults", ops[0].Path())
@@ -47,23 +47,28 @@ func TestController_GetOperations(t *testing.T) {
 	require.Equal(t, http.MethodPost, ops[1].Method())
 	require.NotNil(t, ops[1].Handle())
 
-	// Create document
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents", ops[2].Path())
+	// Index operation
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/index", ops[2].Path())
 	require.Equal(t, http.MethodPost, ops[2].Method())
 	require.NotNil(t, ops[2].Handle())
 
-	// Read document
-	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[3].Path())
-	require.Equal(t, http.MethodGet, ops[3].Method())
+	// Create document
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents", ops[3].Path())
+	require.Equal(t, http.MethodPost, ops[3].Method())
 	require.NotNil(t, ops[3].Handle())
 
-	// Update document
+	// Read document
 	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[4].Path())
-	require.Equal(t, http.MethodPost, ops[4].Method())
+	require.Equal(t, http.MethodGet, ops[4].Method())
 	require.NotNil(t, ops[4].Handle())
 
-	// Delete document
+	// Update document
 	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[5].Path())
-	require.Equal(t, http.MethodDelete, ops[5].Method())
+	require.Equal(t, http.MethodPost, ops[5].Method())
 	require.NotNil(t, ops[5].Handle())
+
+	// Delete document
+	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[6].Path())
+	require.Equal(t, http.MethodDelete, ops[6].Method())
+	require.NotNil(t, ops[6].Handle())
 }
