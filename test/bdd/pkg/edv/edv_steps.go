@@ -287,8 +287,8 @@ func (e *Steps) decryptDocument() error {
 	return nil
 }
 
-func (e *Steps) queryVault(queryAttributeName, queryAttributeValue string) error {
-	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryAttributeName, queryAttributeValue)
+func (e *Steps) queryVault(queryAttributeKey, queryAttributeValue string) error {
+	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryAttributeKey, queryAttributeValue)
 	if err != nil {
 		return err
 	}

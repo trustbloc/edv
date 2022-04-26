@@ -51,7 +51,7 @@ func NewProvider(ariesProvider storage.Provider, retrievalPageSize uint) *Provid
 // StoreExists returns a boolean indicating whether a given store has ever been created.
 // It checks to see if the underlying database exists via the GetStoreConfig method.
 func (c *Provider) StoreExists(name string) (bool, error) {
-	storeName, err := c.determineStoreNameToUse(name)
+	storeName, err := c.getUnderlyingStoreName(name)
 	if err != nil {
 		return false, fmt.Errorf("failed to determine store name to use: %w", err)
 	}
@@ -68,30 +68,49 @@ func (c *Provider) StoreExists(name string) (bool, error) {
 	return true, nil
 }
 
-// OpenStore opens a store and returns it. The name is converted to a UUID if it is a base58-encoded
-// 128-bit value.
-func (c *Provider) OpenStore(name string) (*Store, error) {
-	storeName, err := c.determineStoreNameToUse(name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine store name to use: %w", err)
-	}
-
-	coreStore, err := c.coreProvider.OpenStore(storeName)
+// OpenStore opens a store for the given vaultID and returns it.
+// The name is converted to a UUID if it is a base58-encoded 128-bit value.
+func (c *Provider) OpenStore(vaultID string) (*Store, error) {
+	coreStore, _, err := c.openUnderlyingStore(vaultID)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Store{coreStore: coreStore, name: name, retrievalPageSize: c.retrievalPageSize}, nil
+	return &Store{coreStore: coreStore, name: vaultID, retrievalPageSize: c.retrievalPageSize}, nil
 }
 
-// SetStoreConfig sets the store configuration in the underlying core provider.
-func (c *Provider) SetStoreConfig(name string, config storage.StoreConfiguration) error {
-	storeName, err := c.determineStoreNameToUse(name)
+// AddIndexes creates attributes for the given attributeKeys.
+func (c *Provider) AddIndexes(vaultID string, attributeKeys []string) error {
+	// Need to make sure the store is open in-memory first before calling GetStoreConfig and SetStoreConfig.
+	_, underlyingStoreName, err := c.openUnderlyingStore(vaultID)
 	if err != nil {
-		return fmt.Errorf("failed to determine store name to use: %w", err)
+		return fmt.Errorf("failed to open underlying store: %w", err)
 	}
 
-	return c.coreProvider.SetStoreConfig(storeName, config)
+	storeConfiguration, err := c.coreProvider.GetStoreConfig(underlyingStoreName)
+	if err != nil {
+		return fmt.Errorf("failed to get existing store configuration: %w", err)
+	}
+
+	storeConfiguration.TagNames = mergeTagNames(storeConfiguration.TagNames, attributeKeys)
+
+	return c.coreProvider.SetStoreConfig(underlyingStoreName, storeConfiguration)
+}
+
+func (c *Provider) openUnderlyingStore(vaultID string) (underlyingStore storage.Store,
+	underlyingStoreName string, err error) {
+	storeName, err := c.getUnderlyingStoreName(vaultID)
+	if err != nil {
+		return nil, "",
+			fmt.Errorf("failed to determine underlying store name: %w", err)
+	}
+
+	coreStore, err := c.coreProvider.OpenStore(storeName)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return coreStore, storeName, nil
 }
 
 // Store represents an EDV store.
@@ -239,7 +258,7 @@ func (c *Store) StoreDataVaultConfiguration(config *models.DataVaultConfiguratio
 	return c.coreStore.Put("DataVaultConfiguration", configBytes)
 }
 
-func (c *Provider) determineStoreNameToUse(name string) (string, error) {
+func (c *Provider) getUnderlyingStoreName(name string) (string, error) {
 	storeName := name
 
 	if c.checkIfBase58Encoded128BitValue(name) == nil {
@@ -252,4 +271,29 @@ func (c *Provider) determineStoreNameToUse(name string) (string, error) {
 	}
 
 	return storeName, nil
+}
+
+// Adds tag names from tagNames2 that aren't in tagNames1 to tagNames1.
+// Duplicate tag names in tagNames2 are discarded.
+func mergeTagNames(tagNames1, tagNames2 []string) []string {
+	if len(tagNames1) == 0 {
+		return tagNames2
+	}
+
+	for i := 0; i < len(tagNames2); i++ {
+		var found bool
+
+		for j := 0; j < len(tagNames1); j++ {
+			if tagNames2[i] == tagNames1[j] {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			tagNames1 = append(tagNames1, tagNames2[i])
+		}
+	}
+
+	return tagNames1
 }

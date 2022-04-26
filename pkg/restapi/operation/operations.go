@@ -46,6 +46,7 @@ const (
 		docIDPathVariable + "}"
 	deleteDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
+	indexEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/index"
 )
 
 var logger = log.New(logModuleName)
@@ -109,6 +110,7 @@ func (c *Operation) registerHandler() {
 	c.handlers = []Handler{
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
+		support.NewHTTPHandler(indexEndpoint, http.MethodPost, c.indexHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 		support.NewHTTPHandler(updateDocumentEndpoint, http.MethodPost, c.updateDocumentHandler),
@@ -254,6 +256,49 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, incomingQuery.ReturnFullDocuments, req.Host)
 	} else {
 		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, false, req.Host)
+	}
+}
+
+// Index Operations swagger:route POST /encrypted-data-vaults/{vaultID}/index indexOperationReq
+//
+// Queries a data vault using encrypted indices.
+//
+// Responses:
+//    default: genericError
+//        200: emptyRes
+func (c *Operation) indexHandler(rw http.ResponseWriter, req *http.Request) {
+	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
+	if !success {
+		return
+	}
+
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError,
+			messages.CreateDocumentFailReadRequestBody, err, vaultID, nil)
+		return
+	}
+
+	var indexOperation models.IndexOperation
+
+	err = json.Unmarshal(requestBody, &indexOperation)
+	if err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest,
+			messages.InvalidIndexOperation, err, vaultID, requestBody)
+		return
+	}
+
+	if !strings.EqualFold(indexOperation.Operation, "add") {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidIndexOperation,
+			fmt.Errorf("%s is not a supported index operation", indexOperation.Operation), vaultID, requestBody)
+		return
+	}
+
+	err = c.vaultCollection.addIndexes(vaultID, indexOperation.AttributeKeys)
+	if err != nil {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest,
+			messages.FailAddIndexes, err, vaultID, requestBody)
+		return
 	}
 }
 
@@ -589,13 +634,9 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 }
 
 func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {
-	exists, err := vc.provider.StoreExists(vaultID)
+	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
-	}
-
-	if !exists {
-		return messages.ErrVaultNotFound
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
@@ -619,13 +660,9 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 }
 
 func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.EncryptedDocument) error {
-	exists, err := vc.provider.StoreExists(vaultID)
+	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
-	}
-
-	if !exists {
-		return messages.ErrVaultNotFound
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
@@ -637,13 +674,9 @@ func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.En
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
-	exists, err := vc.provider.StoreExists(vaultID)
+	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return nil, err
-	}
-
-	if !exists {
-		return nil, messages.ErrVaultNotFound
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
@@ -664,13 +697,9 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 }
 
 func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]models.EncryptedDocument, error) {
-	exists, err := vc.provider.StoreExists(vaultID)
+	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return nil, err
-	}
-
-	if !exists {
-		return nil, messages.ErrVaultNotFound
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
@@ -711,13 +740,9 @@ func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, d
 }
 
 func (vc *VaultCollection) updateDocument(docID, vaultID string, document models.EncryptedDocument) error {
-	exists, err := vc.provider.StoreExists(vaultID)
+	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
-	}
-
-	if !exists {
-		return messages.ErrVaultNotFound
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
@@ -738,13 +763,9 @@ func (vc *VaultCollection) updateDocument(docID, vaultID string, document models
 }
 
 func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
-	exists, err := vc.provider.StoreExists(vaultID)
+	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
-	}
-
-	if !exists {
-		return messages.ErrVaultNotFound
 	}
 
 	store, err := vc.provider.OpenStore(vaultID)
@@ -762,6 +783,33 @@ func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
 	}
 
 	return store.Delete(docID)
+}
+
+func (vc *VaultCollection) addIndexes(vaultID string, attributeKeys []string) error {
+	err := vc.ensureVaultExists(vaultID)
+	if err != nil {
+		return err
+	}
+
+	err = vc.provider.AddIndexes(vaultID, attributeKeys)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (vc *VaultCollection) ensureVaultExists(vaultID string) error {
+	exists, err := vc.provider.StoreExists(vaultID)
+	if err != nil {
+		return fmt.Errorf("unexpected failure while checking if vault exists: %w", err)
+	}
+
+	if !exists {
+		return messages.ErrVaultNotFound
+	}
+
+	return nil
 }
 
 func validateDataVaultConfiguration(dataVaultConfig *models.DataVaultConfiguration) error {

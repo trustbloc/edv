@@ -119,6 +119,17 @@ type deleteDocumentReq struct { // nolint: unused,deadcode
 	DocID string `json:"docID"`
 }
 
+// indexOperationReq model
+//
+// swagger:parameters indexOperationReq
+type indexOperationReq struct { // nolint: unused,deadcode
+	// in: path
+	// required: true
+	VaultID string `json:"vaultID"`
+	// in: body
+	IndexOperationRequest models.IndexOperation
+}
+
 // emptyRes model
 //
 // swagger:response emptyRes

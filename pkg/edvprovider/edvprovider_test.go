@@ -79,8 +79,8 @@ const (
 	testReferenceID = "referenceID"
 	testVaultID     = "9ANbuHxeBcicymvRZfcKB2"
 
-	encryptedAttributeName1 = "attributeName1"
-	encryptedAttributeName2 = "attributeName2"
+	encryptedAttributeKey1 = "attributeKey1"
+	encryptedAttributeKey2 = "attributeKey2"
 )
 
 type mockIterator struct {
@@ -239,7 +239,7 @@ func TestEDVProvider_OpenStore(t *testing.T) {
 		_, err := prov.OpenStore("testStore")
 		require.Equal(t, testErr, err)
 	})
-	t.Run("Fail to determine store name to use", func(t *testing.T) {
+	t.Run("Fail to determine underlying store name", func(t *testing.T) {
 		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
@@ -249,75 +249,102 @@ func TestEDVProvider_OpenStore(t *testing.T) {
 		}
 
 		store, err := prov.OpenStore(testVaultID)
-		require.EqualError(t, err, "failed to determine store name to use: "+
+		require.EqualError(t, err, "failed to determine underlying store name: "+
 			"failed to generate UUID from base 58 encoded 128 bit name: uuid generation error")
 		require.Nil(t, store)
 	})
 }
 
-func TestEDVProvider_SetStoreConfig(t *testing.T) {
-	t.Run("Success - regular string store name", func(t *testing.T) {
+func TestEDVProvider_AddIndexes(t *testing.T) {
+	t.Run("Success - add 2 indexes", func(t *testing.T) {
 		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		store, err := prov.OpenStore("teststore")
+		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
 		require.NoError(t, err)
-		require.NotNil(t, store)
 
-		err = prov.SetStoreConfig("teststore", storage.StoreConfiguration{})
+		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
 		require.NoError(t, err)
+
+		storeConfig, err := prov.coreProvider.GetStoreConfig(underlyingStoreName)
+		require.NoError(t, err)
+
+		require.Len(t, storeConfig.TagNames, 2)
+		require.Equal(t, storeConfig.TagNames[0], "AttributeKey1")
+		require.Equal(t, storeConfig.TagNames[1], "AttributeKey2")
 	})
-	t.Run("Success - base58-encoded 128-bit store name", func(t *testing.T) {
+	t.Run("Success - add 2 indexes, then add another new one", func(t *testing.T) {
 		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		store, err := prov.OpenStore(testVaultID)
+		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
 		require.NoError(t, err)
-		require.NotNil(t, store)
 
-		err = prov.SetStoreConfig(testVaultID, storage.StoreConfiguration{})
+		err = prov.AddIndexes(testVaultID, []string{"AttributeKey3"})
 		require.NoError(t, err)
+
+		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
+		require.NoError(t, err)
+
+		storeConfig, err := prov.coreProvider.GetStoreConfig(underlyingStoreName)
+		require.NoError(t, err)
+
+		require.Len(t, storeConfig.TagNames, 3)
+		require.Equal(t, storeConfig.TagNames[0], "AttributeKey1")
+		require.Equal(t, storeConfig.TagNames[1], "AttributeKey2")
+		require.Equal(t, storeConfig.TagNames[2], "AttributeKey3")
 	})
-	t.Run("Success - base58-encoded 128-bit store name", func(t *testing.T) {
+	t.Run("Success - add 2 indexes, then add two more (but one was already set before)", func(t *testing.T) {
 		prov := Provider{
 			coreProvider:                    mem.NewProvider(),
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		store, err := prov.OpenStore(testVaultID)
+		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
 		require.NoError(t, err)
-		require.NotNil(t, store)
+
+		err = prov.AddIndexes(testVaultID, []string{"AttributeKey2", "AttributeKey3"})
+		require.NoError(t, err)
+
+		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
+		require.NoError(t, err)
+
+		storeConfig, err := prov.coreProvider.GetStoreConfig(underlyingStoreName)
+		require.NoError(t, err)
+
+		require.Len(t, storeConfig.TagNames, 3)
+		require.Equal(t, storeConfig.TagNames[0], "AttributeKey1")
+		require.Equal(t, storeConfig.TagNames[1], "AttributeKey2")
+		require.Equal(t, storeConfig.TagNames[2], "AttributeKey3")
 	})
-	t.Run("Failure: other error in open store", func(t *testing.T) {
-		testErr := errors.New("test error")
+	t.Run("Failed to open underlying store", func(t *testing.T) {
 		prov := Provider{
-			coreProvider:                    &mock.Provider{ErrOpenStore: testErr},
+			coreProvider:                    &mock.Provider{ErrOpenStore: errors.New("open store failure")},
 			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		_, err := prov.OpenStore("testStore")
-		require.Equal(t, testErr, err)
+		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		require.EqualError(t, err, "failed to open underlying store: open store failure")
 	})
-	t.Run("Fail to determine store name to use", func(t *testing.T) {
+	t.Run("Failed to get existing store configuration", func(t *testing.T) {
 		prov := Provider{
-			coreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID: func(string) (string, error) {
-				return "", errors.New("uuid generation error")
+			coreProvider: &mock.Provider{
+				ErrGetStoreConfig: errors.New("get store config failure"),
 			},
+			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
+			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		err := prov.SetStoreConfig(testVaultID, storage.StoreConfiguration{})
-		require.EqualError(t, err, "failed to determine store name to use: "+
-			"failed to generate UUID from base 58 encoded 128 bit name: uuid generation error")
+		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		require.EqualError(t, err, "failed to get existing store configuration: get store config failure")
 	})
 }
 
@@ -492,8 +519,8 @@ func TestEDVStore_Update(t *testing.T) {
 
 		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
-		documentIndexedAttribute2 := buildIndexedAttribute(encryptedAttributeName1)
-		documentIndexedAttribute3 := buildIndexedAttribute(encryptedAttributeName2)
+		documentIndexedAttribute2 := buildIndexedAttribute(encryptedAttributeKey1)
+		documentIndexedAttribute3 := buildIndexedAttribute(encryptedAttributeKey2)
 		indexedAttributeCollection2 := models.IndexedAttributeCollection{
 			Sequence:          0,
 			HMAC:              models.IDTypePair{},

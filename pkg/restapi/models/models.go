@@ -128,3 +128,9 @@ type RecipientHeaders struct {
 	EPK json.RawMessage `json:"epk,omitempty"`
 	SPK json.RawMessage `json:"spk,omitempty"`
 }
+
+// IndexOperation represents an operation to add, update or remove indexes.
+type IndexOperation struct {
+	Operation     string   `json:"operation"`
+	AttributeKeys []string `json:"attributeKeys"`
+}

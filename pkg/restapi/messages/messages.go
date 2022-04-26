@@ -97,6 +97,10 @@ Received data: %s`
 	InvalidQuery = `Received invalid query for data vault %s: %s.`
 	// InvalidBatch is used when an invalid batch operation is received.
 	InvalidBatch = `Received invalid batch operation for data vault %s: %s.`
+	// InvalidIndexOperation is used when an invalid index operation is received.
+	InvalidIndexOperation = `Received invalid index operation for data vault %s: %s.`
+	// FailAddIndexes is used when there's a failure while indexes are being added.
+	FailAddIndexes = `Failed to add indexes to data vault %s: %s.`
 	// QueryFailure is used when an error occurs while querying a vault.
 	QueryFailure = `Failure while querying vault %s: %s.`
 	// QuerySuccess is used when a vault is successfully queried.
