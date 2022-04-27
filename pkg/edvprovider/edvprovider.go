@@ -79,8 +79,8 @@ func (c *Provider) OpenStore(vaultID string) (*Store, error) {
 	return &Store{coreStore: coreStore, name: vaultID, retrievalPageSize: c.retrievalPageSize}, nil
 }
 
-// AddIndexes creates attributes for the given attributeKeys.
-func (c *Provider) AddIndexes(vaultID string, attributeKeys []string) error {
+// AddIndexes creates attributes for the given attributeNames.
+func (c *Provider) AddIndexes(vaultID string, attributeNames []string) error {
 	// Need to make sure the store is open in-memory first before calling GetStoreConfig and SetStoreConfig.
 	_, underlyingStoreName, err := c.openUnderlyingStore(vaultID)
 	if err != nil {
@@ -92,7 +92,7 @@ func (c *Provider) AddIndexes(vaultID string, attributeKeys []string) error {
 		return fmt.Errorf("failed to get existing store configuration: %w", err)
 	}
 
-	storeConfiguration.TagNames = mergeTagNames(storeConfiguration.TagNames, attributeKeys)
+	storeConfiguration.TagNames = mergeTagNames(storeConfiguration.TagNames, attributeNames)
 
 	return c.coreProvider.SetStoreConfig(underlyingStoreName, storeConfiguration)
 }

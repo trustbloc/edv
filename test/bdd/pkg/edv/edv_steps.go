@@ -81,6 +81,7 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 		e.retrieveDocument)
 	s.Step(`^Client decrypts the Encrypted Document it received`+
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
+	s.Step(`^Client creates an index on the "([^"]*)" attribute name$`, e.createIndex)
 	s.Step(`^Client queries the vault to find the previously created document `+
 		`with an encrypted attribute named "([^"]*)" with associated value "([^"]*)"$`,
 		e.queryVault)
@@ -287,8 +288,12 @@ func (e *Steps) decryptDocument() error {
 	return nil
 }
 
-func (e *Steps) queryVault(queryAttributeKey, queryAttributeValue string) error {
-	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryAttributeKey, queryAttributeValue)
+func (e *Steps) createIndex(attributeName string) error {
+	return e.bddContext.EDVClient.AddIndex(e.bddContext.VaultID, []string{attributeName})
+}
+
+func (e *Steps) queryVault(queryAttributeName, queryAttributeValue string) error {
+	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryAttributeName, queryAttributeValue)
 	if err != nil {
 		return err
 	}
