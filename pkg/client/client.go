@@ -372,6 +372,39 @@ func (c *Client) Batch(vaultID string, batch *models.Batch, opts ...ReqOption) (
 		statusCode, respBytes)
 }
 
+// AddIndex sends the EDV server a request to create indexes on the specified attributeNames.
+func (c *Client) AddIndex(vaultID string, attributeNames []string, opts ...ReqOption) error {
+	reqOpt := &ReqOpts{}
+
+	for _, o := range opts {
+		o(reqOpt)
+	}
+
+	addIndexOperation := models.IndexOperation{
+		Operation:      "add",
+		AttributeNames: attributeNames,
+	}
+
+	jsonToSend, err := c.marshal(addIndexOperation)
+	if err != nil {
+		return fmt.Errorf("failed to marshal index operation: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("%s/%s/index", c.edvServerURL, url.PathEscape(vaultID))
+
+	statusCode, _, respBytes, err := c.sendHTTPRequest(http.MethodPost, endpoint, jsonToSend, c.getHeaderFunc(reqOpt))
+	if err != nil {
+		return err
+	}
+
+	if statusCode == http.StatusOK {
+		return nil
+	}
+
+	return fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+		statusCode, respBytes)
+}
+
 func (c *Client) sendHTTPRequest(method, endpoint string, body []byte,
 	addHeadersFunc addHeaders) (int, http.Header, []byte, error) {
 	req, errReq := http.NewRequest(method, endpoint, bytes.NewBuffer(body))

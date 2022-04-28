@@ -131,6 +131,6 @@ type RecipientHeaders struct {
 
 // IndexOperation represents an operation to add, update or remove indexes.
 type IndexOperation struct {
-	Operation     string   `json:"operation"`
-	AttributeKeys []string `json:"attributeKeys"`
+	Operation      string   `json:"operation"`
+	AttributeNames []string `json:"attributeNames"`
 }

@@ -79,8 +79,8 @@ const (
 	testReferenceID = "referenceID"
 	testVaultID     = "9ANbuHxeBcicymvRZfcKB2"
 
-	encryptedAttributeKey1 = "attributeKey1"
-	encryptedAttributeKey2 = "attributeKey2"
+	encryptedAttributeName1 = "attributeName1"
+	encryptedAttributeName2 = "attributeName2"
 )
 
 type mockIterator struct {
@@ -263,7 +263,7 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
 		require.NoError(t, err)
 
 		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
@@ -273,8 +273,8 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, storeConfig.TagNames, 2)
-		require.Equal(t, storeConfig.TagNames[0], "AttributeKey1")
-		require.Equal(t, storeConfig.TagNames[1], "AttributeKey2")
+		require.Equal(t, storeConfig.TagNames[0], "AttributeName1")
+		require.Equal(t, storeConfig.TagNames[1], "AttributeName2")
 	})
 	t.Run("Success - add 2 indexes, then add another new one", func(t *testing.T) {
 		prov := Provider{
@@ -283,10 +283,10 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
 		require.NoError(t, err)
 
-		err = prov.AddIndexes(testVaultID, []string{"AttributeKey3"})
+		err = prov.AddIndexes(testVaultID, []string{"AttributeName3"})
 		require.NoError(t, err)
 
 		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
@@ -296,9 +296,9 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, storeConfig.TagNames, 3)
-		require.Equal(t, storeConfig.TagNames[0], "AttributeKey1")
-		require.Equal(t, storeConfig.TagNames[1], "AttributeKey2")
-		require.Equal(t, storeConfig.TagNames[2], "AttributeKey3")
+		require.Equal(t, storeConfig.TagNames[0], "AttributeName1")
+		require.Equal(t, storeConfig.TagNames[1], "AttributeName2")
+		require.Equal(t, storeConfig.TagNames[2], "AttributeName3")
 	})
 	t.Run("Success - add 2 indexes, then add two more (but one was already set before)", func(t *testing.T) {
 		prov := Provider{
@@ -307,10 +307,10 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
 		require.NoError(t, err)
 
-		err = prov.AddIndexes(testVaultID, []string{"AttributeKey2", "AttributeKey3"})
+		err = prov.AddIndexes(testVaultID, []string{"AttributeName2", "AttributeName3"})
 		require.NoError(t, err)
 
 		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
@@ -320,9 +320,9 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, storeConfig.TagNames, 3)
-		require.Equal(t, storeConfig.TagNames[0], "AttributeKey1")
-		require.Equal(t, storeConfig.TagNames[1], "AttributeKey2")
-		require.Equal(t, storeConfig.TagNames[2], "AttributeKey3")
+		require.Equal(t, storeConfig.TagNames[0], "AttributeName1")
+		require.Equal(t, storeConfig.TagNames[1], "AttributeName2")
+		require.Equal(t, storeConfig.TagNames[2], "AttributeName3")
 	})
 	t.Run("Failed to open underlying store", func(t *testing.T) {
 		prov := Provider{
@@ -331,7 +331,7 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
 		require.EqualError(t, err, "failed to open underlying store: open store failure")
 	})
 	t.Run("Failed to get existing store configuration", func(t *testing.T) {
@@ -343,7 +343,7 @@ func TestEDVProvider_AddIndexes(t *testing.T) {
 			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
 		}
 
-		err := prov.AddIndexes(testVaultID, []string{"AttributeKey1", "AttributeKey2"})
+		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
 		require.EqualError(t, err, "failed to get existing store configuration: get store config failure")
 	})
 }
@@ -519,8 +519,8 @@ func TestEDVStore_Update(t *testing.T) {
 
 		store := Store{coreStore: memCoreStore, retrievalPageSize: 100}
 
-		documentIndexedAttribute2 := buildIndexedAttribute(encryptedAttributeKey1)
-		documentIndexedAttribute3 := buildIndexedAttribute(encryptedAttributeKey2)
+		documentIndexedAttribute2 := buildIndexedAttribute(encryptedAttributeName1)
+		documentIndexedAttribute3 := buildIndexedAttribute(encryptedAttributeName2)
 		indexedAttributeCollection2 := models.IndexedAttributeCollection{
 			Sequence:          0,
 			HMAC:              models.IDTypePair{},

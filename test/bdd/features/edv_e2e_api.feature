@@ -15,6 +15,7 @@ Feature: Using EDV REST API
     Then Client stores the Encrypted Document in the data vault
     Then Client sends request to retrieve the previously stored Encrypted Document with id "VJYHHJx4C8J9Fsgz7rZqSp" in the data vault and receives the previously stored Encrypted Document in response
     Then Client decrypts the Encrypted Document it received in order to reconstruct the original Structured Document
+    Then Client creates an index on the "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ" attribute name
     Then Client queries the vault to find the previously created document with an encrypted attribute named "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ" with associated value "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
     Then Client changes the Structured Document with id "VJYHHJx4C8J9Fsgz7rZqSp" in order to update the Encrypted Document in the data vault
     Then Client encrypts the new Structured Document and uses it to construct an Encrypted Document

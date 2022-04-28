@@ -87,6 +87,8 @@ Received data: %s`
 	QueryReceiveRequest = "Received request to query data vault %s."
 	// BatchReceiveRequest is used for logging new batch operation requests.
 	BatchReceiveRequest = "Received request to do a batch operation in data vault %s."
+	// IndexReceiveRequest is used for logging new batch operation requests.
+	IndexReceiveRequest = "Received request to do an index operation in data vault %s."
 	// QueryFailReadRequestBody is used when the incoming request body can't be read.
 	// This should not happen during normal operation.
 	QueryFailReadRequestBody = QueryReceiveRequest + " Failed to read the request body: %s."

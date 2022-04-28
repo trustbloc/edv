@@ -51,6 +51,7 @@ const (
 		`3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tX_EFShS8iB7j6jiSdiwkIr3ajwQzaBtQD_A","tag":"XFBoMYUZodetZdvTiFvSkQ"}`
 
 	queryVaultEndpointPath = "/encrypted-data-vaults/{vaultIDPathVariable}/query"
+	IndexEndpointPath      = "/encrypted-data-vaults/{vaultIDPathVariable}/query"
 	testQueryVaultResponse = `["docID1","docID2"]`
 )
 
@@ -768,6 +769,84 @@ func TestClient_Batch(t *testing.T) {
 			}))
 		require.EqualError(t, err, errFailingMarshal.Error())
 		require.Nil(t, responses)
+	})
+}
+
+func TestClient_AddIndex(t *testing.T) {
+	attributeNames := []string{
+		"DUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+		"AarngVIZLl0kIp2xEHUH5o5uVc-470roQaOIbqMUD7DFQQypWQ==",
+	}
+
+	t.Run("Success", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		validConfig := getTestValidDataVaultConfiguration()
+
+		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
+		require.NoError(t, err)
+
+		vaultID := getVaultIDFromURL(vaultLocationURL)
+
+		err = client.AddIndex(vaultID, attributeNames,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.NoError(t, err)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Fail to marshal operation", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		client.marshal = failingMarshal
+
+		err := client.AddIndex("VaultID", attributeNames,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.EqualError(t, err, "failed to marshal index operation: failingMarshal always fails")
+	})
+	t.Run("Server unreachable", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		client := New("http://" + srvAddr)
+
+		err := client.AddIndex("VaultID", attributeNames,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+
+		testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
+		require.True(t, testPassed)
+	})
+	t.Run("Vault not found", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		err := client.AddIndex("NonExistentVaultID", attributeNames,
+			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+				return nil, nil
+			}))
+		require.EqualError(t, err, "the EDV server returned status code 400 along with the following "+
+			"message: Failed to add indexes to data vault NonExistentVaultID: specified vault does not exist.")
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
 	})
 }
 

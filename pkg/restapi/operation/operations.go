@@ -279,6 +279,9 @@ func (c *Operation) indexHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	logger.Infof(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.IndexReceiveRequest,
+		vaultID), requestBody)
+
 	var indexOperation models.IndexOperation
 
 	err = json.Unmarshal(requestBody, &indexOperation)
@@ -294,7 +297,7 @@ func (c *Operation) indexHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = c.vaultCollection.addIndexes(vaultID, indexOperation.AttributeKeys)
+	err = c.vaultCollection.addIndexes(vaultID, indexOperation.AttributeNames)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest,
 			messages.FailAddIndexes, err, vaultID, requestBody)
@@ -785,13 +788,13 @@ func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
 	return store.Delete(docID)
 }
 
-func (vc *VaultCollection) addIndexes(vaultID string, attributeKeys []string) error {
+func (vc *VaultCollection) addIndexes(vaultID string, attributeNames []string) error {
 	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
 	}
 
-	err = vc.provider.AddIndexes(vaultID, attributeKeys)
+	err = vc.provider.AddIndexes(vaultID, attributeNames)
 	if err != nil {
 		return err
 	}
