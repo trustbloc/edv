@@ -178,7 +178,7 @@ func (c *Store) Update(newDoc models.EncryptedDocument) error {
 		return err
 	}
 
-	return c.coreStore.Put(newDoc.ID, newDocBytes)
+	return c.coreStore.Put(newDoc.ID, newDocBytes, createTags(newDoc)...)
 }
 
 // Delete deletes the given document.
