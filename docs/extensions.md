@@ -1,7 +1,7 @@
 # Extensions
-This EDV server implementation includes support for a number of optional features that, as of writing, are considered "at-risk" features in the specification and may not be widely supported by other implementations. They may all be enabled safely without breaking any standard features. Non-extension-aware clients will still work seamlessly.
+This EDV server implementation includes support for an optional feature that, as of writing, is in the spec but is marked "at-risk". It is disabled by default, but can be safely enabled without breaking any standard features. Non-extension-aware clients will still work seamlessly.
 
-Note that extensions are disabled by default. See [here](rest/edv_cli.md#edv-server-parameters) for information on how to enable extensions.
+Note that the extension is disabled by default. See [here](rest/edv_cli.md#edv-server-parameters) for information on how to enable extensions.
 
 ## Batch Endpoint
 Allows multiple documents to be created, updated, or deleted in one REST call to the EDV server.
@@ -12,9 +12,4 @@ With MongoDB or CouchDB as the storage provider, this endpoint will be significa
 
 Note that, as of writing, the implementation has an important limitation to be aware of: batch deletes are not yet optimized. See [#171](https://github.com/trustbloc/edv/issues/171) for more information.
 
-The request in the spec repo to add this feature can be found [here](https://github.com/decentralized-identity/confidential-storage/issues/138).
-
-## Return Full Documents on Query
-Allows query results to be full documents instead of document locations. This allows clients to directly get their documents in one step instead of requiring them to get the full documents in separate REST calls.
-
-Queries must include a "returnFullDocuments" field in the JSON set to true for this endpoint to return full documents.
+This feature is in the spec but is currently considered "at risk" - see [here](https://github.com/decentralized-identity/edv-spec/pull/16) for more information.

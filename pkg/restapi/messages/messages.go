@@ -113,12 +113,6 @@ Received data: %s`
 	// FailToMarshalDocuments is used when the documents returned from a query can't be marshalled.
 	// This should not happen during normal operation.
 	FailToMarshalDocuments = QuerySuccess + " Failed to marshal the matching documents into bytes: %s."
-	// MarshalQueryForLogFailure is used when the log level is set to debug and a query
-	// fails to marshal back into bytes for logging purposes.
-	MarshalQueryForLogFailure = "Failed to marshal query back into bytes for logging purposes: %s."
-	// MarshalBatchForLogFailure is used when the log level is set to debug and a batch request
-	// fails to marshal back into bytes for logging purposes.
-	MarshalBatchForLogFailure = "Failed to marshal batch request back into bytes for logging purposes: %s."
 
 	// CreateDocumentReceiveRequest is used for logging create document requests.
 	CreateDocumentReceiveRequest = "Received request to create a new document in data vault %s."

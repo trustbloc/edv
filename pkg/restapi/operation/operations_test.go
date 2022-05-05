@@ -18,10 +18,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/gorilla/mux"
+	"github.com/hyperledger/aries-framework-go-ext/component/storage/mongodb"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mock"
 	"github.com/hyperledger/aries-framework-go/spi/storage"
+	dctest "github.com/ory/dockertest/v3"
+	dc "github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/log/mocklogger"
@@ -54,29 +58,7 @@ const (
   }
 }`
 
-	testQuery = `{
-  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-  "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
-}`
-	testQueryWithReturnFullDocuments = `{
-  "returnFullDocuments": true,
-  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-  "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
-}`
-
-	testQueryBlankName = `{
-  "equals": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
-}`
-	testQueryBlankValue = `{
-  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
-}`
-
 	testHasQuery = `{
-  "has": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
-}`
-
-	testInvalidQueryMixOfFormats = `{
-  "index": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
   "has": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
 }`
 
@@ -128,6 +110,10 @@ const (
 	testEncryptedDocumentWithNoJWE = `{
 	"id": "BJYHHJx4C8J9Fsgz7rZqSa"
 }`
+
+	mongoDBConnString    = "mongodb://localhost:27017"
+	dockerMongoDBImage   = "mongo"
+	dockerMongoDBTagV400 = "4.0.0"
 )
 
 var (
@@ -250,7 +236,7 @@ func TestCreateDataVault(t *testing.T) {
 			AuthService: &mockAuthService{createValue: []byte("authData")},
 		})
 
-		_, resp := createDataVaultExpectSuccess(t, op)
+		_, resp := createDataVaultExpectSuccess(t, op, "")
 
 		require.Equal(t, string(resp), "authData")
 	})
@@ -265,7 +251,7 @@ func TestCreateDataVault(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
 		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -274,7 +260,7 @@ func TestCreateDataVault(t *testing.T) {
 	t.Run("Invalid Data Vault Configuration JSON", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		createVaultHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+		createVaultHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
 
 		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte("")))
 		require.NoError(t, err)
@@ -310,7 +296,7 @@ func TestCreateDataVault(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
 		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, "Failed to create a new data vault: failed to store data vault configuration: "+
@@ -331,7 +317,7 @@ func TestCreateDataVault(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
 		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, "Failed to create a new data vault: "+
@@ -398,49 +384,340 @@ func testValidateIncomingDataVaultConfiguration(t *testing.T) {
 	})
 }
 
-func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
-	t.Run("Success, returning document IDs", func(t *testing.T) {
-		t.Run(`"index + equals" query`, func(t *testing.T) {
-			provider := mem.NewProvider()
+func TestQueryVault(t *testing.T) {
+	mongoDBProvider, err := mongodb.NewProvider(mongoDBConnString)
+	require.NoError(t, err)
 
-			edvProvider := edvprovider.NewProvider(provider, 100)
+	pool, mongoDBResource := startMongoDBContainer(t, mongoDBProvider)
 
-			op := New(&Config{Provider: edvProvider})
+	defer func() {
+		require.NoError(t, pool.Purge(mongoDBResource), "failed to purge MongoDB resource")
+	}()
 
-			vaultID, _ := createDataVaultExpectSuccess(t, op)
-
-			storeTestDataForQueryTests(t, vaultID, provider,
-				"RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
-				"RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro")
-
-			req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
-			require.NoError(t, err)
-
-			urlVars := make(map[string]string)
-			urlVars[vaultIDPathVariable] = vaultID
-
-			req = mux.SetURLVars(req, urlVars)
-
-			rr := httptest.NewRecorder()
-
-			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
-			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-			expectedResponseOrder1 := `["/encrypted-data-vaults/` + vaultID + `/documents/` +
-				`docID1","/encrypted-data-vaults/` + vaultID + `/documents/docID2"]`
-			expectedResponseOrder2 := `["/encrypted-data-vaults/` + vaultID + `/documents/` +
-				`docID2","/encrypted-data-vaults/` + vaultID + `/documents/docID1"]`
-
-			var gotExpectedResultAnyOrder bool
-
-			if rr.Body.String() == expectedResponseOrder1 || rr.Body.String() == expectedResponseOrder2 {
-				gotExpectedResultAnyOrder = true
+	t.Run("Success, returning only document locations", func(t *testing.T) {
+		t.Run("Various single and multiple attribute queries", func(t *testing.T) {
+			type queryTestEntry struct {
+				testName          string
+				query             interface{}
+				storedDocuments   [][]byte
+				expectedDocuments [][]byte
 			}
 
-			require.Truef(t, gotExpectedResultAnyOrder,
-				"Got unexpected response. Was expecting %s or %s but got %s instead.",
-				expectedResponseOrder1, expectedResponseOrder2, rr.Body.String())
-			require.Equal(t, http.StatusOK, rr.Code)
+			testDocument1 := []byte(`{
+    "id": "AJYHHJx4C8J9Fsgz7rZqAE",
+    "sequence": 0,
+    "indexed": [{
+      "sequence": 0,
+      "hmac": {
+        "id": "https://example.com/kms/z7BgF536GaR",
+        "type": "Sha256HmacKey2019"
+      },
+      "attributes": [{
+        "name": "AUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      },
+	  {
+        "name": "B2UQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "BV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      }]
+    }],
+    "jwe": {
+      "protected": "eyJlbmMiOiJDMjBQIn0",
+      "recipients": [
+        {
+          "header": {
+            "alg": "A256KW",
+            "kid": "https://example.com/kms/z7BgF536GaR"
+          },
+          "encrypted_key":
+            "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"
+        }
+      ],
+      "iv": "i8Nins2vTI3PlrYW",
+      "ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+      "tag": "pfZO0JulJcrc3trOZy8rjA"
+    }
+  }`)
+
+			testDocument2 := []byte(`{
+    "id": "BJYHHJx4C8J9Fsgz7rZqAE",
+    "sequence": 0,
+    "indexed": [{
+      "sequence": 0,
+      "hmac": {
+        "id": "https://example.com/kms/z7BgF536GaR",
+        "type": "Sha256HmacKey2019"
+      },
+      "attributes": [{
+        "name": "BUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      },{
+        "name": "B2UQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "BV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      }]
+    }],
+    "jwe": {
+      "protected": "eyJlbmMiOiJDMjBQIn0",
+      "recipients": [
+        {
+          "header": {
+            "alg": "A256KW",
+            "kid": "https://example.com/kms/z7BgF536GaR"
+          },
+          "encrypted_key":
+            "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"
+        }
+      ],
+      "iv": "i8Nins2vTI3PlrYW",
+      "ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+      "tag": "pfZO0JulJcrc3trOZy8rjA"
+    }
+  }`)
+
+			testDocument3 := []byte(`{
+    "id": "CJYHHJx4C8J9Fsgz7rZqAE",
+    "sequence": 0,
+    "indexed": [{
+      "sequence": 0,
+      "hmac": {
+        "id": "https://example.com/kms/z7BgF536GaR",
+        "type": "Sha256HmacKey2019"
+      },
+      "attributes": [{
+        "name": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      },{
+        "name": "B2UQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "OV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      }]
+    }],
+    "jwe": {
+      "protected": "eyJlbmMiOiJDMjBQIn0",
+      "recipients": [
+        {
+          "header": {
+            "alg": "A256KW",
+            "kid": "https://example.com/kms/z7BgF536GaR"
+          },
+          "encrypted_key":
+            "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"
+        }
+      ],
+      "iv": "i8Nins2vTI3PlrYW",
+      "ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+      "tag": "pfZO0JulJcrc3trOZy8rjA"
+    }
+  }`)
+
+			testDocument4 := []byte(`{
+    "id": "DJYHHJx4C8J9Fsgz7rZqAE",
+    "sequence": 0,
+    "indexed": [{
+      "sequence": 0,
+      "hmac": {
+        "id": "https://example.com/kms/z7BgF536GaR",
+        "type": "Sha256HmacKey2019"
+      },
+      "attributes": [{
+        "name": "BUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      },{
+        "name": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "PV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      }]
+    }],
+    "jwe": {
+      "protected": "eyJlbmMiOiJDMjBQIn0",
+      "recipients": [
+        {
+          "header": {
+            "alg": "A256KW",
+            "kid": "https://example.com/kms/z7BgF536GaR"
+          },
+          "encrypted_key":
+            "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"
+        }
+      ],
+      "iv": "i8Nins2vTI3PlrYW",
+      "ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+      "tag": "pfZO0JulJcrc3trOZy8rjA"
+    }
+  }`)
+
+			testDocument5 := []byte(`{
+    "id": "EJYHHJx4C8J9Fsgz7rZqAE",
+    "sequence": 0,
+    "indexed": [{
+      "sequence": 0,
+      "hmac": {
+        "id": "https://example.com/kms/z7BgF536GaR",
+        "type": "Sha256HmacKey2019"
+      },
+      "attributes": [{
+        "name": "BUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      },{
+        "name": "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+        "value": "NV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
+      }]
+    }],
+    "jwe": {
+      "protected": "eyJlbmMiOiJDMjBQIn0",
+      "recipients": [
+        {
+          "header": {
+            "alg": "A256KW",
+            "kid": "https://example.com/kms/z7BgF536GaR"
+          },
+          "encrypted_key":
+            "OR1vdCNvf_B68mfUxFQVT-vyXVrBembuiM40mAAjDC1-Qu5iArDbug"
+        }
+      ],
+      "iv": "i8Nins2vTI3PlrYW",
+      "ciphertext": "Cb-963UCXblINT8F6MDHzMJN9EAhK3I",
+      "tag": "pfZO0JulJcrc3trOZy8rjA"
+    }
+  }`)
+
+			testQuery1 := models.Query{
+				ReturnFullDocuments: false,
+				Equals: []map[string]string{
+					{
+						"AUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+					},
+				},
+			}
+
+			testQuery2 := models.Query{
+				ReturnFullDocuments: false,
+				Equals: []map[string]string{
+					{
+						"B2UQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "BV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+					},
+				},
+			}
+
+			testQuery3 := models.Query{
+				ReturnFullDocuments: false,
+				Equals: []map[string]string{
+					{
+						"BUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ":  "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+						"B2UQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "BV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+					},
+				},
+			}
+
+			testQuery4 := models.Query{
+				ReturnFullDocuments: false,
+				Equals: []map[string]string{
+					{
+						"BUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
+						"CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "",
+					},
+				},
+			}
+
+			testQuery5 := models.Query{
+				ReturnFullDocuments: false,
+				Equals: []map[string]string{
+					{
+						"B2UQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "",
+					},
+				},
+			}
+
+			testTable := []queryTestEntry{
+				{
+					testName:          "Store a single document - query for one attribute pair - one result.",
+					query:             testQuery1,
+					storedDocuments:   [][]byte{testDocument1},
+					expectedDocuments: [][]byte{testDocument1},
+				},
+				{
+					testName:          "Store three documents - query for one attribute pair - one result.",
+					query:             testQuery1,
+					storedDocuments:   [][]byte{testDocument1, testDocument2, testDocument3},
+					expectedDocuments: [][]byte{testDocument1},
+				},
+				{
+					testName:          "Store three documents - query for one attribute pair - two results.",
+					query:             testQuery2,
+					storedDocuments:   [][]byte{testDocument1, testDocument2, testDocument3},
+					expectedDocuments: [][]byte{testDocument1, testDocument2},
+				},
+				{
+					testName:          "Store three documents - query for two attribute pairs (AND) - one result.",
+					query:             testQuery3,
+					storedDocuments:   [][]byte{testDocument1, testDocument2, testDocument3},
+					expectedDocuments: [][]byte{testDocument2},
+				},
+				{
+					testName: "Store five documents - query for an attribute name AND another attribute pair" +
+						" - two results.",
+					query: testQuery4,
+					storedDocuments: [][]byte{
+						testDocument1, testDocument2, testDocument3, testDocument4,
+						testDocument5,
+					},
+					expectedDocuments: [][]byte{testDocument4, testDocument5},
+				},
+				{
+					testName: "Store five documents - query for an attribute name only - three results.",
+					query:    testQuery5,
+					storedDocuments: [][]byte{
+						testDocument1, testDocument2, testDocument3, testDocument4,
+						testDocument5,
+					},
+					expectedDocuments: [][]byte{testDocument1, testDocument2, testDocument3},
+				},
+			}
+
+			edvProvider := edvprovider.NewProvider(mongoDBProvider, 100)
+
+			op := New(&Config{Provider: edvProvider, UsingMongoDB: true})
+
+			// For each test, we:
+			// 1. Create a fresh (empty) vault.
+			// 2. Store the test documents in it.
+			// 3. Do the test query.
+			// 4. Check if we got the expected results back.
+			for _, queryTest := range testTable {
+				testFailureExtraInfo := fmt.Sprintf("Scenario: %s", queryTest.testName)
+
+				vaultID, _ := createDataVaultExpectSuccess(t, op, testFailureExtraInfo)
+
+				storeDocuments(t, op, vaultID, queryTest.storedDocuments, testFailureExtraInfo)
+
+				queryBytes, err := json.Marshal(queryTest.query)
+				require.NoError(t, err, testFailureExtraInfo)
+
+				req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
+				require.NoError(t, err, testFailureExtraInfo)
+
+				urlVars := make(map[string]string)
+				urlVars[vaultIDPathVariable] = vaultID
+
+				req = mux.SetURLVars(req, urlVars)
+
+				rr := httptest.NewRecorder()
+
+				queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost,
+					testFailureExtraInfo)
+				queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
+
+				expectedDocumentLocations := generateExpectedDocumentLocations(t, vaultID,
+					queryTest.expectedDocuments)
+
+				var actualDocumentLocations []string
+
+				err = json.Unmarshal(rr.Body.Bytes(), &actualDocumentLocations)
+				require.NoError(t, err, testFailureExtraInfo)
+
+				verifyActualDocumentLocationsMatchExpected(t, actualDocumentLocations, expectedDocumentLocations,
+					testFailureExtraInfo)
+
+				require.Equal(t, http.StatusOK, rr.Code)
+			}
 		})
 		t.Run(`"has" query`, func(t *testing.T) {
 			provider := mem.NewProvider()
@@ -449,7 +726,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 			op := New(&Config{Provider: edvProvider})
 
-			vaultID, _ := createDataVaultExpectSuccess(t, op)
+			vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 			storeTestDataForQueryTests(t, vaultID, provider,
 				"SomeArbitraryValue1",
@@ -465,7 +742,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 			rr := httptest.NewRecorder()
 
-			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 			expectedResponseOrder1 := `["/encrypted-data-vaults/` + vaultID + `/documents/` +
@@ -486,72 +763,16 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 		})
 	})
 	t.Run("Success, returning full documents", func(t *testing.T) {
-		t.Run(`"index + equals" query`, func(t *testing.T) {
-			provider := mem.NewProvider()
-
-			edvProvider := edvprovider.NewProvider(provider, 100)
-
-			op := New(&Config{
-				Provider:          edvProvider,
-				EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
-			})
-
-			vaultID, _ := createDataVaultExpectSuccess(t, op)
-
-			storeTestDataForQueryTests(t, vaultID, provider,
-				"RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
-				"RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro")
-
-			req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryWithReturnFullDocuments)))
-			require.NoError(t, err)
-
-			urlVars := make(map[string]string)
-			urlVars[vaultIDPathVariable] = vaultID
-
-			req = mux.SetURLVars(req, urlVars)
-
-			rr := httptest.NewRecorder()
-
-			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
-			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-			docsBytes := rr.Body.Bytes()
-
-			var docs []models.EncryptedDocument
-
-			err = json.Unmarshal(docsBytes, &docs)
-			require.NoError(t, err)
-
-			require.Len(t, docs, 2)
-
-			var gotExpectedResultAnyOrder bool
-
-			if docs[0].ID == mockDocID1 {
-				if docs[1].ID == mockDocID2 {
-					gotExpectedResultAnyOrder = true
-				}
-			} else if docs[0].ID == mockDocID2 {
-				if docs[1].ID == mockDocID1 {
-					gotExpectedResultAnyOrder = true
-				}
-			}
-
-			require.Truef(t, gotExpectedResultAnyOrder,
-				"Got unexpected response. Was expecting docID1 and docID2 but got %s and %s instead.",
-				docs[0].ID, docs[1].ID)
-			require.Equal(t, http.StatusOK, rr.Code)
-		})
 		t.Run(`"has" query`, func(t *testing.T) {
 			provider := mem.NewProvider()
 
 			edvProvider := edvprovider.NewProvider(provider, 100)
 
 			op := New(&Config{
-				Provider:          edvProvider,
-				EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+				Provider: edvProvider,
 			})
 
-			vaultID, _ := createDataVaultExpectSuccess(t, op)
+			vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 			storeTestDataForQueryTests(t, vaultID, provider,
 				"SomeArbitraryValue1",
@@ -567,7 +788,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 			rr := httptest.NewRecorder()
 
-			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+			queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 			queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 			docsBytes := rr.Body.Bytes()
@@ -598,65 +819,68 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 			require.Equal(t, http.StatusOK, rr.Code)
 		})
 	})
-	t.Run(`Error: "index + equals" query with blank index name`, func(t *testing.T) {
-		op := New(&Config{
-			Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
-			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
-		})
+	t.Run("Error: multiple-attribute queries not supported for in-memory or CouchDB", func(t *testing.T) {
+		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		storeSampleConfigExpectSuccess(t, op)
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryBlankName)))
+		query := models.Query{Equals: []map[string]string{{"name1": "value1", "name2": "value2"}}}
+
+		queryBytes, err := json.Marshal(query)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = vaultID
+		urlVars[vaultIDPathVariable] = testVaultID
 
 		req = mux.SetURLVars(req, urlVars)
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
-			"invalid query format.", rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidQuery, testVaultID,
+			"multiple-attribute queries not supported when using in-memory or CouchDB storage"), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
-	t.Run(`Error: "index + equals" query with blank equals value`, func(t *testing.T) {
-		op := New(&Config{
-			Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
-			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
-		})
+	t.Run("Error: multiple subfilters (OR operations) not implemented", func(t *testing.T) {
+		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		storeSampleConfigExpectSuccess(t, op)
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQueryBlankValue)))
+		query := models.Query{Equals: []map[string]string{{"name1": "value1"}, {"name2": "value2"}}}
+
+		queryBytes, err := json.Marshal(query)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = vaultID
+		urlVars[vaultIDPathVariable] = testVaultID
 
 		req = mux.SetURLVars(req, urlVars)
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
-			`invalid query format.`, rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.InvalidQuery, testVaultID,
+			"support for multiple subfilters (OR operations) not implemented"), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
-	t.Run(`Error: other unrecognized query format (no "index", "equals", or "has" fields)`, func(t *testing.T) {
+	t.Run(`Error: empty query`, func(t *testing.T) {
 		op := New(&Config{
-			Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
-			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
+			Provider: edvprovider.NewProvider(mem.NewProvider(), 100),
 		})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(`{}`)))
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("{}")))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
@@ -666,38 +890,11 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
-			`invalid query format.`,
-			rr.Body.String())
-		require.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-	t.Run(`Error: query is a mix of both query formats`, func(t *testing.T) {
-		op := New(&Config{
-			Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
-			EnabledExtensions: &EnabledExtensions{ReturnFullDocumentsOnQuery: true},
-		})
-
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
-
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testInvalidQueryMixOfFormats)))
-		require.NoError(t, err)
-
-		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = vaultID
-
-		req = mux.SetURLVars(req, urlVars)
-
-		rr := httptest.NewRecorder()
-
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
-		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-		require.Equal(t, "Received invalid query for data vault "+vaultID+": "+
-			`query cannot be a mix of "index + equals" and "has" formats.`,
-			rr.Body.String())
+			`query cannot be empty.`, rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Error: vault not found", func(t *testing.T) {
@@ -710,9 +907,14 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 		op := New(&Config{Provider: edvProvider})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
+		query := models.Query{Equals: []map[string]string{{"name": "value"}}}
+
+		queryBytes, err := json.Marshal(query)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
@@ -722,7 +924,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, fmt.Sprintf(messages.QueryFailure, vaultID, messages.ErrVaultNotFound), rr.Body.String())
@@ -734,9 +936,14 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 		provider := &mockProvider{numTimesOpenStoreCalledBeforeErr: 1, errOpenStore: testErr}
 		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
+		query := models.Query{Equals: []map[string]string{{"name": "value"}}}
+
+		queryBytes, err := json.Marshal(query)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
@@ -746,7 +953,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, fmt.Sprintf(messages.QueryFailure, vaultID, testErr), rr.Body.String())
@@ -767,11 +974,11 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, fmt.Sprintf(messages.InvalidQuery, testVaultID,
-			"failed to unmarshal request body: unexpected end of JSON input"), rr.Body.String())
+			"unexpected end of JSON input"), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Fail to write response when unable to unmarshal query JSON", func(t *testing.T) {
@@ -794,7 +1001,12 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 	t.Run("Fail to unescape path var", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testQuery)))
+		query := models.Query{Equals: []map[string]string{{"name": "value"}}}
+
+		queryBytes, err := json.Marshal(query)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
@@ -804,7 +1016,7 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 
 		rr := httptest.NewRecorder()
 
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost)
+		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t,
@@ -834,11 +1046,82 @@ func TestQueryVault(t *testing.T) { // nolint:gocognit,gocyclo // test file
 	})
 }
 
+func verifyActualDocumentLocationsMatchExpected(t *testing.T, actualLocations, expectedLocations []string,
+	testFailureExtraInfo string) {
+	t.Helper()
+
+	require.Equal(t, len(expectedLocations), len(actualLocations),
+		"Unexpected number of locations received. Expected: %d. Actual: %d. %s",
+		len(expectedLocations), len(actualLocations), testFailureExtraInfo)
+
+	ensureNoDuplicates(t, actualLocations,
+		fmt.Sprintf("%s. %s", "server returned duplicate locations", testFailureExtraInfo))
+	ensureNoDuplicates(t, expectedLocations,
+		fmt.Sprintf("%s. %s", "expected locations cannot have duplicates", testFailureExtraInfo))
+
+	checklist := make([]bool, len(expectedLocations))
+
+	for i, expectedLocation := range expectedLocations {
+		for _, actualLocation := range actualLocations {
+			if actualLocation == expectedLocation {
+				checklist[i] = true
+				break
+			}
+		}
+	}
+
+	for i, locationReceived := range checklist {
+		require.True(t, locationReceived,
+			"Document location %s (and possibly others) was expected but was not returned by the "+
+				"server. %s",
+			expectedLocations[i], testFailureExtraInfo)
+	}
+}
+
+func ensureNoDuplicates(t *testing.T, values []string, errMsg string) {
+	t.Helper()
+
+	for i := 0; i < len(values); i++ {
+		for j := 0; j < len(values); j++ {
+			if i == j {
+				continue
+			}
+
+			require.NotEqual(t, values[i], values[j], errMsg)
+		}
+	}
+}
+
+func generateExpectedDocumentLocations(t *testing.T, vaultID string, expectedDocuments [][]byte) []string {
+	t.Helper()
+
+	expectedDocumentLocations := make([]string, len(expectedDocuments))
+
+	for i, expectedDocument := range expectedDocuments {
+		documentID := getIDFromDocument(t, expectedDocument)
+
+		expectedDocumentLocations[i] = fmt.Sprintf(`/encrypted-data-vaults/%s/documents/%s`, vaultID, documentID)
+	}
+
+	return expectedDocumentLocations
+}
+
+func getIDFromDocument(t *testing.T, document []byte) string {
+	t.Helper()
+
+	var encryptedDocument models.EncryptedDocument
+
+	err := json.Unmarshal(document, &encryptedDocument)
+	require.NoError(t, err)
+
+	return encryptedDocument.ID
+}
+
 func TestCreateDocument(t *testing.T) {
 	t.Run("Success: without prefix", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID2, testEncryptedDocument2, vaultID)
@@ -848,7 +1131,7 @@ func TestCreateDocument(t *testing.T) {
 
 		storeSampleConfigExpectSuccess(t, op)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("")))
 		require.NoError(t, err)
@@ -869,7 +1152,7 @@ func TestCreateDocument(t *testing.T) {
 	t.Run("Document ID is not base58 encoded", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocumentWithNonBase58ID)))
 		require.NoError(t, err)
@@ -881,7 +1164,7 @@ func TestCreateDocument(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -892,7 +1175,7 @@ func TestCreateDocument(t *testing.T) {
 	t.Run("Document ID was not 128 bits long before being base58 encoded", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		req, err := http.NewRequest("POST", "",
 			bytes.NewBuffer([]byte(testEncryptedDocumentWithIDThatWasNot128BitsBeforeBase58Encoding)))
@@ -905,7 +1188,7 @@ func TestCreateDocument(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -916,7 +1199,7 @@ func TestCreateDocument(t *testing.T) {
 	t.Run("Empty JWE", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		req, err := http.NewRequest("POST", "",
 			bytes.NewBuffer([]byte(testEncryptedDocumentWithNoJWE)))
@@ -929,7 +1212,7 @@ func TestCreateDocument(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -940,7 +1223,7 @@ func TestCreateDocument(t *testing.T) {
 	t.Run("Duplicate document", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
@@ -954,7 +1237,7 @@ func TestCreateDocument(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusConflict, rr.Code)
@@ -964,7 +1247,7 @@ func TestCreateDocument(t *testing.T) {
 	t.Run("Response writer fails while writing duplicate document error", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
@@ -979,7 +1262,7 @@ func TestCreateDocument(t *testing.T) {
 
 		storeSampleConfigExpectSuccess(t, op)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocument)))
 		require.NoError(t, err)
@@ -1010,7 +1293,7 @@ func TestCreateDocument(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1023,7 +1306,7 @@ func TestCreateDocument(t *testing.T) {
 	t.Run("Response writer fails while writing unescape Vault ID error", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		createDataVaultExpectSuccess(t, op)
+		createDataVaultExpectSuccess(t, op, "")
 
 		request := http.Request{}
 
@@ -1067,7 +1350,7 @@ func TestReadDocument(t *testing.T) {
 
 		storeSampleConfigExpectSuccess(t, op)
 
-		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
@@ -1089,9 +1372,9 @@ func TestReadDocument(t *testing.T) {
 	t.Run("Document does not exist", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
-		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
@@ -1113,11 +1396,11 @@ func TestReadDocument(t *testing.T) {
 	t.Run("Unable to escape vault ID path variable", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
-		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
@@ -1140,11 +1423,11 @@ func TestReadDocument(t *testing.T) {
 	t.Run("Unable to escape document ID path variable", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
-		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
@@ -1167,7 +1450,7 @@ func TestReadDocument(t *testing.T) {
 	t.Run("Response writer fails while writing unescape vault ID error", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
@@ -1183,7 +1466,7 @@ func TestReadDocument(t *testing.T) {
 	t.Run("Response writer fails while writing unescape document ID error", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
@@ -1216,7 +1499,7 @@ func TestReadDocument(t *testing.T) {
 	t.Run("Response writer fails while writing retrieved document", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
@@ -1248,7 +1531,7 @@ func TestUpdateDocument(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		originalEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections1 +
 			`,` + `"jwe":` + testJWE1 + `}`
@@ -1267,12 +1550,12 @@ func TestUpdateDocument(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost, "")
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
 
-		getDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		getDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 		getDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, newEncryptedDoc, rr.Body.String())
@@ -1280,7 +1563,7 @@ func TestUpdateDocument(t *testing.T) {
 	t.Run("Failure - error while unmarshalling incoming document", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte("notAnEncryptedDocument")))
 		require.NoError(t, err)
@@ -1292,7 +1575,7 @@ func TestUpdateDocument(t *testing.T) {
 		urlVars[docIDPathVariable] = testDocID
 
 		req = mux.SetURLVars(req, urlVars)
-		createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
+		createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost, "")
 
 		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
@@ -1302,7 +1585,7 @@ func TestUpdateDocument(t *testing.T) {
 	t.Run("Failure - IDs from path variable and incoming document don't match", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		updateDocumentExpectError(t, op, []byte(testEncryptedDocument), vaultID, testDocID2,
 			fmt.Sprintf(messages.InvalidDocumentForDocUpdate, testDocID2, vaultID, messages.MismatchedDocIDs),
@@ -1311,7 +1594,7 @@ func TestUpdateDocument(t *testing.T) {
 	t.Run("Failure - invalid incoming document", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		testInvalidDoc := models.EncryptedDocument{ID: testDocID, JWE: nil}
 
@@ -1336,7 +1619,7 @@ func TestUpdateDocument(t *testing.T) {
 
 		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		newEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections2 +
 			`,` + `"jwe":` + testJWE1 + `}`
@@ -1347,7 +1630,7 @@ func TestUpdateDocument(t *testing.T) {
 	t.Run("Failure - document to be updated does not exist", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		newEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections2 +
 			`,` + `"jwe":` + testJWE1 + `}`
@@ -1379,7 +1662,7 @@ func TestDeleteDocument(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
@@ -1393,7 +1676,7 @@ func TestDeleteDocument(t *testing.T) {
 		rr := httptest.NewRecorder()
 		req = mux.SetURLVars(req, urlVars)
 
-		deleteDocumentEndpointHandler := getHandler(t, op, deleteDocumentEndpoint, http.MethodDelete)
+		deleteDocumentEndpointHandler := getHandler(t, op, deleteDocumentEndpoint, http.MethodDelete, "")
 		deleteDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 		require.Equal(t, http.StatusOK, rr.Code)
 
@@ -1403,7 +1686,7 @@ func TestDeleteDocument(t *testing.T) {
 		rr = httptest.NewRecorder()
 		req = mux.SetURLVars(req, urlVars)
 
-		getDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+		getDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 		getDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.Equal(t, fmt.Sprintf(messages.ReadDocumentFailure, testDocID, vaultID, messages.ErrDocumentNotFound),
@@ -1433,7 +1716,7 @@ func TestDeleteDocument(t *testing.T) {
 
 		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		deleteDocumentExpectError(t, op, vaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
 			vaultID, "test error"), http.StatusBadRequest)
@@ -1441,7 +1724,7 @@ func TestDeleteDocument(t *testing.T) {
 	t.Run("Failure - document does not exist", func(t *testing.T) {
 		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		deleteDocumentExpectError(t, op, vaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
 			vaultID, messages.ErrDocumentNotFound), http.StatusNotFound)
@@ -1554,7 +1837,7 @@ func TestBatch(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost)
+		batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost, "")
 		batchEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t,
@@ -1578,7 +1861,7 @@ func TestBatch(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost)
+		batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost, "")
 		batchEndpointHandler.Handle().ServeHTTP(rr, req)
 
 		require.Equal(t,
@@ -1626,7 +1909,7 @@ func TestAddIndex(t *testing.T) {
 			Provider: edvprovider.NewProvider(mem.NewProvider(), 100),
 		})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		addIndexRequest := `{"operation":"add","attributeNames":["EUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"]}`
 
@@ -1641,7 +1924,7 @@ func TestAddIndex(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost)
+		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost, "")
 
 		indexEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1652,7 +1935,7 @@ func TestAddIndex(t *testing.T) {
 			Provider: edvprovider.NewProvider(mem.NewProvider(), 100),
 		})
 
-		vaultID, _ := createDataVaultExpectSuccess(t, op)
+		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 		addIndexRequest := `{"operation":"ToastBread"}`
 
@@ -1667,7 +1950,7 @@ func TestAddIndex(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost)
+		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost, "")
 
 		indexEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1693,7 +1976,7 @@ func TestAddIndex(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost)
+		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost, "")
 
 		indexEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1722,7 +2005,7 @@ func TestAddIndex(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost)
+		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost, "")
 
 		indexEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1750,7 +2033,7 @@ func TestAddIndex(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost)
+		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost, "")
 
 		indexEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1779,7 +2062,7 @@ func TestAddIndex(t *testing.T) {
 
 		req = mux.SetURLVars(req, urlVars)
 
-		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost)
+		indexEndpointHandler := getHandler(t, op, indexEndpoint, http.MethodPost, "")
 
 		indexEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1800,7 +2083,7 @@ func doBatchCall(t *testing.T, batch *models.Batch,
 		EnabledExtensions: &EnabledExtensions{Batch: true},
 	})
 
-	vaultID, _ := createDataVaultExpectSuccess(t, op)
+	vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 	batchBytes, err := json.Marshal(batch)
 	require.NoError(t, err)
@@ -1815,7 +2098,7 @@ func doBatchCall(t *testing.T, batch *models.Batch,
 
 	rr := httptest.NewRecorder()
 
-	batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost)
+	batchEndpointHandler := getHandler(t, op, batchEndpoint, http.MethodPost, "")
 	batchEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	return rr, vaultID
@@ -1836,7 +2119,7 @@ func updateDocumentExpectError(t *testing.T, op *Operation, requestBody []byte, 
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost)
+	createDocumentEndpointHandler := getHandler(t, op, updateDocumentEndpoint, http.MethodPost, "")
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 	require.Equal(t, expectedErrorCode, rr.Code)
 	require.Equal(t, expectedErrorString, rr.Body.String())
@@ -1856,7 +2139,7 @@ func deleteDocumentExpectError(t *testing.T, op *Operation, pathVarVaultID, path
 	rr := httptest.NewRecorder()
 	req = mux.SetURLVars(req, urlVars)
 
-	deleteDocumentEndpointHandler := getHandler(t, op, deleteDocumentEndpoint, http.MethodDelete)
+	deleteDocumentEndpointHandler := getHandler(t, op, deleteDocumentEndpoint, http.MethodDelete, "")
 	deleteDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 	require.Equal(t, expectedErrorCode, rr.Code)
 	require.Equal(t, expectedErrorString, rr.Body.String())
@@ -1873,19 +2156,19 @@ func storeSampleConfigExpectSuccess(t *testing.T, op *Operation) {
 }
 
 // returns created test vault ID
-func createDataVaultExpectSuccess(t *testing.T, op *Operation) (string, []byte) {
+func createDataVaultExpectSuccess(t *testing.T, op *Operation, testFailureExtraInfo string) (string, []byte) {
 	t.Helper()
 
 	req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
-	require.NoError(t, err)
+	require.NoError(t, err, testFailureExtraInfo)
 
 	rr := httptest.NewRecorder()
 
-	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, testFailureExtraInfo)
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	require.Contains(t, rr.Header().Get("Location"), "/encrypted-data-vaults/")
+	require.Contains(t, rr.Header().Get("Location"), "/encrypted-data-vaults/", testFailureExtraInfo)
 
 	vaultID := getVaultIDFromURL(rr.Header().Get("Location"))
 
@@ -1905,7 +2188,7 @@ func createDataVaultExpectError(t *testing.T, request *models.DataVaultConfigura
 
 	rr := httptest.NewRecorder()
 
-	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost)
+	createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
 	createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
 	require.Equal(t, expectedError, rr.Body.String())
@@ -1926,7 +2209,7 @@ func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation, testDocID,
 
 	req = mux.SetURLVars(req, urlVars)
 
-	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost)
+	createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
 	createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
 
@@ -1938,11 +2221,11 @@ func storeEncryptedDocumentExpectSuccess(t *testing.T, op *Operation, testDocID,
 func readDocumentExpectSuccess(t *testing.T, op *Operation) {
 	t.Helper()
 
-	vaultID, _ := createDataVaultExpectSuccess(t, op)
+	vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
 	storeEncryptedDocumentExpectSuccess(t, op, testDocID, testEncryptedDocument, vaultID)
 
-	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet)
+	readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
@@ -1962,19 +2245,20 @@ func readDocumentExpectSuccess(t *testing.T, op *Operation) {
 	require.Equal(t, testEncryptedDocument, rr.Body.String())
 }
 
-func getHandler(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+func getHandler(t *testing.T, op *Operation, pathToLookup, methodToLookup, testFailureExtraInfo string) Handler {
 	t.Helper()
 
-	return getHandlerWithError(t, op, pathToLookup, methodToLookup)
+	return getHandlerWithError(t, op, pathToLookup, methodToLookup, testFailureExtraInfo)
 }
 
-func getHandlerWithError(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+func getHandlerWithError(t *testing.T, op *Operation, pathToLookup, methodToLookup,
+	testFailureExtraInfo string) Handler {
 	t.Helper()
 
-	return handlerLookup(t, op, pathToLookup, methodToLookup)
+	return handlerLookup(t, op, pathToLookup, methodToLookup, testFailureExtraInfo)
 }
 
-func handlerLookup(t *testing.T, op *Operation, pathToLookup, methodToLookup string) Handler {
+func handlerLookup(t *testing.T, op *Operation, pathToLookup, methodToLookup, testFailureExtraInfo string) Handler {
 	t.Helper()
 
 	handlers := op.GetRESTHandlers()
@@ -1986,12 +2270,40 @@ func handlerLookup(t *testing.T, op *Operation, pathToLookup, methodToLookup str
 		}
 	}
 
-	require.Fail(t, "unable to find handler")
+	if testFailureExtraInfo != "" {
+		require.Fail(t, "unable to find handler. %s", testFailureExtraInfo)
+	} else {
+		require.Fail(t, "unable to find handler")
+	}
 
 	return nil
 }
 
-func storeTestDataForQueryTests(t *testing.T, vaultID string, provider *mem.Provider,
+func storeDocuments(t *testing.T, operation *Operation, vaultID string, documents [][]byte,
+	testFailureExtraInfo string) {
+	t.Helper()
+
+	for _, document := range documents {
+		req, err := http.NewRequest("POST", "", bytes.NewBuffer(document))
+		require.NoError(t, err, testFailureExtraInfo)
+
+		rr := httptest.NewRecorder()
+
+		urlVars := make(map[string]string)
+		urlVars[vaultIDPathVariable] = vaultID
+
+		req = mux.SetURLVars(req, urlVars)
+
+		createDocumentEndpointHandler := getHandler(t, operation, createDocumentEndpoint, http.MethodPost, "")
+
+		createDocumentEndpointHandler.Handle().ServeHTTP(rr, req)
+
+		require.Empty(t, rr.Body.String())
+		require.Equal(t, http.StatusCreated, rr.Code, testFailureExtraInfo)
+	}
+}
+
+func storeTestDataForQueryTests(t *testing.T, vaultID string, provider storage.Provider,
 	encryptedDoc1TagValue, encryptedDoc2TagValue string) {
 	t.Helper()
 
@@ -2100,4 +2412,28 @@ type mockAuthService struct {
 
 func (m *mockAuthService) Create(resourceID, verificationMethod string) ([]byte, error) {
 	return m.createValue, m.createErr
+}
+
+func startMongoDBContainer(t *testing.T, provider *mongodb.Provider) (*dctest.Pool, *dctest.Resource) {
+	t.Helper()
+
+	pool, err := dctest.NewPool("")
+	require.NoError(t, err)
+
+	mongoDBResource, err := pool.RunWithOptions(&dctest.RunOptions{
+		Repository: dockerMongoDBImage,
+		Tag:        dockerMongoDBTagV400,
+		PortBindings: map[dc.Port][]dc.PortBinding{
+			"27017/tcp": {{HostIP: "", HostPort: "27017"}},
+		},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, waitForMongoDBToBeUp(provider))
+
+	return pool, mongoDBResource
+}
+
+func waitForMongoDBToBeUp(provider *mongodb.Provider) error {
+	return backoff.Retry(provider.Ping, backoff.WithMaxRetries(backoff.NewConstantBackOff(time.Second), 30))
 }

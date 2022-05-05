@@ -58,6 +58,7 @@ type Operation struct {
 	authEnable        bool
 	authService       authService
 	enabledExtensions *EnabledExtensions
+	usingMongoDB      bool
 }
 
 type authService interface {
@@ -78,9 +79,8 @@ type Handler interface {
 
 // EnabledExtensions indicates which EDV server extensions have been enabled.
 type EnabledExtensions struct {
-	ReturnFullDocumentsOnQuery bool
-	ReadAllDocumentsEndpoint   bool
-	Batch                      bool
+	ReadAllDocumentsEndpoint bool
+	Batch                    bool
 }
 
 // Config defines configuration for vcs operations
@@ -89,6 +89,7 @@ type Config struct {
 	AuthService       authService
 	AuthEnable        bool
 	EnabledExtensions *EnabledExtensions
+	UsingMongoDB      bool
 }
 
 // New returns a new EDV operations instance.
@@ -97,6 +98,7 @@ func New(config *Config) *Operation {
 		vaultCollection: VaultCollection{
 			provider: config.Provider,
 		}, authEnable: config.AuthEnable, authService: config.AuthService, enabledExtensions: config.EnabledExtensions,
+		usingMongoDB: config.UsingMongoDB,
 	}
 
 	svc.registerHandler()
@@ -227,7 +229,7 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.QueryReceiveRequest,
 		vaultID), requestBody)
 
-	incomingQuery, err := parseQuery(requestBody)
+	ariesQuery, returnFullDocuments, err := c.convertEDVQueryToAriesQuery(requestBody)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID, requestBody)
 		return
@@ -235,25 +237,14 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 
 	var queryBytesForLog []byte
 
-	if debugLogLevelEnabled() {
-		var errMarshal error
-		queryBytesForLog, errMarshal = json.Marshal(incomingQuery)
-
-		if errMarshal != nil {
-			logger.Errorf(messages.DebugLogEventWithReceivedData,
-				fmt.Sprintf(messages.MarshalQueryForLogFailure, errMarshal),
-				requestBody)
-		}
-	}
-
-	matchingDocuments, err := c.vaultCollection.queryVault(vaultID, &incomingQuery)
+	matchingDocuments, err := c.vaultCollection.queryVault(vaultID, ariesQuery)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID, queryBytesForLog)
 		return
 	}
 
-	if c.enabledExtensions != nil && c.enabledExtensions.ReturnFullDocumentsOnQuery {
-		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, incomingQuery.ReturnFullDocuments, req.Host)
+	if returnFullDocuments {
+		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, returnFullDocuments, req.Host)
 	} else {
 		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, false, req.Host)
 	}
@@ -545,6 +536,41 @@ func (c *Operation) upsertRemainingDocuments(rw http.ResponseWriter, host, vault
 	writeBatchResponse(rw, messages.BatchResponseSuccess, vaultID, requestBody, responses)
 }
 
+func (c *Operation) convertEDVQueryToAriesQuery(edvQueryBytes []byte) (string, bool, error) {
+	var incomingQuery models.Query
+
+	err := json.Unmarshal(edvQueryBytes, &incomingQuery)
+	if err != nil {
+		return "", false, err
+	}
+
+	if incomingQuery.Has != "" {
+		return incomingQuery.Has, incomingQuery.ReturnFullDocuments, nil
+	}
+
+	if len(incomingQuery.Equals) == 0 {
+		return "", false, errors.New("query cannot be empty")
+	} else if len(incomingQuery.Equals) > 1 {
+		return "", false, errors.New("support for multiple subfilters (OR operations) not implemented")
+	}
+
+	var ariesQueryStringBuilder strings.Builder
+
+	isFirstPair := true
+	for attributeName, attributeValue := range incomingQuery.Equals[0] {
+		if !isFirstPair && !c.usingMongoDB {
+			return "", false, errors.New("multiple-attribute queries not supported when using " +
+				"in-memory or CouchDB storage")
+		}
+
+		appendToQueryString(&ariesQueryStringBuilder, attributeName, attributeValue, isFirstPair)
+
+		isFirstPair = false
+	}
+
+	return ariesQueryStringBuilder.String(), incomingQuery.ReturnFullDocuments, nil
+}
+
 func createInitialResponses(numResponses int) []string {
 	responses := make([]string, numResponses)
 	for i := range responses {
@@ -699,7 +725,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 	return documentBytes, err
 }
 
-func (vc *VaultCollection) queryVault(vaultID string, query *models.Query) ([]models.EncryptedDocument, error) {
+func (vc *VaultCollection) queryVault(vaultID, query string) ([]models.EncryptedDocument, error) {
 	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return nil, err
@@ -884,28 +910,27 @@ func validateEncryptedDocument(doc models.EncryptedDocument) error {
 	return nil
 }
 
-func parseQuery(requestBody []byte) (models.Query, error) {
-	var incomingQuery models.Query
-
-	err := json.Unmarshal(requestBody, &incomingQuery)
-	if err != nil {
-		return models.Query{}, fmt.Errorf("failed to unmarshal request body: %w", err)
+func appendToQueryString(ariesQueryStringBuilder *strings.Builder, attributeName, attributeValue string,
+	isFirstPair bool) {
+	if isFirstPair {
+		buildQueryFirstPart(ariesQueryStringBuilder, attributeName, attributeValue)
+	} else {
+		appendQuerySubsequentParts(ariesQueryStringBuilder, attributeName, attributeValue)
 	}
+}
 
-	if incomingQuery.Has == "" {
-		// See if it's an "index + equals" query instead of a "has" query.
-		if incomingQuery.Name == "" || incomingQuery.Value == "" {
-			return models.Query{}, errors.New("invalid query format")
-		}
-
-		// This is a valid "index + equals" query.
-		return incomingQuery, nil
+func buildQueryFirstPart(ariesQueryStringBuilder *strings.Builder, attributeName, attributeValue string) {
+	if attributeValue == "" {
+		ariesQueryStringBuilder.WriteString(attributeName)
+	} else {
+		ariesQueryStringBuilder.WriteString(fmt.Sprintf("%s:%s", attributeName, attributeValue))
 	}
+}
 
-	if incomingQuery.Name != "" || incomingQuery.Value != "" {
-		return models.Query{}, errors.New(`query cannot be a mix of "index + equals" and "has" formats`)
+func appendQuerySubsequentParts(ariesQueryStringBuilder *strings.Builder, attributeName, attributeValue string) {
+	if attributeValue == "" {
+		ariesQueryStringBuilder.WriteString(fmt.Sprintf("&&%s", attributeName))
+	} else {
+		ariesQueryStringBuilder.WriteString(fmt.Sprintf("&&%s:%s", attributeName, attributeValue))
 	}
-
-	// This is a valid "has" query.
-	return incomingQuery, nil
 }

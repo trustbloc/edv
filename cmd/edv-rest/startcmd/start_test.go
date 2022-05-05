@@ -98,8 +98,7 @@ func TestStartCmdValidArgs(t *testing.T) {
 		args := []string{
 			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
 			"--" + authEnableFlagName, "true", "--" + localKMSSecretsDatabaseTypeFlagName, "mem",
-			"--" + extensionsFlagName, returnFullDocumentOnQueryExtensionName +
-				"," + readAllDocumentsExtensionName + "," + batchExtensionName, "--" + corsEnableFlagName, "true",
+			"--" + extensionsFlagName, batchExtensionName, "--" + corsEnableFlagName, "true",
 		}
 		startCmd.SetArgs(args)
 

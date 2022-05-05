@@ -293,7 +293,11 @@ func (e *Steps) createIndex(attributeName string) error {
 }
 
 func (e *Steps) queryVault(queryAttributeName, queryAttributeValue string) error {
-	docURLs, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, queryAttributeName, queryAttributeValue)
+	query := &models.Query{
+		Equals: []map[string]string{{queryAttributeName: queryAttributeValue}},
+	}
+
+	docURLs, _, err := e.bddContext.EDVClient.QueryVault(e.bddContext.VaultID, query)
 	if err != nil {
 		return err
 	}

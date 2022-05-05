@@ -477,7 +477,7 @@ func TestClient_DeleteDocument_ServerUnreachable(t *testing.T) {
 }
 
 func TestClient_QueryVault(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
+	t.Run("Success, returning only document locations", func(t *testing.T) {
 		srvAddr := randomURL()
 
 		mockQueryVaultHTTPHandler :=
@@ -490,7 +490,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVault("testVaultID", "name", "value")
+		ids, _, err := client.QueryVault("testVaultID", &models.Query{})
 		require.NoError(t, err)
 		require.Equal(t, "docID1", ids[0])
 		require.Equal(t, "docID2", ids[1])
@@ -498,67 +498,7 @@ func TestClient_QueryVault(t *testing.T) {
 		err = srv.Shutdown(context.Background())
 		require.NoError(t, err)
 	})
-	t.Run("Failure: server unreachable", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		ids, err := client.QueryVault("testVaultID", "name", "value")
-
-		// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
-		testPassed := (strings.Contains(err.Error(), "EOF") ||
-			strings.Contains(err.Error(), "connection refused")) && len(ids) == 0
-		require.True(t, testPassed)
-	})
-	t.Run("Failure: unable to unmarshal response into string array", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		mockQueryVaultHTTPHandler :=
-			support.NewHTTPHandler(queryVaultEndpointPath, http.MethodPost,
-				mockFailQueryVaultHandler)
-
-		srv := startMockEDVServer(srvAddr, mockQueryVaultHTTPHandler)
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		ids, err := client.QueryVault("testVaultID", "name", "value")
-		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
-		require.Empty(t, ids)
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
-	})
-	t.Run("Failure: vault doesn't exist", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		ids, err := client.QueryVault("testVaultID", "name", "value")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
-		require.Contains(t, err.Error(), "status code 400")
-		require.Empty(t, ids)
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
-	})
-	t.Run("Failure: error while marshalling query", func(t *testing.T) {
-		client := Client{marshal: failingMarshal}
-
-		ids, err := client.QueryVault("testVaultID", "name", "value")
-		require.Equal(t, errFailingMarshal, err)
-		require.Empty(t, ids)
-	})
-}
-
-func TestClient_QueryVaultForFullDocuments(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
+	t.Run("Success, returning full documents", func(t *testing.T) {
 		srvAddr := randomURL()
 
 		mockQueryVaultHTTPHandler :=
@@ -571,8 +511,13 @@ func TestClient_QueryVaultForFullDocuments(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		docs, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		locations, docs, err := client.QueryVault("testVaultID",
+			&models.Query{
+				Equals:              []map[string]string{{"name": "value"}},
+				ReturnFullDocuments: true,
+			})
 		require.NoError(t, err)
+		require.Empty(t, locations)
 		require.Equal(t, "docID1", docs[0].ID)
 		require.Equal(t, "docID2", docs[1].ID)
 
@@ -584,9 +529,9 @@ func TestClient_QueryVaultForFullDocuments(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		ids, _, err := client.QueryVault("testVaultID", &models.Query{})
 
-		// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
+		// Multiple error strings are possible depending on the environment.
 		testPassed := (strings.Contains(err.Error(), "EOF") ||
 			strings.Contains(err.Error(), "connection refused")) && len(ids) == 0
 		require.True(t, testPassed)
@@ -604,9 +549,31 @@ func TestClient_QueryVaultForFullDocuments(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		ids, _, err := client.QueryVault("testVaultID", &models.Query{})
 		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
 		require.Empty(t, ids)
+
+		err = srv.Shutdown(context.Background())
+		require.NoError(t, err)
+	})
+	t.Run("Failure: unable to unmarshal response into encrypted documents", func(t *testing.T) {
+		srvAddr := randomURL()
+
+		mockQueryVaultHTTPHandler :=
+			support.NewHTTPHandler(queryVaultEndpointPath, http.MethodPost,
+				mockFailQueryVaultHandler)
+
+		srv := startMockEDVServer(srvAddr, mockQueryVaultHTTPHandler)
+
+		waitForServerToStart(t, srvAddr)
+
+		client := New("http://" + srvAddr + "/encrypted-data-vaults")
+
+		_, _, err := client.QueryVault("testVaultID", &models.Query{
+			Equals:              []map[string]string{{"name": "value"}},
+			ReturnFullDocuments: true,
+		})
+		require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
 
 		err = srv.Shutdown(context.Background())
 		require.NoError(t, err)
@@ -620,7 +587,8 @@ func TestClient_QueryVaultForFullDocuments(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		ids, _, err := client.QueryVault("testVaultID",
+			&models.Query{Equals: []map[string]string{{"name": "value"}}})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
 		require.Contains(t, err.Error(), "status code 400")
@@ -632,7 +600,7 @@ func TestClient_QueryVaultForFullDocuments(t *testing.T) {
 	t.Run("Failure: error while marshalling query", func(t *testing.T) {
 		client := Client{marshal: failingMarshal}
 
-		ids, err := client.QueryVaultForFullDocuments("testVaultID", "name", "value")
+		ids, _, err := client.QueryVault("testVaultID", &models.Query{})
 		require.Equal(t, errFailingMarshal, err)
 		require.Empty(t, ids)
 	})
