@@ -186,41 +186,21 @@ func (c *Store) Delete(docID string) error {
 	return c.coreStore.Delete(docID)
 }
 
-// Query queries for data based on Encrypted Document attributes..
-// If query.Has is not blank, then we assume it's a "has" query, and so any documents with an attribute name matching
-// query.Has will be returned regardless of value.
+// Query queries for data based on Encrypted Document attributes.
 // TODO (#168): Add support for pagination (not currently in the spec).
 //  The c.retrievalPageSize parameter is passed in from the startup args and could be used with pagination.
-func (c *Store) Query(query *models.Query) ([]models.EncryptedDocument, error) {
-	// TODO (#169): Use c.retrievalPageSize to do pagination within this method to help control the maximum amount of
-	//  memory used here. Without official pagination support it won't be possible to truly cap memory usage, however.
-	var queryStringForUnderlyingStorage string
-	if query.Has != "" {
-		queryStringForUnderlyingStorage = query.Has
-	} else {
-		queryStringForUnderlyingStorage = fmt.Sprintf("%s:%s", query.Name, query.Value)
-	}
-
-	documents, err := c.queryUnderlyingStore(queryStringForUnderlyingStorage)
-	if err != nil {
-		return nil, err
-	}
-
-	return documents, nil
-}
-
-func (c *Store) queryUnderlyingStore(query string) ([]models.EncryptedDocument, error) {
+func (c *Store) Query(query string) ([]models.EncryptedDocument, error) {
 	iterator, err := c.coreStore.Query(query, storage.WithPageSize(int(c.retrievalPageSize)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query underlying store: %w", err)
 	}
 
+	defer storage.Close(iterator, logger)
+
 	moreEntries, err := iterator.Next()
 	if err != nil {
 		return nil, err
 	}
-
-	defer storage.Close(iterator, logger)
 
 	var encryptedDocuments []models.EncryptedDocument
 

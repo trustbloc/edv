@@ -397,12 +397,9 @@ func TestEDVStore_Query(t *testing.T) {
 
 			store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-			query := models.Query{
-				Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-				Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
-			}
+			query := "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ:RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"
 
-			docs, err := store.Query(&query)
+			docs, err := store.Query(query)
 			require.NoError(t, err)
 			require.Len(t, docs, 1)
 			require.Equal(t, testDocID1, docs[0].ID)
@@ -417,11 +414,9 @@ func TestEDVStore_Query(t *testing.T) {
 
 			store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-			query := models.Query{
-				Has: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-			}
+			query := "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ"
 
-			docs, err := store.Query(&query)
+			docs, err := store.Query(query)
 			require.NoError(t, err)
 			require.Len(t, docs, 1)
 			require.Equal(t, testDocID1, docs[0].ID)
@@ -433,9 +428,7 @@ func TestEDVStore_Query(t *testing.T) {
 
 		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-		query := models.Query{}
-
-		docs, err := store.Query(&query)
+		docs, err := store.Query("")
 		require.EqualError(t, err, "failed to query underlying store: queryError")
 		require.Empty(t, docs)
 	})
@@ -447,9 +440,7 @@ func TestEDVStore_Query(t *testing.T) {
 
 		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-		query := models.Query{}
-
-		docs, err := store.Query(&query)
+		docs, err := store.Query("")
 		require.EqualError(t, err, "next error")
 		require.Empty(t, docs)
 	})
@@ -464,9 +455,7 @@ func TestEDVStore_Query(t *testing.T) {
 
 		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-		query := models.Query{}
-
-		docs, err := store.Query(&query)
+		docs, err := store.Query("")
 		require.EqualError(t, err, "next error")
 		require.Empty(t, docs)
 	})
@@ -478,9 +467,7 @@ func TestEDVStore_Query(t *testing.T) {
 
 		store := Store{coreStore: &mockCoreStore, retrievalPageSize: 100}
 
-		query := models.Query{}
-
-		docs, err := store.Query(&query)
+		docs, err := store.Query("")
 		require.EqualError(t, err, "value error")
 		require.Empty(t, docs)
 	})

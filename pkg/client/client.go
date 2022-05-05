@@ -199,87 +199,52 @@ func (c *Client) ReadDocument(vaultID, docID string, opts ...ReqOption) (*models
 	}
 }
 
-// QueryVault queries the given vault and returns the URLs of all documents that match the given query.
-func (c *Client) QueryVault(vaultID, name, value string, opts ...ReqOption) ([]string, error) {
+// QueryVault queries the given vault and returns all documents that match the given query.
+// If query.ReturnFullDocuments is false, then only the document locations will be returned via the first return value.
+// If query.ReturnFullDocuments is true, then the full documents will be returned via the second return value.
+func (c *Client) QueryVault(vaultID string, query *models.Query,
+	opts ...ReqOption) ([]string, []models.EncryptedDocument, error) {
 	reqOpt := &ReqOpts{}
 
 	for _, o := range opts {
 		o(reqOpt)
 	}
 
-	query := models.Query{
-		ReturnFullDocuments: false,
-		Name:                name,
-		Value:               value,
-	}
-
 	jsonToSend, err := c.marshal(query)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	endpoint := fmt.Sprintf("%s/%s/query", c.edvServerURL, url.PathEscape(vaultID))
 
 	statusCode, _, respBytes, err := c.sendHTTPRequest(http.MethodPost, endpoint, jsonToSend, c.getHeaderFunc(reqOpt))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if statusCode == http.StatusOK {
+		if query.ReturnFullDocuments {
+			var documents []models.EncryptedDocument
+
+			err = json.Unmarshal(respBytes, &documents)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			return nil, documents, nil
+		}
+
 		var docURLs []string
 
 		err = json.Unmarshal(respBytes, &docURLs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		return docURLs, nil
+		return docURLs, nil, nil
 	}
 
-	return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
-		statusCode, respBytes)
-}
-
-// QueryVaultForFullDocuments queries the given vault and returns all documents that match the given query.
-// Requires the EDV server to support the ReturnFullDocumentsOnQuery extension.
-func (c *Client) QueryVaultForFullDocuments(vaultID, name, value string,
-	opts ...ReqOption) ([]models.EncryptedDocument, error) {
-	reqOpt := &ReqOpts{}
-
-	for _, o := range opts {
-		o(reqOpt)
-	}
-
-	query := models.Query{
-		ReturnFullDocuments: true,
-		Name:                name,
-		Value:               value,
-	}
-
-	jsonToSend, err := c.marshal(query)
-	if err != nil {
-		return nil, err
-	}
-
-	endpoint := fmt.Sprintf("%s/%s/query", c.edvServerURL, url.PathEscape(vaultID))
-
-	statusCode, _, respBytes, err := c.sendHTTPRequest(http.MethodPost, endpoint, jsonToSend, c.getHeaderFunc(reqOpt))
-	if err != nil {
-		return nil, err
-	}
-
-	if statusCode == http.StatusOK {
-		var documents []models.EncryptedDocument
-
-		err = json.Unmarshal(respBytes, &documents)
-		if err != nil {
-			return nil, err
-		}
-
-		return documents, nil
-	}
-
-	return nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
+	return nil, nil, fmt.Errorf("the EDV server returned status code %d along with the following message: %s",
 		statusCode, respBytes)
 }
 

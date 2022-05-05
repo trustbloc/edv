@@ -163,18 +163,13 @@ const (
 		"Defaults to false if not set. " + commonEnvVarUsageText + corsEnableEnvKey
 	corsEnableEnvKey = "EDV_CORS_ENABLE"
 
-	// Enables queries to return full documents in queries instead of only the document locations.
-	// Requires "returnFullDocuments" to be set to true in incoming query JSON,
-	// otherwise only document locations will be returned.
-	returnFullDocumentOnQueryExtensionName = "ReturnFullDocumentsOnQuery"
 	// Enables a /{VaultID}/batch endpoint for doing batching operations within a vault.
-	batchExtensionName            = "Batch"
-	readAllDocumentsExtensionName = "ReadAllDocuments"
+	batchExtensionName = "Batch"
 
 	extensionsFlagName  = "with-extensions"
 	extensionsFlagUsage = "Enables features that are extensions of the spec. " +
 		"If set, must be a comma-separated list of some or all of the following possible values: " +
-		"[" + returnFullDocumentOnQueryExtensionName + "," + batchExtensionName + "]. " +
+		"[" + batchExtensionName + "]. " +
 		"If not set, then no extensions will be used and the EDV server will be " +
 		"strictly conformant with the spec. These can all be safely enabled without breaking any core " +
 		"EDV functionality or non-extension-aware clients." + commonEnvVarUsageText + extensionsEnvKey
@@ -332,6 +327,8 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				return err
 			}
 
+			databaseType = strings.ToLower(databaseType)
+
 			var databaseURL string
 			if databaseType == databaseTypeMemOption {
 				databaseURL = "N/A"
@@ -480,10 +477,7 @@ func getEnabledExtensions(cmd *cobra.Command) (*operation.EnabledExtensions, err
 	var enabledExtensions operation.EnabledExtensions
 
 	for _, extensionToEnable := range extensionsToEnable {
-		switch {
-		case strings.EqualFold(extensionToEnable, returnFullDocumentOnQueryExtensionName):
-			enabledExtensions.ReturnFullDocumentsOnQuery = true
-		case strings.EqualFold(extensionToEnable, batchExtensionName):
+		if strings.EqualFold(extensionToEnable, batchExtensionName) {
 			enabledExtensions.Batch = true
 		}
 	}
@@ -644,6 +638,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	edvService, err := restapi.New(&operation.Config{
 		Provider: provider, AuthService: authSvc,
 		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable,
+		UsingMongoDB: parameters.databaseType == "mongodb",
 	})
 	if err != nil {
 		return err

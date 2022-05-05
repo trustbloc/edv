@@ -27,7 +27,7 @@ This EDV server is not by itself a database - a database provider must be chosen
 See [here](docs/rest/edv_cli.md#edv-server-parameters) for information on how to choose the database provider.
 
 ## Extensions
-This EDV server implementation includes support for a number of optional features that, as of writing, are either recently added to the spec (and not in widespread use) or are features marked "at-risk". They are all disabled by default, but they can all be safely enabled without breaking any standard features. Non-extension-aware clients will still work seamlessly. See the [extensions documentation](docs/extensions.md) for more information.
+This EDV server implementation includes support for an optional feature that, as of writing, is in the spec but is marked "at-risk". It is disabled by default, but can be safely enabled without breaking any standard features. Non-extension-aware clients will still work seamlessly. See the [extensions documentation](docs/extensions.md) for more information.
 
 ## Documentation
 - [Build + BDD tests](docs/test/build.md)
