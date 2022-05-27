@@ -31,11 +31,11 @@ import (
 )
 
 const (
-	testReferenceID        = "testRefID"
-	testVaultIDNonExistent = "testVaultIDImpossible"
-	testDocumentID         = "VJYHHJx4C8J9Fsgz7rZqSp"
-	testDocumentID2        = "AJYHHJx4C8J9Fsgz7rZqSp"
-	testJWE                = `{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxMzA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQ` +
+	testReferenceID = "testRefID"
+	testVaultID     = "Sr7yHjomhn1aeaFnxREfRN"
+	testDocumentID  = "VJYHHJx4C8J9Fsgz7rZqSp"
+	testDocumentID2 = "AJYHHJx4C8J9Fsgz7rZqSp"
+	testJWE         = `{"protected":"eyJlbmMiOiJjaGFjaGEyMHBvbHkxMzA1X2lldGYiLCJ0eXAiOiJKV00vMS4wIiwiYWxnIjoiQ` +
 		`XV0aGNyeXB0IiwicmVjaXBpZW50cyI6W3siZW5jcnlwdGVkX2tleSI6ImdLcXNYNm1HUXYtS3oyelQzMndIbE5DUjFiVU54ZlRTd0ZYcFVWb` +
 		`3FIMjctQUN0bURpZHBQdlVRcEdKSDZqMDkiLCJoZWFkZXIiOnsia2lkIjoiNzd6eWlNeHY0SlRzc2tMeFdFOWI1cVlDN2o1b3Fxc1VMUnFhc` +
 		`VNqd1oya1kiLCJzZW5kZXIiOiJiNmhrRkpXM2RfNmZZVjAtcjV0WEJoWnBVVmtrYXhBSFBDUEZxUDVyTHh3aGpwdFJraTRURjBmTEFNcy1se` +
@@ -51,7 +51,6 @@ const (
 		`3rpYIzOeDQz7TALvtu6UG9oMo4vpzs9tX_EFShS8iB7j6jiSdiwkIr3ajwQzaBtQD_A","tag":"XFBoMYUZodetZdvTiFvSkQ"}`
 
 	queryVaultEndpointPath = "/encrypted-data-vaults/{vaultIDPathVariable}/query"
-	IndexEndpointPath      = "/encrypted-data-vaults/{vaultIDPathVariable}/query"
 	testQueryVaultResponse = `["docID1","docID2"]`
 )
 
@@ -197,7 +196,7 @@ func TestClient_CreateDocument_NoVault(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	location, err := client.CreateDocument(testVaultIDNonExistent, getTestValidEncryptedDocument(testJWE))
+	location, err := client.CreateDocument(testVaultID, getTestValidEncryptedDocument(testJWE))
 	require.Empty(t, location)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
@@ -212,7 +211,7 @@ func TestClient_CreateDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	location, err := client.CreateDocument(testVaultIDNonExistent, &models.EncryptedDocument{})
+	location, err := client.CreateDocument(testVaultID, &models.EncryptedDocument{})
 	require.Empty(t, location)
 
 	// For some reason on the Azure CI "E0F" is returned while locally "connection refused" is returned.
@@ -265,7 +264,7 @@ func TestClient_ReadDocument_UnmarshalFail(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	document, err := client.ReadDocument(testVaultIDNonExistent, testDocumentID)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
 	require.EqualError(t, err, "invalid character 'h' in literal true (expecting 'r')")
 
@@ -282,16 +281,7 @@ func TestClient_ReadDocument_VaultNotFound(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	validConfig := getTestValidDataVaultConfiguration()
-	vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
-	require.NoError(t, err)
-
-	vaultID := getVaultIDFromURL(vaultLocationURL)
-
-	_, err = client.CreateDocument(vaultID, getTestValidEncryptedDocument(testJWE))
-	require.NoError(t, err)
-
-	document, err := client.ReadDocument("wrongvault", testDocumentID)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
 	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
 	require.Contains(t, err.Error(), "status code 404")
@@ -328,7 +318,7 @@ func TestClient_ReadDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	document, err := client.ReadDocument(testVaultIDNonExistent, testDocumentID)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
 	require.Contains(t, err.Error(), "connection refused")
 }
@@ -344,7 +334,7 @@ func TestClient_ReadDocument_UnableToReachReadCredentialEndpoint(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	document, err := client.ReadDocument(testVaultIDNonExistent, testDocumentID)
+	document, err := client.ReadDocument(testVaultID, testDocumentID)
 	require.Nil(t, document)
 	require.Contains(t, err.Error(), "404 page not found")
 
@@ -394,7 +384,7 @@ func TestClient_UpdateDocument_VaultNotFound(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	err := client.UpdateDocument(testVaultIDNonExistent, testDocumentID,
+	err := client.UpdateDocument(testVaultID, testDocumentID,
 		getTestValidEncryptedDocument(testJWE))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
@@ -409,7 +399,7 @@ func TestClient_UpdateDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	err := client.UpdateDocument(testVaultIDNonExistent, testDocumentID, &models.EncryptedDocument{})
+	err := client.UpdateDocument(testVaultID, testDocumentID, &models.EncryptedDocument{})
 
 	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
 	require.True(t, testPassed)
@@ -456,7 +446,7 @@ func TestClient_DeleteDocument_VaultNotFound(t *testing.T) {
 
 	client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-	err := client.DeleteDocument(testVaultIDNonExistent, testDocumentID)
+	err := client.DeleteDocument(testVaultID, testDocumentID)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
 	require.Contains(t, err.Error(), "status code 404")
@@ -470,7 +460,7 @@ func TestClient_DeleteDocument_ServerUnreachable(t *testing.T) {
 
 	client := New("http://" + srvAddr)
 
-	err := client.DeleteDocument(testVaultIDNonExistent, testDocumentID)
+	err := client.DeleteDocument(testVaultID, testDocumentID)
 
 	testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
 	require.True(t, testPassed)
@@ -587,7 +577,7 @@ func TestClient_QueryVault(t *testing.T) {
 
 		client := New("http://" + srvAddr + "/encrypted-data-vaults")
 
-		ids, _, err := client.QueryVault("testVaultID",
+		ids, _, err := client.QueryVault(testVaultID,
 			&models.Query{Equals: []map[string]string{{"name": "value"}}})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), messages.ErrVaultNotFound.Error())
@@ -737,84 +727,6 @@ func TestClient_Batch(t *testing.T) {
 			}))
 		require.EqualError(t, err, errFailingMarshal.Error())
 		require.Nil(t, responses)
-	})
-}
-
-func TestClient_AddIndex(t *testing.T) {
-	attributeNames := []string{
-		"DUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-		"AarngVIZLl0kIp2xEHUH5o5uVc-470roQaOIbqMUD7DFQQypWQ==",
-	}
-
-	t.Run("Success", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		validConfig := getTestValidDataVaultConfiguration()
-
-		vaultLocationURL, _, err := client.CreateDataVault(&validConfig)
-		require.NoError(t, err)
-
-		vaultID := getVaultIDFromURL(vaultLocationURL)
-
-		err = client.AddIndex(vaultID, attributeNames,
-			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-				return nil, nil
-			}))
-		require.NoError(t, err)
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
-	})
-	t.Run("Fail to marshal operation", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		client.marshal = failingMarshal
-
-		err := client.AddIndex("VaultID", attributeNames,
-			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-				return nil, nil
-			}))
-		require.EqualError(t, err, "failed to marshal index operation: failingMarshal always fails")
-	})
-	t.Run("Server unreachable", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		client := New("http://" + srvAddr)
-
-		err := client.AddIndex("VaultID", attributeNames,
-			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-				return nil, nil
-			}))
-
-		testPassed := strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
-		require.True(t, testPassed)
-	})
-	t.Run("Vault not found", func(t *testing.T) {
-		srvAddr := randomURL()
-
-		srv := startEDVServer(t, srvAddr, &operation.EnabledExtensions{})
-
-		waitForServerToStart(t, srvAddr)
-
-		client := New("http://" + srvAddr + "/encrypted-data-vaults")
-
-		err := client.AddIndex("NonExistentVaultID", attributeNames,
-			WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-				return nil, nil
-			}))
-		require.EqualError(t, err, "the EDV server returned status code 400 along with the following "+
-			"message: Failed to add indexes to data vault NonExistentVaultID: specified vault does not exist.")
-
-		err = srv.Shutdown(context.Background())
-		require.NoError(t, err)
 	})
 }
 

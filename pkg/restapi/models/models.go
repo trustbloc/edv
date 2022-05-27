@@ -19,13 +19,6 @@ type DataVaultConfiguration struct {
 	HMAC        IDTypePair `json:"hmac"`
 }
 
-// DataVaultConfigurationMapping represents an entry in the data vault config store that maps a DataVaultConfiguration
-// to a vaultID
-type DataVaultConfigurationMapping struct {
-	DataVaultConfiguration DataVaultConfiguration `json:"dataVaultConfiguration"`
-	VaultID                string                 `json:"vaultId"`
-}
-
 // StructuredDocument represents a Structured Document.
 type StructuredDocument struct {
 	ID      string                 `json:"id"`
@@ -35,10 +28,10 @@ type StructuredDocument struct {
 
 // EncryptedDocument represents an Encrypted Document.
 type EncryptedDocument struct {
-	ID                          string                       `json:"id"`
-	Sequence                    uint64                       `json:"sequence"`
-	IndexedAttributeCollections []IndexedAttributeCollection `json:"indexed"`
-	JWE                         json.RawMessage              `json:"jwe"`
+	ID                          string                       `json:"id,omitempty"`
+	Sequence                    uint64                       `json:"sequence,omitempty"`
+	IndexedAttributeCollections []IndexedAttributeCollection `json:"indexed,omitempty"`
+	JWE                         json.RawMessage              `json:"jwe,omitempty"`
 }
 
 // IndexedAttributeCollection represents a collection of indexed attributes,
@@ -64,6 +57,8 @@ type IDTypePair struct {
 
 // Query represents an incoming vault query.
 // See https://identity.foundation/edv-spec/#searching-encrypted-documents for more info.
+// An empty attribute value is treated as a wildcard, whereby any attribute value for that attribute name can be
+// matched (similar to a "has" query - but the spec doesn't have a way to do this for more complex queries yet).
 // ReturnFullDocuments is optional and can only be used if the "ReturnFullDocumentsOnQuery" extension is enabled.
 type Query struct {
 	ReturnFullDocuments bool                `json:"returnFullDocuments"`
@@ -89,7 +84,7 @@ type VaultOperation struct {
 	EncryptedDocument EncryptedDocument `json:"document,omitempty"` // Only used if Operation=upsert
 }
 
-// JSONWebEncryption represents a JWE
+// JSONWebEncryption represents a JWE.
 type JSONWebEncryption struct {
 	B64ProtectedHeaders      string                 `json:"protected,omitempty"`
 	UnprotectedHeaders       map[string]interface{} `json:"unprotected,omitempty"`
@@ -117,10 +112,4 @@ type RecipientHeaders struct {
 	KID string          `json:"kid,omitempty"`
 	EPK json.RawMessage `json:"epk,omitempty"`
 	SPK json.RawMessage `json:"spk,omitempty"`
-}
-
-// IndexOperation represents an operation to add, update or remove indexes.
-type IndexOperation struct {
-	Operation      string   `json:"operation"`
-	AttributeNames []string `json:"attributeNames"`
 }

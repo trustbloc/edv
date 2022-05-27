@@ -16,12 +16,13 @@ const (
 	// ErrDuplicateDocument is used when an attempt is made to create a document with an ID that is already being used.
 	ErrDuplicateDocument = edvError("a document with the given ID already exists")
 	// ErrNotBase58Encoded is the error returned by the EDV server when an attempt is made
-	// to create a document with an ID that is not a base58-encoded value (which is required by the EDV spec).
-	ErrNotBase58Encoded = edvError("document ID must be a base58-encoded value")
-	// ErrNot128BitValue is the error returned by the EDV server when an attempt is made
-	// to create a document with an ID that is base58-encoded, but the original value was not 128 bits long
+	// to access a vault or create a document with an ID that is not a base58-encoded value
 	// (which is required by the EDV spec).
-	ErrNot128BitValue = edvError("document ID is base58-encoded, but original value before encoding was not 128 bits long")
+	ErrNotBase58Encoded = edvError("ID must be a base58-encoded 128-bit value")
+	// ErrNot128BitValue is the error returned by the EDV server when an attempt is made
+	// to access a vault or create a document with an ID that is base58-encoded, but the original value was not 128
+	// bits long (which is required by the EDV spec).
+	ErrNot128BitValue = edvError("ID is base58-encoded, but original value before encoding was not 128 bits long")
 
 	// FailWriteResponse is logged when a ResponseWriter fails to write.
 	FailWriteResponse = " Failed to write response back to sender: %s."
