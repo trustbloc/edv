@@ -81,7 +81,6 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 		e.retrieveDocument)
 	s.Step(`^Client decrypts the Encrypted Document it received`+
 		` in order to reconstruct the original Structured Document$`, e.decryptDocument)
-	s.Step(`^Client creates an index on the "([^"]*)" attribute name$`, e.createIndex)
 	s.Step(`^Client queries the vault to find the previously created document `+
 		`with an encrypted attribute named "([^"]*)" with associated value "([^"]*)"$`,
 		e.queryVault)
@@ -288,10 +287,6 @@ func (e *Steps) decryptDocument() error {
 	return nil
 }
 
-func (e *Steps) createIndex(attributeName string) error {
-	return e.bddContext.EDVClient.AddIndex(e.bddContext.VaultID, []string{attributeName})
-}
-
 func (e *Steps) queryVault(queryAttributeName, queryAttributeValue string) error {
 	query := &models.Query{
 		Equals: []map[string]string{{queryAttributeName: queryAttributeValue}},
@@ -365,9 +360,8 @@ func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
 	// TODO: Update this to demonstrate a full example of how to create an indexed attribute using HMAC-SHA256.
 	// https://github.com/trustbloc/edv/issues/53
 	indexedAttribute := models.IndexedAttribute{
-		Name:   "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-		Value:  "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
-		Unique: false,
+		Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+		Value: "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro",
 	}
 
 	indexedAttributeCollection := models.IndexedAttributeCollection{

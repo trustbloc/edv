@@ -638,7 +638,6 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	edvService, err := restapi.New(&operation.Config{
 		Provider: provider, AuthService: authSvc,
 		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable,
-		UsingMongoDB: parameters.databaseType == "mongodb",
 	})
 	if err != nil {
 		return err

@@ -46,7 +46,6 @@ const (
 		docIDPathVariable + "}"
 	deleteDocumentEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/documents/{" +
 		docIDPathVariable + "}"
-	indexEndpoint = edvCommonEndpointPathRoot + "/{" + vaultIDPathVariable + "}/index"
 )
 
 var logger = log.New(logModuleName)
@@ -58,7 +57,6 @@ type Operation struct {
 	authEnable        bool
 	authService       authService
 	enabledExtensions *EnabledExtensions
-	usingMongoDB      bool
 }
 
 type authService interface {
@@ -89,7 +87,6 @@ type Config struct {
 	AuthService       authService
 	AuthEnable        bool
 	EnabledExtensions *EnabledExtensions
-	UsingMongoDB      bool
 }
 
 // New returns a new EDV operations instance.
@@ -98,7 +95,6 @@ func New(config *Config) *Operation {
 		vaultCollection: VaultCollection{
 			provider: config.Provider,
 		}, authEnable: config.AuthEnable, authService: config.AuthService, enabledExtensions: config.EnabledExtensions,
-		usingMongoDB: config.UsingMongoDB,
 	}
 
 	svc.registerHandler()
@@ -112,7 +108,6 @@ func (c *Operation) registerHandler() {
 	c.handlers = []Handler{
 		support.NewHTTPHandler(createVaultEndpoint, http.MethodPost, c.createDataVaultHandler),
 		support.NewHTTPHandler(queryVaultEndpoint, http.MethodPost, c.queryVaultHandler),
-		support.NewHTTPHandler(indexEndpoint, http.MethodPost, c.indexHandler),
 		support.NewHTTPHandler(createDocumentEndpoint, http.MethodPost, c.createDocumentHandler),
 		support.NewHTTPHandler(readDocumentEndpoint, http.MethodGet, c.readDocumentHandler),
 		support.NewHTTPHandler(updateDocumentEndpoint, http.MethodPost, c.updateDocumentHandler),
@@ -186,7 +181,7 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 		return
 	}
 
-	err = c.vaultCollection.createDataVault(vaultID, config)
+	err = c.vaultCollection.provider.CreateNewVault(vaultID, config)
 	if err != nil {
 		writeCreateDataVaultFailure(rw, err, configBytesForLog)
 		return
@@ -229,71 +224,29 @@ func (c *Operation) queryVaultHandler(rw http.ResponseWriter, req *http.Request)
 	logger.Debugf(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.QueryReceiveRequest,
 		vaultID), requestBody)
 
-	ariesQuery, returnFullDocuments, err := c.convertEDVQueryToAriesQuery(requestBody)
+	var incomingQuery models.Query
+
+	err = json.Unmarshal(requestBody, &incomingQuery)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidQuery, err, vaultID, requestBody)
 		return
 	}
 
+	if incomingQuery.Has == "" && len(incomingQuery.Equals) == 0 {
+		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidQuery,
+			errors.New("query cannot be empty"), vaultID, requestBody)
+		return
+	}
+
 	var queryBytesForLog []byte
 
-	matchingDocuments, err := c.vaultCollection.queryVault(vaultID, ariesQuery)
+	matchingDocuments, err := c.vaultCollection.queryVault(vaultID, incomingQuery)
 	if err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.QueryFailure, err, vaultID, queryBytesForLog)
 		return
 	}
 
-	if returnFullDocuments {
-		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, returnFullDocuments, req.Host)
-	} else {
-		writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, false, req.Host)
-	}
-}
-
-// Index Operations swagger:route POST /encrypted-data-vaults/{vaultID}/index indexOperationReq
-//
-// Queries a data vault using encrypted indices.
-//
-// Responses:
-//    default: genericError
-//        200: emptyRes
-func (c *Operation) indexHandler(rw http.ResponseWriter, req *http.Request) {
-	vaultID, success := unescapePathVar(vaultIDPathVariable, mux.Vars(req), rw)
-	if !success {
-		return
-	}
-
-	requestBody, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusInternalServerError,
-			messages.CreateDocumentFailReadRequestBody, err, vaultID, nil)
-		return
-	}
-
-	logger.Infof(messages.DebugLogEventWithReceivedData, fmt.Sprintf(messages.IndexReceiveRequest,
-		vaultID), requestBody)
-
-	var indexOperation models.IndexOperation
-
-	err = json.Unmarshal(requestBody, &indexOperation)
-	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest,
-			messages.InvalidIndexOperation, err, vaultID, requestBody)
-		return
-	}
-
-	if !strings.EqualFold(indexOperation.Operation, "add") {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidIndexOperation,
-			fmt.Errorf("%s is not a supported index operation", indexOperation.Operation), vaultID, requestBody)
-		return
-	}
-
-	err = c.vaultCollection.addIndexes(vaultID, indexOperation.AttributeNames)
-	if err != nil {
-		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest,
-			messages.FailAddIndexes, err, vaultID, requestBody)
-		return
-	}
+	writeQueryResponse(rw, matchingDocuments, vaultID, queryBytesForLog, incomingQuery.ReturnFullDocuments, req.Host)
 }
 
 // Create Document swagger:route POST /encrypted-data-vaults/{vaultID}/documents createDocumentReq
@@ -536,41 +489,6 @@ func (c *Operation) upsertRemainingDocuments(rw http.ResponseWriter, host, vault
 	writeBatchResponse(rw, messages.BatchResponseSuccess, vaultID, requestBody, responses)
 }
 
-func (c *Operation) convertEDVQueryToAriesQuery(edvQueryBytes []byte) (string, bool, error) {
-	var incomingQuery models.Query
-
-	err := json.Unmarshal(edvQueryBytes, &incomingQuery)
-	if err != nil {
-		return "", false, err
-	}
-
-	if incomingQuery.Has != "" {
-		return incomingQuery.Has, incomingQuery.ReturnFullDocuments, nil
-	}
-
-	if len(incomingQuery.Equals) == 0 {
-		return "", false, errors.New("query cannot be empty")
-	} else if len(incomingQuery.Equals) > 1 {
-		return "", false, errors.New("support for multiple subfilters (OR operations) not implemented")
-	}
-
-	var ariesQueryStringBuilder strings.Builder
-
-	isFirstPair := true
-	for attributeName, attributeValue := range incomingQuery.Equals[0] {
-		if !isFirstPair && !c.usingMongoDB {
-			return "", false, errors.New("multiple-attribute queries not supported when using " +
-				"in-memory or CouchDB storage")
-		}
-
-		appendToQueryString(&ariesQueryStringBuilder, attributeName, attributeValue, isFirstPair)
-
-		isFirstPair = false
-	}
-
-	return ariesQueryStringBuilder.String(), incomingQuery.ReturnFullDocuments, nil
-}
-
 func createInitialResponses(numResponses int) []string {
 	responses := make([]string, numResponses)
 	for i := range responses {
@@ -585,7 +503,7 @@ func validateBatch(incomingBatch models.Batch, responses []string) error {
 		switch {
 		case strings.EqualFold(vaultOperation.Operation, models.UpsertDocumentVaultOperation):
 			if err := validateEncryptedDocument(vaultOperation.EncryptedDocument); err != nil {
-				responses[i] = err.Error()
+				responses[i] = fmt.Sprintf("invalid encrypted document: %s", err.Error())
 				return err
 			}
 
@@ -605,20 +523,6 @@ func validateBatch(incomingBatch models.Batch, responses []string) error {
 
 			return err
 		}
-	}
-
-	return nil
-}
-
-func (vc *VaultCollection) createDataVault(vaultID string, config *models.DataVaultConfiguration) error {
-	store, err := vc.provider.OpenStore(vaultID)
-	if err != nil {
-		return fmt.Errorf("failed to open store for vault: %w", err)
-	}
-
-	err = store.StoreDataVaultConfiguration(config)
-	if err != nil {
-		return fmt.Errorf("failed to store data vault configuration: %w", err)
 	}
 
 	return nil
@@ -668,7 +572,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 		return err
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return err
 	}
@@ -694,12 +598,12 @@ func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.En
 		return err
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return err
 	}
 
-	return store.UpsertBulk(documents)
+	return store.Put(documents...)
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
@@ -708,7 +612,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 		return nil, err
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return nil, err
 	}
@@ -725,13 +629,13 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 	return documentBytes, err
 }
 
-func (vc *VaultCollection) queryVault(vaultID, query string) ([]models.EncryptedDocument, error) {
+func (vc *VaultCollection) queryVault(vaultID string, query models.Query) ([]models.EncryptedDocument, error) {
 	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return nil, err
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return nil, err
 	}
@@ -774,7 +678,7 @@ func (vc *VaultCollection) updateDocument(docID, vaultID string, document models
 		return err
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return err
 	}
@@ -788,7 +692,7 @@ func (vc *VaultCollection) updateDocument(docID, vaultID string, document models
 		return err
 	}
 
-	return store.Update(document)
+	return store.Put(document)
 }
 
 func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
@@ -797,7 +701,7 @@ func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
 		return err
 	}
 
-	store, err := vc.provider.OpenStore(vaultID)
+	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return err
 	}
@@ -814,22 +718,8 @@ func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
 	return store.Delete(docID)
 }
 
-func (vc *VaultCollection) addIndexes(vaultID string, attributeNames []string) error {
-	err := vc.ensureVaultExists(vaultID)
-	if err != nil {
-		return err
-	}
-
-	err = vc.provider.AddIndexes(vaultID, attributeNames)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (vc *VaultCollection) ensureVaultExists(vaultID string) error {
-	exists, err := vc.provider.StoreExists(vaultID)
+	exists, err := vc.provider.VaultExists(vaultID)
 	if err != nil {
 		return fmt.Errorf("unexpected failure while checking if vault exists: %w", err)
 	}
@@ -908,29 +798,4 @@ func validateEncryptedDocument(doc models.EncryptedDocument) error {
 	}
 
 	return nil
-}
-
-func appendToQueryString(ariesQueryStringBuilder *strings.Builder, attributeName, attributeValue string,
-	isFirstPair bool) {
-	if isFirstPair {
-		buildQueryFirstPart(ariesQueryStringBuilder, attributeName, attributeValue)
-	} else {
-		appendQuerySubsequentParts(ariesQueryStringBuilder, attributeName, attributeValue)
-	}
-}
-
-func buildQueryFirstPart(ariesQueryStringBuilder *strings.Builder, attributeName, attributeValue string) {
-	if attributeValue == "" {
-		ariesQueryStringBuilder.WriteString(attributeName)
-	} else {
-		ariesQueryStringBuilder.WriteString(fmt.Sprintf("%s:%s", attributeName, attributeValue))
-	}
-}
-
-func appendQuerySubsequentParts(ariesQueryStringBuilder *strings.Builder, attributeName, attributeValue string) {
-	if attributeValue == "" {
-		ariesQueryStringBuilder.WriteString(fmt.Sprintf("&&%s", attributeName))
-	} else {
-		ariesQueryStringBuilder.WriteString(fmt.Sprintf("&&%s:%s", attributeName, attributeValue))
-	}
 }
