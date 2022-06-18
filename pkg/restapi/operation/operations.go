@@ -81,12 +81,13 @@ type EnabledExtensions struct {
 	Batch                    bool
 }
 
-// Config defines configuration for vcs operations
+// Config defines the configuration for EDV operations
 type Config struct {
-	Provider          *edvprovider.Provider
-	AuthService       authService
-	AuthEnable        bool
-	EnabledExtensions *EnabledExtensions
+	Provider             *edvprovider.Provider
+	AuthService          authService
+	AuthEnable           bool
+	EnabledExtensions    *EnabledExtensions
+	DocumentDatabaseName string
 }
 
 // New returns a new EDV operations instance.
@@ -327,8 +328,8 @@ func (c *Operation) updateDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		writeErrorWithVaultIDAndDocID(rw, http.StatusInternalServerError,
-			messages.UpdateDocumentFailReadRequestBody, err, docID, vaultID)
+		writeErrorWithVaultIDAndDocID(rw, http.StatusInternalServerError, messages.UpdateDocumentFailReadRequestBody,
+			err, vaultID, docID)
 		return
 	}
 
@@ -357,7 +358,7 @@ func (c *Operation) deleteDocumentHandler(rw http.ResponseWriter, req *http.Requ
 
 	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.DeleteDocumentReceiveRequest, docID, vaultID))
 
-	err := c.vaultCollection.deleteDocument(docID, vaultID)
+	err := c.vaultCollection.deleteDocument(vaultID, docID)
 	if err != nil {
 		writeDeleteDocumentFailure(rw, err, docID, vaultID)
 	}
@@ -440,7 +441,7 @@ func (c *Operation) executeBatchedOperations(rw http.ResponseWriter, host, vault
 				currentUpsertDocumentsBatch = nil // Finished with these documents, start a new batch
 			}
 
-			err := c.vaultCollection.deleteDocument(vaultOperation.DocumentID, vaultID)
+			err := c.vaultCollection.deleteDocument(vaultID, vaultOperation.DocumentID)
 			if err == nil {
 				responses[vaultOperationIndex] = ""
 			} else {
@@ -502,7 +503,7 @@ func validateBatch(incomingBatch models.Batch, responses []string) error {
 	for i, vaultOperation := range incomingBatch {
 		switch {
 		case strings.EqualFold(vaultOperation.Operation, models.UpsertDocumentVaultOperation):
-			if err := validateEncryptedDocument(vaultOperation.EncryptedDocument); err != nil {
+			if err := validateEncryptedDocument(&vaultOperation.EncryptedDocument); err != nil {
 				responses[i] = fmt.Sprintf("invalid encrypted document: %s", err.Error())
 				return err
 			}
@@ -551,13 +552,13 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 		}
 	}
 
-	if err = validateEncryptedDocument(incomingDocument); err != nil {
+	if err = validateEncryptedDocument(&incomingDocument); err != nil {
 		writeErrorWithVaultIDAndReceivedData(rw, http.StatusBadRequest, messages.InvalidDocumentForDocCreation, err,
 			vaultID, requestBody)
 		return
 	}
 
-	err = c.vaultCollection.createDocument(vaultID, incomingDocument)
+	err = c.vaultCollection.createDocument(vaultID, &incomingDocument)
 	if err != nil {
 		writeCreateDocumentFailure(rw, err, vaultID, docBytesForLog)
 		return
@@ -566,13 +567,8 @@ func (c *Operation) createDocument(rw http.ResponseWriter, requestBody []byte, h
 	writeCreateDocumentSuccess(rw, hostURL, vaultID, incomingDocument.ID, docBytesForLog)
 }
 
-func (vc *VaultCollection) createDocument(vaultID string, document models.EncryptedDocument) error {
+func (vc *VaultCollection) createDocument(vaultID string, document *models.EncryptedDocument) error {
 	err := vc.ensureVaultExists(vaultID)
-	if err != nil {
-		return err
-	}
-
-	store, err := vc.provider.OpenVault(vaultID)
 	if err != nil {
 		return err
 	}
@@ -580,7 +576,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 	// The Create Document API call should not overwrite an existing document.
 	// So we first check to make sure there is not already a document associated with the id.
 	// If there is, we send back an error.
-	_, err = store.Get(document.ID)
+	_, err = vc.provider.Get(vaultID, document.ID)
 	if err == nil {
 		return messages.ErrDuplicateDocument
 	}
@@ -589,7 +585,7 @@ func (vc *VaultCollection) createDocument(vaultID string, document models.Encryp
 		return err
 	}
 
-	return store.Put(document)
+	return vc.provider.Put(vaultID, *document)
 }
 
 func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.EncryptedDocument) error {
@@ -598,12 +594,7 @@ func (vc *VaultCollection) upsertDocuments(vaultID string, documents []models.En
 		return err
 	}
 
-	store, err := vc.provider.OpenVault(vaultID)
-	if err != nil {
-		return err
-	}
-
-	return store.Put(documents...)
+	return vc.provider.Put(vaultID, documents...)
 }
 
 func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
@@ -612,12 +603,7 @@ func (vc *VaultCollection) readDocument(vaultID, docID string) ([]byte, error) {
 		return nil, err
 	}
 
-	store, err := vc.provider.OpenVault(vaultID)
-	if err != nil {
-		return nil, err
-	}
-
-	documentBytes, err := store.Get(docID)
+	documentBytes, err := vc.provider.Get(vaultID, docID)
 	if err != nil {
 		if errors.Is(err, storage.ErrDataNotFound) {
 			return nil, messages.ErrDocumentNotFound
@@ -635,12 +621,7 @@ func (vc *VaultCollection) queryVault(vaultID string, query models.Query) ([]mod
 		return nil, err
 	}
 
-	store, err := vc.provider.OpenVault(vaultID)
-	if err != nil {
-		return nil, err
-	}
-
-	return store.Query(query)
+	return vc.provider.Query(vaultID, query)
 }
 
 func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, docID, vaultID string) {
@@ -648,22 +629,23 @@ func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, d
 
 	err := json.Unmarshal(requestBody, &incomingDocument)
 	if err != nil {
-		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate, err, docID, vaultID)
+		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate, err, vaultID, docID)
 		return
 	}
 
 	if incomingDocument.ID != docID {
 		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate,
-			errors.New(messages.MismatchedDocIDs), docID, vaultID)
+			errors.New(messages.MismatchedDocIDs), vaultID, docID)
 		return
 	}
 
-	if err = validateEncryptedDocument(incomingDocument); err != nil {
-		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate, err, docID, vaultID)
+	if err = validateEncryptedDocument(&incomingDocument); err != nil {
+		writeErrorWithVaultIDAndDocID(rw, http.StatusBadRequest, messages.InvalidDocumentForDocUpdate,
+			err, vaultID, docID)
 		return
 	}
 
-	err = c.vaultCollection.updateDocument(docID, vaultID, incomingDocument)
+	err = c.vaultCollection.updateDocument(vaultID, docID, &incomingDocument)
 	if err != nil {
 		writeUpdateDocumentFailure(rw, err, docID, vaultID)
 		return
@@ -672,18 +654,13 @@ func (c *Operation) updateDocument(rw http.ResponseWriter, requestBody []byte, d
 	logger.Debugf(messages.DebugLogEvent, fmt.Sprintf(messages.UpdateDocumentSuccess, docID, vaultID))
 }
 
-func (vc *VaultCollection) updateDocument(docID, vaultID string, document models.EncryptedDocument) error {
+func (vc *VaultCollection) updateDocument(vaultID, docID string, document *models.EncryptedDocument) error {
 	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
 	}
 
-	store, err := vc.provider.OpenVault(vaultID)
-	if err != nil {
-		return err
-	}
-
-	_, err = store.Get(docID)
+	_, err = vc.provider.Get(vaultID, docID)
 	if err != nil {
 		if errors.Is(err, storage.ErrDataNotFound) {
 			return messages.ErrDocumentNotFound
@@ -692,21 +669,16 @@ func (vc *VaultCollection) updateDocument(docID, vaultID string, document models
 		return err
 	}
 
-	return store.Put(document)
+	return vc.provider.Put(vaultID, *document)
 }
 
-func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
+func (vc *VaultCollection) deleteDocument(vaultID, docID string) error {
 	err := vc.ensureVaultExists(vaultID)
 	if err != nil {
 		return err
 	}
 
-	store, err := vc.provider.OpenVault(vaultID)
-	if err != nil {
-		return err
-	}
-
-	_, err = store.Get(docID)
+	_, err = vc.provider.Get(vaultID, docID)
 	if err != nil {
 		if errors.Is(err, storage.ErrDataNotFound) {
 			return messages.ErrDocumentNotFound
@@ -715,7 +687,7 @@ func (vc *VaultCollection) deleteDocument(docID, vaultID string) error {
 		return err
 	}
 
-	return store.Delete(docID)
+	return vc.provider.Delete(vaultID, docID)
 }
 
 func (vc *VaultCollection) ensureVaultExists(vaultID string) error {
@@ -788,7 +760,7 @@ func checkFieldsWithURIArray(arr []string) error {
 	return edvutils.CheckIfArrayIsURI(arr)
 }
 
-func validateEncryptedDocument(doc models.EncryptedDocument) error {
+func validateEncryptedDocument(doc *models.EncryptedDocument) error {
 	if encodingErr := edvutils.CheckIfBase58Encoded128BitValue(doc.ID); encodingErr != nil {
 		return encodingErr
 	}

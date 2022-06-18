@@ -31,7 +31,6 @@ import (
 	"github.com/trustbloc/edge-core/pkg/log/mocklogger"
 
 	"github.com/trustbloc/edv/pkg/edvprovider"
-	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 )
@@ -224,7 +223,7 @@ func TestMain(m *testing.M) {
 
 func TestNew(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		o := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		o := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 		require.NotNil(t, o)
 	})
 }
@@ -233,7 +232,7 @@ func TestCreateDataVault(t *testing.T) {
 	testValidateIncomingDataVaultConfiguration(t)
 	t.Run("Success: without prefix", func(t *testing.T) {
 		op := New(&Config{
-			Provider: edvprovider.NewProvider(mem.NewProvider(), 100), AuthEnable: true,
+			Provider: createEDVProvider(t, mem.NewProvider()), AuthEnable: true,
 			AuthService: &mockAuthService{createValue: []byte("authData")},
 		})
 
@@ -243,7 +242,7 @@ func TestCreateDataVault(t *testing.T) {
 	})
 	t.Run("error from creating auth payload", func(t *testing.T) {
 		op := New(&Config{
-			Provider: edvprovider.NewProvider(mem.NewProvider(), 100), AuthEnable: true,
+			Provider: createEDVProvider(t, mem.NewProvider()), AuthEnable: true,
 			AuthService: &mockAuthService{createErr: fmt.Errorf("failed to create auth")},
 		})
 
@@ -259,7 +258,7 @@ func TestCreateDataVault(t *testing.T) {
 		require.Contains(t, rr.Body.String(), "failed to create auth")
 	})
 	t.Run("Invalid Data Vault Configuration JSON", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		createVaultHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
 
@@ -275,7 +274,7 @@ func TestCreateDataVault(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Response writer fails while writing request read error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		op.createDataVaultHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
@@ -286,11 +285,9 @@ func TestCreateDataVault(t *testing.T) {
 	t.Run("Fail to store data vault configuration", func(t *testing.T) {
 		errTest := errors.New("put error")
 
-		mockProvider := mock.Provider{OpenStoreReturn: &mock.Store{ErrPut: errTest, QueryReturn: &mock.Iterator{}}}
+		mockProvider := mock.Provider{OpenStoreReturn: &mock.Store{ErrPut: errTest}}
 
-		edvProvider := edvprovider.NewProvider(&mockProvider, 100)
-
-		op := New(&Config{Provider: edvProvider})
+		op := New(&Config{Provider: createEDVProvider(t, &mockProvider)})
 
 		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
 		require.NoError(t, err)
@@ -302,27 +299,6 @@ func TestCreateDataVault(t *testing.T) {
 
 		require.Equal(t, "Failed to create a new data vault: failed to store data vault configuration: "+
 			"put error.", rr.Body.String())
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
-	})
-	t.Run("Fail to open store for vault", func(t *testing.T) {
-		mockProv := mockProvider{
-			errOpenStore: errors.New("open store failure"),
-		}
-
-		edvProvider := edvprovider.NewProvider(&mockProv, 100)
-
-		op := New(&Config{Provider: edvProvider})
-
-		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-
-		createVaultEndpointHandler := getHandler(t, op, createVaultEndpoint, http.MethodPost, "")
-		createVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-		require.Equal(t, "Failed to create a new data vault: "+
-			"failed to open store for vault: open store failure.", rr.Body.String())
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
 }
@@ -673,9 +649,7 @@ func TestQueryVault(t *testing.T) {
 				},
 			}
 
-			edvProvider := edvprovider.NewProvider(mongoDBProvider, 100)
-
-			op := New(&Config{Provider: edvProvider})
+			op := New(&Config{Provider: createEDVProvider(t, mongoDBProvider)})
 
 			// For each test, we:
 			// 1. Create a fresh (empty) vault.
@@ -721,15 +695,13 @@ func TestQueryVault(t *testing.T) {
 			}
 		})
 		t.Run(`"has" query`, func(t *testing.T) {
-			provider := mem.NewProvider()
-
-			edvProvider := edvprovider.NewProvider(provider, 100)
+			edvProvider := createEDVProvider(t, mem.NewProvider())
 
 			op := New(&Config{Provider: edvProvider})
 
 			vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
-			storeTestDataForQueryTests(t, vaultID, provider,
+			storeTestDataForQueryTests(t, vaultID, edvProvider,
 				"SomeArbitraryValue1",
 				"SomeArbitraryValue2")
 
@@ -765,9 +737,7 @@ func TestQueryVault(t *testing.T) {
 	})
 	t.Run("Success, returning full documents", func(t *testing.T) {
 		t.Run(`"has" query`, func(t *testing.T) {
-			provider := mem.NewProvider()
-
-			edvProvider := edvprovider.NewProvider(provider, 100)
+			edvProvider := createEDVProvider(t, mem.NewProvider())
 
 			op := New(&Config{
 				Provider: edvProvider,
@@ -775,7 +745,7 @@ func TestQueryVault(t *testing.T) {
 
 			vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
-			storeTestDataForQueryTests(t, vaultID, provider,
+			storeTestDataForQueryTests(t, vaultID, edvProvider,
 				"SomeArbitraryValue1",
 				"SomeArbitraryValue2")
 
@@ -821,7 +791,7 @@ func TestQueryVault(t *testing.T) {
 		})
 	})
 	t.Run("Error: multiple-attribute queries not supported for in-memory or CouchDB", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -850,7 +820,7 @@ func TestQueryVault(t *testing.T) {
 	})
 	t.Run(`Error: empty query`, func(t *testing.T) {
 		op := New(&Config{
-			Provider: edvprovider.NewProvider(mem.NewProvider(), 100),
+			Provider: createEDVProvider(t, mem.NewProvider()),
 		})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
@@ -873,16 +843,7 @@ func TestQueryVault(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Error: vault not found", func(t *testing.T) {
-		mockProv := &mock.Provider{
-			ErrGetStoreConfig: storage.ErrStoreNotFound,
-			OpenStoreReturn:   &mock.Store{QueryReturn: &mock.Iterator{}},
-		}
-
-		edvProvider := edvprovider.NewProvider(mockProv, 100)
-
-		op := New(&Config{Provider: edvProvider})
-
-		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		query := models.Query{Equals: []map[string]string{{"name": "value"}}}
 
@@ -893,7 +854,7 @@ func TestQueryVault(t *testing.T) {
 		require.NoError(t, err)
 
 		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = vaultID
+		urlVars[vaultIDPathVariable] = testVaultID
 
 		req = mux.SetURLVars(req, urlVars)
 
@@ -902,40 +863,11 @@ func TestQueryVault(t *testing.T) {
 		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
 		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
 
-		require.Equal(t, fmt.Sprintf(messages.QueryFailure, vaultID, messages.ErrVaultNotFound), rr.Body.String())
-		require.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-	t.Run("Error: fail to open store", func(t *testing.T) {
-		testErr := errors.New("fail to open store")
-
-		provider := &mockProvider{numTimesOpenStoreCalledBeforeErr: 1, errOpenStore: testErr}
-		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
-
-		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
-
-		query := models.Query{Equals: []map[string]string{{"name": "value"}}}
-
-		queryBytes, err := json.Marshal(query)
-		require.NoError(t, err)
-
-		req, err := http.NewRequest("POST", "", bytes.NewBuffer(queryBytes))
-		require.NoError(t, err)
-
-		urlVars := make(map[string]string)
-		urlVars[vaultIDPathVariable] = vaultID
-
-		req = mux.SetURLVars(req, urlVars)
-
-		rr := httptest.NewRecorder()
-
-		queryVaultEndpointHandler := getHandler(t, op, queryVaultEndpoint, http.MethodPost, "")
-		queryVaultEndpointHandler.Handle().ServeHTTP(rr, req)
-
-		require.Equal(t, fmt.Sprintf(messages.QueryFailure, vaultID, testErr), rr.Body.String())
+		require.Equal(t, fmt.Sprintf(messages.QueryFailure, testVaultID, messages.ErrVaultNotFound), rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Unable to unmarshal query JSON", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		storeSampleConfigExpectSuccess(t, op)
 
@@ -957,7 +889,7 @@ func TestQueryVault(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 	t.Run("Fail to write response when unable to unmarshal query JSON", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		req, err := http.NewRequest("POST", "", failingReadCloser{})
 		require.NoError(t, err)
@@ -974,7 +906,7 @@ func TestQueryVault(t *testing.T) {
 				testVaultID, errFailingReadCloser, errFailingResponseWriter))
 	})
 	t.Run("Fail to unescape path var", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		query := models.Query{Equals: []map[string]string{{"name": "value"}}}
 
@@ -1094,7 +1026,7 @@ func getIDFromDocument(t *testing.T, document []byte) string {
 
 func TestCreateDocument(t *testing.T) {
 	t.Run("Success: without prefix", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1102,7 +1034,7 @@ func TestCreateDocument(t *testing.T) {
 		storeEncryptedDocumentExpectSuccess(t, op, testDocID2, testEncryptedDocument2, vaultID)
 	})
 	t.Run("Invalid encrypted document JSON", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		storeSampleConfigExpectSuccess(t, op)
 
@@ -1125,7 +1057,7 @@ func TestCreateDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Document ID is not base58 encoded", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1148,7 +1080,7 @@ func TestCreateDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Document ID was not 128 bits long before being base58 encoded", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1172,7 +1104,7 @@ func TestCreateDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Empty JWE", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1196,7 +1128,7 @@ func TestCreateDocument(t *testing.T) {
 			fmt.Sprintf(messages.InvalidRawJWE, messages.BlankJWE)), rr.Body.String())
 	})
 	t.Run("Duplicate document", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1220,7 +1152,7 @@ func TestCreateDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Response writer fails while writing duplicate document error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1233,7 +1165,7 @@ func TestCreateDocument(t *testing.T) {
 				vaultID, messages.ErrDuplicateDocument, errFailingResponseWriter))
 	})
 	t.Run("Vault does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		createDocumentEndpointHandler := getHandler(t, op, createDocumentEndpoint, http.MethodPost, "")
 
@@ -1254,7 +1186,7 @@ func TestCreateDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Unable to escape vault ID path variable", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		req, err := http.NewRequest("POST", "", bytes.NewBuffer([]byte(testEncryptedDocument)))
 		require.NoError(t, err)
@@ -1277,7 +1209,7 @@ func TestCreateDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Response writer fails while writing unescape Vault ID error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		createDataVaultExpectSuccess(t, op, "")
 
@@ -1291,7 +1223,7 @@ func TestCreateDocument(t *testing.T) {
 				errFailingResponseWriter, errFailingResponseWriter))
 	})
 	t.Run("Response writer fails while writing request read error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		storeSampleConfigExpectSuccess(t, op)
 
@@ -1314,12 +1246,12 @@ func TestCreateDocument(t *testing.T) {
 
 func TestReadDocument(t *testing.T) {
 	t.Run("Success: without prefix", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		readDocumentExpectSuccess(t, op)
 	})
 	t.Run("Vault does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		readDocumentEndpointHandler := getHandler(t, op, readDocumentEndpoint, http.MethodGet, "")
 
@@ -1341,7 +1273,7 @@ func TestReadDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Document does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1365,7 +1297,7 @@ func TestReadDocument(t *testing.T) {
 			testDocID, vaultID, messages.ErrDocumentNotFound), rr.Body.String())
 	})
 	t.Run("Unable to escape vault ID path variable", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1392,7 +1324,7 @@ func TestReadDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Unable to escape document ID path variable", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1419,7 +1351,7 @@ func TestReadDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Response writer fails while writing unescape vault ID error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1435,7 +1367,7 @@ func TestReadDocument(t *testing.T) {
 				vaultIDPathVariable, errFailingResponseWriter, errFailingResponseWriter))
 	})
 	t.Run("Response writer fails while writing unescape document ID error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1451,7 +1383,7 @@ func TestReadDocument(t *testing.T) {
 				docIDPathVariable, errFailingResponseWriter, errFailingResponseWriter))
 	})
 	t.Run("Response writer fails while writing read document error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
@@ -1468,7 +1400,7 @@ func TestReadDocument(t *testing.T) {
 			fmt.Sprintf(messages.ReadDocumentFailure, testDocID, testVaultID, messages.ErrVaultNotFound))
 	})
 	t.Run("Response writer fails while writing retrieved document", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1500,7 +1432,7 @@ func Test_writeReadAllDocumentsSuccess(t *testing.T) {
 
 func TestUpdateDocument(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1532,7 +1464,7 @@ func TestUpdateDocument(t *testing.T) {
 		require.Equal(t, newEncryptedDoc, rr.Body.String())
 	})
 	t.Run("Failure - error while unmarshalling incoming document", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1554,7 +1486,7 @@ func TestUpdateDocument(t *testing.T) {
 			" in vault "+vaultID+", but the document is invalid:")
 	})
 	t.Run("Failure - IDs from path variable and incoming document don't match", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1563,7 +1495,7 @@ func TestUpdateDocument(t *testing.T) {
 			http.StatusBadRequest)
 	})
 	t.Run("Failure - invalid incoming document", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1577,29 +1509,13 @@ func TestUpdateDocument(t *testing.T) {
 				fmt.Sprintf(messages.InvalidRawJWE, messages.BlankJWE)), http.StatusBadRequest)
 	})
 	t.Run("Failure - vault not found", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 		updateDocumentExpectError(t, op, []byte(testEncryptedDocument), testVaultID, testDocID,
 			fmt.Sprintf(messages.UpdateDocumentFailure, testDocID, testVaultID, messages.ErrVaultNotFound),
 			http.StatusNotFound)
 	})
-	t.Run("Failure - other error while opening store", func(t *testing.T) {
-		provider := &mockProvider{
-			numTimesOpenStoreCalledBeforeErr: 1,
-			errOpenStore:                     errors.New("test error"),
-		}
-
-		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
-
-		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
-
-		newEncryptedDoc := `{"id":"` + testDocID + `","sequence":0,"indexed":` + testIndexedAttributeCollections2 +
-			`,` + `"jwe":` + testJWE1 + `}`
-
-		updateDocumentExpectError(t, op, []byte(newEncryptedDoc), vaultID, testDocID,
-			fmt.Sprintf(messages.UpdateDocumentFailure, testDocID, vaultID, "test error"), http.StatusBadRequest)
-	})
 	t.Run("Failure - document to be updated does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1611,7 +1527,7 @@ func TestUpdateDocument(t *testing.T) {
 			http.StatusNotFound)
 	})
 	t.Run("Response writer fails while writing request read error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		op.updateDocumentHandler(failingResponseWriter{}, &http.Request{Body: failingReadCloser{}})
 
@@ -1620,7 +1536,7 @@ func TestUpdateDocument(t *testing.T) {
 		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, "Failed to read request body:")
 	})
 	t.Run("Response writer fails while writing vault not found error", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		op.updateDocument(&failingResponseWriter{}, []byte(testEncryptedDocument), testDocID, testVaultID)
 		require.Contains(t, mockLoggerProvider.MockLogger.AllLogContents, "Failed to update document "+
@@ -1631,7 +1547,7 @@ func TestUpdateDocument(t *testing.T) {
 
 func TestDeleteDocument(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1664,36 +1580,23 @@ func TestDeleteDocument(t *testing.T) {
 			rr.Body.String())
 	})
 	t.Run("Failure - unable to escape vault ID path variable", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 		deleteDocumentExpectError(t, op, "%", testDocID, fmt.Sprintf(messages.UnescapeFailure,
 			vaultIDPathVariable, `invalid URL escape "%"`), http.StatusBadRequest)
 	})
 	t.Run("Failure - unable to escape doc ID path variable", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 		deleteDocumentExpectError(t, op, testVaultID, "%", fmt.Sprintf(messages.UnescapeFailure,
 			docIDPathVariable, `invalid URL escape "%"`), http.StatusBadRequest)
 	})
 	t.Run("Failure - vault does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		deleteDocumentExpectError(t, op, testVaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
 			testVaultID, messages.ErrVaultNotFound), http.StatusNotFound)
 	})
-	t.Run("Failure - other error while opening store", func(t *testing.T) {
-		provider := &mockProvider{
-			numTimesOpenStoreCalledBeforeErr: 1,
-			errOpenStore:                     errors.New("test error"),
-		}
-
-		op := New(&Config{Provider: edvprovider.NewProvider(provider, 100)})
-
-		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
-
-		deleteDocumentExpectError(t, op, vaultID, testDocID, fmt.Sprintf(messages.DeleteDocumentFailure, testDocID,
-			vaultID, "test error"), http.StatusBadRequest)
-	})
 	t.Run("Failure - document does not exist", func(t *testing.T) {
-		op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+		op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 		vaultID, _ := createDataVaultExpectSuccess(t, op, "")
 
@@ -1794,7 +1697,7 @@ func TestBatch(t *testing.T) {
 	})
 	t.Run("Failure: unable to escape vault ID", func(t *testing.T) {
 		op := New(&Config{
-			Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
+			Provider:          createEDVProvider(t, mem.NewProvider()),
 			EnabledExtensions: &EnabledExtensions{Batch: true},
 		})
 
@@ -1818,7 +1721,7 @@ func TestBatch(t *testing.T) {
 	})
 	t.Run("Failure: unable to marshal request", func(t *testing.T) {
 		op := New(&Config{
-			Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
+			Provider:          createEDVProvider(t, mem.NewProvider()),
 			EnabledExtensions: &EnabledExtensions{Batch: true},
 		})
 
@@ -1874,14 +1777,11 @@ func TestBatch(t *testing.T) {
 	})
 }
 
-func doBatchCall(t *testing.T, batch *models.Batch,
-	provider storage.Provider) (*httptest.ResponseRecorder, string) {
+func doBatchCall(t *testing.T, batch *models.Batch, provider storage.Provider) (*httptest.ResponseRecorder, string) {
 	t.Helper()
 
-	edvProvider := edvprovider.NewProvider(provider, 100)
-
 	op := New(&Config{
-		Provider:          edvProvider,
+		Provider:          createEDVProvider(t, provider),
 		EnabledExtensions: &EnabledExtensions{Batch: true},
 	})
 
@@ -1950,10 +1850,8 @@ func deleteDocumentExpectError(t *testing.T, op *Operation, pathVarVaultID, path
 func storeSampleConfigExpectSuccess(t *testing.T, op *Operation) {
 	t.Helper()
 
-	store, err := op.vaultCollection.provider.OpenVault(testVaultID)
-	require.NoError(t, err)
-
-	err = store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{ReferenceID: testReferenceID})
+	err := op.vaultCollection.provider.CreateNewVault(testVaultID,
+		&models.DataVaultConfiguration{ReferenceID: testReferenceID})
 	require.NoError(t, err)
 }
 
@@ -1980,7 +1878,7 @@ func createDataVaultExpectSuccess(t *testing.T, op *Operation, testFailureExtraI
 func createDataVaultExpectError(t *testing.T, request *models.DataVaultConfiguration, expectedError string) {
 	t.Helper()
 
-	op := New(&Config{Provider: edvprovider.NewProvider(mem.NewProvider(), 100)})
+	op := New(&Config{Provider: createEDVProvider(t, mem.NewProvider())})
 
 	configBytes, err := json.Marshal(request)
 	require.NoError(t, err)
@@ -2105,15 +2003,9 @@ func storeDocuments(t *testing.T, operation *Operation, vaultID string, document
 	}
 }
 
-func storeTestDataForQueryTests(t *testing.T, vaultID string, provider storage.Provider,
+func storeTestDataForQueryTests(t *testing.T, vaultID string, provider *edvprovider.Provider,
 	encryptedDoc1TagValue, encryptedDoc2TagValue string) {
 	t.Helper()
-
-	storeName, err := edvutils.Base58Encoded128BitToUUID(vaultID)
-	require.NoError(t, err)
-
-	vaultStore, err := provider.OpenStore(storeName)
-	require.NoError(t, err)
 
 	encryptedDoc1 := models.EncryptedDocument{
 		ID: mockDocID1,
@@ -2127,14 +2019,7 @@ func storeTestDataForQueryTests(t *testing.T, vaultID string, provider storage.P
 		},
 	}
 
-	encryptedDoc1Bytes, err := json.Marshal(encryptedDoc1)
-	require.NoError(t, err)
-
-	err = vaultStore.Put(mockDocID1, encryptedDoc1Bytes,
-		storage.Tag{
-			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-			Value: encryptedDoc1TagValue,
-		})
+	err := provider.Put(vaultID, encryptedDoc1)
 	require.NoError(t, err)
 
 	encryptedDoc2 := models.EncryptedDocument{
@@ -2149,14 +2034,7 @@ func storeTestDataForQueryTests(t *testing.T, vaultID string, provider storage.P
 		},
 	}
 
-	encryptedDoc2Bytes, err := json.Marshal(encryptedDoc2)
-	require.NoError(t, err)
-
-	err = vaultStore.Put(mockDocID2, encryptedDoc2Bytes,
-		storage.Tag{
-			Name:  "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-			Value: encryptedDoc2TagValue,
-		})
+	err = provider.Put(vaultID, encryptedDoc2)
 	require.NoError(t, err)
 }
 
@@ -2214,6 +2092,15 @@ type mockAuthService struct {
 
 func (m *mockAuthService) Create(resourceID, verificationMethod string) ([]byte, error) {
 	return m.createValue, m.createErr
+}
+
+func createEDVProvider(t *testing.T, coreProvider storage.Provider) *edvprovider.Provider {
+	t.Helper()
+
+	provider, err := edvprovider.NewProvider(coreProvider, "configurations", "documents", 100)
+	require.NoError(t, err)
+
+	return provider
 }
 
 func startMongoDBContainer(t *testing.T, provider *mongodb.Provider) (*dctest.Pool, *dctest.Resource) {

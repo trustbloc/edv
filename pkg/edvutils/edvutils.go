@@ -15,7 +15,6 @@ import (
 	"net/url"
 
 	"github.com/btcsuite/btcutil/base58"
-	"github.com/google/uuid"
 
 	"github.com/trustbloc/edv/pkg/restapi/messages"
 	"github.com/trustbloc/edv/pkg/restapi/models"
@@ -63,18 +62,6 @@ func CheckIfBase58Encoded128BitValue(id string) error {
 	}
 
 	return nil
-}
-
-// Base58Encoded128BitToUUID decodes the given string and creates a uuid from the bytes array.
-func Base58Encoded128BitToUUID(name string) (string, error) {
-	decodedBytes := base58.Decode(name)
-
-	storeNameUUID, err := uuid.FromBytes(decodedBytes)
-	if err != nil {
-		return "", err
-	}
-
-	return storeNameUUID.String(), nil
 }
 
 // CheckIfURI checks if the given string is a valid URI.

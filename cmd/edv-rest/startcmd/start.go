@@ -76,12 +76,26 @@ const (
 		" For CouchDB, include the username:password@ text if required." +
 		" Alternatively, this can be set with the following environment variable: " + databaseURLEnvKey
 
+	configDatabaseNameFlagName      = "config-database-name"
+	configDatabaseNameEnvKey        = "EDV_CONFIG_DATABASE_NAME"
+	configDatabaseNameFlagShorthand = "c"
+	configDatabaseNameFlagUsage     = "The name of the main database where data vault configurations will be stored." +
+		` Defaults to "configurations" if not set` +
+		" Alternatively, this can be set with the following environment variable: " + documentDatabaseNameEnvKey
+	defaultConfigDatabaseName = "configurations"
+
+	documentDatabaseNameFlagName      = "document-database-name"
+	documentDatabaseNameEnvKey        = "EDV_DOCUMENT_DATABASE_NAME"
+	documentDatabaseNameFlagShorthand = "d"
+	documentDatabaseNameFlagUsage     = "The name of the database where encrypted documents will be stored." +
+		` Defaults to "documents" if not set` +
+		" Alternatively, this can be set with the following environment variable: " + documentDatabaseNameEnvKey
+	defaultDocumentDatabaseName = "documents"
+
 	databasePrefixFlagName      = "database-prefix"
 	databasePrefixEnvKey        = "EDV_DATABASE_PREFIX"
 	databasePrefixFlagShorthand = "p"
-	databasePrefixFlagUsage     = "An optional prefix to be used when creating and retrieving underlying databases." +
-		" This followed by an underscore will be prepended to any incoming vault IDs received in REST calls before" +
-		" creating or accessing underlying databases." +
+	databasePrefixFlagUsage     = "An optional prefix to be used for the names for all databases." +
 		" Alternatively, this can be set with the following environment variable: " + databasePrefixEnvKey
 
 	databaseTimeoutFlagName      = "database-timeout"
@@ -198,25 +212,28 @@ var errInvalidDatabaseType = fmt.Errorf("database type not set to a valid type."
 	" run start --help to see the available options")
 
 // nolint:gochecknoglobals
-var supportedEDVStorageProviders = map[string]func(string, string, uint) (*edvprovider.Provider, error){
-	databaseTypeCouchDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (*edvprovider.Provider, error) {
+var supportedEDVStorageProviders = map[string]func(string, string, string, string, uint) (*edvprovider.Provider, error){
+	databaseTypeCouchDBOption: func(databaseURL, configDatabaseName, documentDatabaseName, prefix string,
+		retrievalPageSize uint) (*edvprovider.Provider, error) {
 		couchDBProvider, err := couchdb.NewProvider(databaseURL, couchdb.WithDBPrefix(prefix))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create new CouchDB storage provider: %w", err)
 		}
 
-		return edvprovider.NewProvider(couchDBProvider, retrievalPageSize), nil
+		return edvprovider.NewProvider(couchDBProvider, configDatabaseName, documentDatabaseName, retrievalPageSize)
 	},
-	databaseTypeMemOption: func(_, _ string, retrievalPageSize uint) (*edvprovider.Provider, error) { // nolint:unparam
-		return edvprovider.NewProvider(mem.NewProvider(), retrievalPageSize), nil
+	databaseTypeMemOption: func(_, documentDatabaseName, configDatabaseName, _ string,
+		retrievalPageSize uint) (*edvprovider.Provider, error) {
+		return edvprovider.NewProvider(mem.NewProvider(), configDatabaseName, documentDatabaseName, retrievalPageSize)
 	},
-	databaseTypeMongoDBOption: func(databaseURL, prefix string, retrievalPageSize uint) (*edvprovider.Provider, error) {
+	databaseTypeMongoDBOption: func(databaseURL, documentDatabaseName, configDatabaseName, prefix string,
+		retrievalPageSize uint) (*edvprovider.Provider, error) {
 		mongoDBProvider, err := mongodb.NewProvider(databaseURL, mongodb.WithDBPrefix(prefix))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create new MongoDB storage provider: %w", err)
 		}
 
-		return edvprovider.NewProvider(mongoDBProvider, retrievalPageSize), nil
+		return edvprovider.NewProvider(mongoDBProvider, configDatabaseName, documentDatabaseName, retrievalPageSize)
 	},
 }
 
@@ -238,6 +255,8 @@ type edvParameters struct {
 	hostURL                   string
 	databaseType              string
 	databaseURL               string
+	documentDatabaseName      string
+	configDatabaseName        string
 	databasePrefix            string
 	databaseTimeout           uint64
 	databaseRetrievalPageSize uint
@@ -306,7 +325,7 @@ func GetStartCmd(srv server) *cobra.Command {
 	return startCmd
 }
 
-func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
+func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocognit
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start EDV",
@@ -334,13 +353,35 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				databaseURL = "N/A"
 			} else {
 				var errGetUserSetVar error
-				databaseURL, errGetUserSetVar = cmdutils.GetUserSetVarFromString(cmd, databaseURLFlagName, databaseURLEnvKey, true)
+				databaseURL, errGetUserSetVar = cmdutils.GetUserSetVarFromString(cmd, databaseURLFlagName,
+					databaseURLEnvKey, true)
 				if errGetUserSetVar != nil {
 					return errGetUserSetVar
 				}
 			}
 
-			databasePrefix, err := cmdutils.GetUserSetVarFromString(cmd, databasePrefixFlagName, databasePrefixEnvKey, true)
+			documentDatabaseName, err := cmdutils.GetUserSetVarFromString(cmd, documentDatabaseNameFlagName,
+				documentDatabaseNameEnvKey, true)
+			if err != nil {
+				return err
+			}
+
+			if documentDatabaseName == "" {
+				documentDatabaseName = defaultDocumentDatabaseName
+			}
+
+			configDatabaseName, err := cmdutils.GetUserSetVarFromString(cmd, configDatabaseNameFlagName,
+				configDatabaseNameEnvKey, true)
+			if err != nil {
+				return err
+			}
+
+			if configDatabaseName == "" {
+				configDatabaseName = defaultConfigDatabaseName
+			}
+
+			databasePrefix, err := cmdutils.GetUserSetVarFromString(cmd, databasePrefixFlagName,
+				databasePrefixEnvKey, true)
 			if err != nil {
 				return err
 			}
@@ -390,6 +431,8 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo
 				hostURL:                   hostURL,
 				databaseType:              databaseType,
 				databaseURL:               databaseURL,
+				documentDatabaseName:      documentDatabaseName,
+				configDatabaseName:        configDatabaseName,
 				databasePrefix:            databasePrefix,
 				databaseTimeout:           databaseTimeout,
 				databaseRetrievalPageSize: databaseRetrievalPageSize,
@@ -565,6 +608,10 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(hostURLFlagName, hostURLFlagShorthand, "", hostURLFlagUsage)
 	startCmd.Flags().StringP(databaseTypeFlagName, databaseTypeFlagShorthand, "", databaseTypeFlagUsage)
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
+	startCmd.Flags().StringP(configDatabaseNameFlagName, configDatabaseNameFlagShorthand, "",
+		configDatabaseNameFlagUsage)
+	startCmd.Flags().StringP(documentDatabaseNameFlagName, documentDatabaseNameFlagShorthand, "",
+		documentDatabaseNameFlagUsage)
 	startCmd.Flags().StringP(databasePrefixFlagName, databasePrefixFlagShorthand, "", databasePrefixFlagUsage)
 	startCmd.Flags().StringP(databaseTimeoutFlagName, databaseTimeoutFlagShorthand, "", databaseTimeoutFlagUsage)
 	startCmd.Flags().StringP(databaseRetrievalPageSizeFlagName,
@@ -638,6 +685,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 	edvService, err := restapi.New(&operation.Config{
 		Provider: provider, AuthService: authSvc,
 		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable,
+		DocumentDatabaseName: parameters.documentDatabaseName,
 	})
 	if err != nil {
 		return err
@@ -715,7 +763,8 @@ func createEDVProvider(parameters *edvParameters) (*edvprovider.Provider, error)
 	err := retry(func() error {
 		var openErr error
 		edvProv, openErr =
-			providerFunc(parameters.databaseURL, parameters.databasePrefix, parameters.databaseRetrievalPageSize)
+			providerFunc(parameters.databaseURL, parameters.documentDatabaseName, parameters.configDatabaseName,
+				parameters.databasePrefix, parameters.databaseRetrievalPageSize)
 		return openErr
 	}, parameters.databaseTimeout)
 	if err != nil {

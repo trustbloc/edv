@@ -263,7 +263,11 @@ func TestKeyManager(t *testing.T) {
 
 func TestCreateProvider(t *testing.T) {
 	t.Run("Successfully create memory storage provider", func(t *testing.T) {
-		parameters := edvParameters{databaseType: databaseTypeMemOption}
+		parameters := edvParameters{
+			databaseType:         databaseTypeMemOption,
+			configDatabaseName:   defaultConfigDatabaseName,
+			documentDatabaseName: defaultDocumentDatabaseName,
+		}
 
 		provider, err := createEDVProvider(&parameters)
 		require.NoError(t, err)
