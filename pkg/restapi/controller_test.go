@@ -19,7 +19,7 @@ import (
 
 func TestController_New(t *testing.T) {
 	controller, err := New(&operation.Config{
-		Provider: edvprovider.NewProvider(mem.NewProvider(), 10),
+		Provider: createEDVProvider(t),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, controller)
@@ -27,7 +27,7 @@ func TestController_New(t *testing.T) {
 
 func TestController_GetOperations(t *testing.T) {
 	controller, err := New(&operation.Config{
-		Provider:          edvprovider.NewProvider(mem.NewProvider(), 100),
+		Provider:          createEDVProvider(t),
 		EnabledExtensions: &operation.EnabledExtensions{ReadAllDocumentsEndpoint: true},
 	})
 	require.NoError(t, err)
@@ -66,4 +66,14 @@ func TestController_GetOperations(t *testing.T) {
 	require.Equal(t, "/encrypted-data-vaults/{vaultID}/documents/{docID}", ops[5].Path())
 	require.Equal(t, http.MethodDelete, ops[5].Method())
 	require.NotNil(t, ops[5].Handle())
+}
+
+func createEDVProvider(t *testing.T) *edvprovider.Provider {
+	t.Helper()
+
+	provider, err := edvprovider.NewProvider(mem.NewProvider(), "configurations",
+		"documents", 100)
+	require.NoError(t, err)
+
+	return provider
 }

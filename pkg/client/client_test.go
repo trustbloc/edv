@@ -762,9 +762,11 @@ func getTestValidEncryptedDocument(testJWE string) *models.EncryptedDocument {
 func startEDVServer(t *testing.T, srvAddr string, enabledExtensions *operation.EnabledExtensions) *http.Server {
 	t.Helper()
 
-	memProv := edvprovider.NewProvider(mem.NewProvider(), 100)
+	edvProvider, err := edvprovider.NewProvider(mem.NewProvider(),
+		"configurations", "documents", 100)
+	require.NoError(t, err)
 
-	edvService, err := restapi.New(&operation.Config{Provider: memProv, EnabledExtensions: enabledExtensions})
+	edvService, err := restapi.New(&operation.Config{Provider: edvProvider, EnabledExtensions: enabledExtensions})
 	require.NoError(t, err)
 
 	handlers := edvService.GetOperations()

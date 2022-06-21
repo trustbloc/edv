@@ -68,8 +68,7 @@ const (
     }
 }`
 
-	testReferenceID = "referenceID"
-	testVaultID     = "9ANbuHxeBcicymvRZfcKB2"
+	testVaultID = "9ANbuHxeBcicymvRZfcKB2"
 
 	mongoDBConnString    = "mongodb://localhost:27017"
 	dockerMongoDBImage   = "mongo"
@@ -85,6 +84,7 @@ type mockIterator struct {
 	errClose                error
 	keyReturn               string
 	valueReturn             []byte
+	tagsReturn              []storage.Tag
 }
 
 func (m *mockIterator) Next() (bool, error) {
@@ -114,7 +114,7 @@ func (m *mockIterator) Value() ([]byte, error) {
 }
 
 func (m *mockIterator) Tags() ([]storage.Tag, error) {
-	return nil, nil
+	return m.tagsReturn, nil
 }
 
 func (m *mockIterator) TotalItems() (int, error) {
@@ -122,55 +122,37 @@ func (m *mockIterator) TotalItems() (int, error) {
 }
 
 func TestNewProvider(t *testing.T) {
-	prov := NewProvider(mem.NewProvider(), 100)
-	require.NotNil(t, prov)
-}
-
-func TestEDVProvider_CreateNewVault(t *testing.T) {
-	t.Run("Fail to open store for vault", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    &mock.Provider{ErrOpenStore: errors.New("open error")},
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.CreateNewVault(testVaultID, &models.DataVaultConfiguration{})
-		require.EqualError(t, err, "failed to open store for vault: open error")
+	t.Run("Success", func(t *testing.T) {
+		prov, err := NewProvider(mem.NewProvider(),
+			"configurations", "documents", 100)
+		require.NoError(t, err)
+		require.NotNil(t, prov)
 	})
-	t.Run("Invalid vault ID", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.CreateNewVault("NotValidVaultIDFormat", &models.DataVaultConfiguration{})
-		require.EqualError(t, err, "failed to open store for vault: failed to determine underlying store "+
-			"name: invalid vault ID: ID must be a base58-encoded 128-bit value")
+	t.Run("Fail to open configurations store", func(t *testing.T) {
+		prov, err := NewProvider(&mock.Provider{ErrOpenStore: errors.New("open store error")},
+			"configurations", "documents", 100)
+		require.EqualError(t, err, "failed to open configuration store: open store error")
+		require.Nil(t, prov)
 	})
-	t.Run("Fail to create MongoDB index", func(t *testing.T) {
-		mongoDBProvider, err := mongodb.NewProvider("mongodb://BadURL", mongodb.WithTimeout(time.Nanosecond))
+	t.Run("Fail to create indexes in MongoDB", func(t *testing.T) {
+		mongoDBProvider, err := mongodb.NewProvider("mongodb://BadURL",
+			mongodb.WithTimeout(1))
 		require.NoError(t, err)
 
-		prov := Provider{
-			CoreProvider:                    mongoDBProvider,
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err = prov.CreateNewVault(testVaultID, &models.DataVaultConfiguration{})
-		require.EqualError(t, err, "failed to create index for indexed attributes: failed to create indexes "+
-			"in MongoDB collection: failed to create indexes in MongoDB collection: server selection error: "+
+		prov, err := NewProvider(mongoDBProvider,
+			"configurations", "documents", 100)
+		require.EqualError(t, err, "failed to create indexes in MongoDB: failed to create indexes in "+
+			"MongoDB collection: failed to create indexes in MongoDB collection: server selection error: "+
 			"context deadline exceeded, current topology: { Type: Unknown, Servers: [{ Addr: badurl:27017, "+
 			"Type: Unknown }, ] }")
+		require.Nil(t, prov)
 	})
+}
+
+func TestProvider_CreateNewVault(t *testing.T) {
 	t.Run("Fail to store data vault configuration", func(t *testing.T) {
 		prov := Provider{
-			CoreProvider: &mock.Provider{
-				OpenStoreReturn: &mock.Store{ErrPut: errors.New("put error")},
-			},
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
+			configStore: &mock.Store{ErrPut: errors.New("put error")},
 		}
 
 		err := prov.CreateNewVault(testVaultID, &models.DataVaultConfiguration{})
@@ -178,217 +160,46 @@ func TestEDVProvider_CreateNewVault(t *testing.T) {
 	})
 }
 
-func TestEDVProvider_StoreExists(t *testing.T) {
-	t.Run("Success: store exists - base58-encoded 128-bit store name", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		store, err := prov.OpenVault(testVaultID)
+func TestProvider_StoreExists(t *testing.T) {
+	t.Run("Success: store exists", func(t *testing.T) {
+		provider, err := NewProvider(mem.NewProvider(),
+			"configurations", "documents", 100)
 		require.NoError(t, err)
-		require.NotNil(t, store)
 
-		exists, err := prov.VaultExists(testVaultID)
+		err = provider.CreateNewVault(testVaultID, &models.DataVaultConfiguration{})
+		require.NoError(t, err)
+
+		exists, err := provider.VaultExists(testVaultID)
 		require.NoError(t, err)
 		require.True(t, exists)
 	})
 	t.Run("Success: store does not exist", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		exists, err := prov.VaultExists(testVaultID)
+		provider, err := NewProvider(mem.NewProvider(),
+			"configurations", "documents", 100)
 		require.NoError(t, err)
-		require.False(t, exists)
-	})
-	t.Run("Fail to determine store name to use", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID: func(string) (string, error) {
-				return "", errors.New("uuid generation error")
-			},
-		}
 
-		exists, err := prov.VaultExists(testVaultID)
-		require.EqualError(t, err, "failed to determine store name to use: "+
-			"failed to generate UUID from base 58 encoded 128 bit name: uuid generation error")
-		require.False(t, exists)
-	})
-	t.Run("unexpected error while getting store config", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider: &mock.Provider{
-				ErrGetStoreConfig: errors.New("get store config failure"),
-			},
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		exists, err := prov.VaultExists(testVaultID)
-		require.EqualError(t, err, "unexpected error while getting store config: "+
-			"get store config failure")
+		exists, err := provider.VaultExists(testVaultID)
+		require.NoError(t, err)
 		require.False(t, exists)
 	})
 }
 
-func TestEDVProvider_OpenVault(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
+func TestProvider_Put(t *testing.T) {
+	provider, err := NewProvider(mem.NewProvider(),
+		"configurations", "documents", 100)
+	require.NoError(t, err)
 
-		store, err := prov.OpenVault(testVaultID)
-		require.NoError(t, err)
-		require.NotNil(t, store)
-	})
-	t.Run("Failure: other error in open store", func(t *testing.T) {
-		testErr := errors.New("test error")
-		prov := Provider{
-			CoreProvider:                    &mock.Provider{ErrOpenStore: testErr},
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		_, err := prov.OpenVault(testVaultID)
-		require.Equal(t, testErr, err)
-	})
-	t.Run("Fail to determine underlying store name", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID: func(string) (string, error) {
-				return "", errors.New("uuid generation error")
-			},
-		}
-
-		store, err := prov.OpenVault(testVaultID)
-		require.EqualError(t, err, "failed to determine underlying store name: "+
-			"failed to generate UUID from base 58 encoded 128 bit name: uuid generation error")
-		require.Nil(t, store)
-	})
-}
-
-func TestEDVProvider_AddIndexes(t *testing.T) {
-	t.Run("Success - add 2 indexes", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
-		require.NoError(t, err)
-
-		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
-		require.NoError(t, err)
-
-		storeConfig, err := prov.CoreProvider.GetStoreConfig(underlyingStoreName)
-		require.NoError(t, err)
-
-		require.Len(t, storeConfig.TagNames, 2)
-		require.Equal(t, storeConfig.TagNames[0], "AttributeName1")
-		require.Equal(t, storeConfig.TagNames[1], "AttributeName2")
-	})
-	t.Run("Success - add 2 indexes, then add another new one", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
-		require.NoError(t, err)
-
-		err = prov.AddIndexes(testVaultID, []string{"AttributeName3"})
-		require.NoError(t, err)
-
-		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
-		require.NoError(t, err)
-
-		storeConfig, err := prov.CoreProvider.GetStoreConfig(underlyingStoreName)
-		require.NoError(t, err)
-
-		require.Len(t, storeConfig.TagNames, 3)
-		require.Equal(t, storeConfig.TagNames[0], "AttributeName1")
-		require.Equal(t, storeConfig.TagNames[1], "AttributeName2")
-		require.Equal(t, storeConfig.TagNames[2], "AttributeName3")
-	})
-	t.Run("Success - add 2 indexes, then add two more (but one was already set before)", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    mem.NewProvider(),
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
-		require.NoError(t, err)
-
-		err = prov.AddIndexes(testVaultID, []string{"AttributeName2", "AttributeName3"})
-		require.NoError(t, err)
-
-		underlyingStoreName, err := prov.getUnderlyingStoreName(testVaultID)
-		require.NoError(t, err)
-
-		storeConfig, err := prov.CoreProvider.GetStoreConfig(underlyingStoreName)
-		require.NoError(t, err)
-
-		require.Len(t, storeConfig.TagNames, 3)
-		require.Equal(t, storeConfig.TagNames[0], "AttributeName1")
-		require.Equal(t, storeConfig.TagNames[1], "AttributeName2")
-		require.Equal(t, storeConfig.TagNames[2], "AttributeName3")
-	})
-	t.Run("Failed to open underlying store", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider:                    &mock.Provider{ErrOpenStore: errors.New("open store failure")},
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
-		require.EqualError(t, err, "failed to open underlying store: open store failure")
-	})
-	t.Run("Failed to get existing store configuration", func(t *testing.T) {
-		prov := Provider{
-			CoreProvider: &mock.Provider{
-				ErrGetStoreConfig: errors.New("get store config failure"),
-			},
-			checkIfBase58Encoded128BitValue: edvutils.CheckIfBase58Encoded128BitValue,
-			base58Encoded128BitToUUID:       edvutils.Base58Encoded128BitToUUID,
-		}
-
-		err := prov.AddIndexes(testVaultID, []string{"AttributeName1", "AttributeName2"})
-		require.EqualError(t, err, "failed to get existing store configuration: get store config failure")
-	})
-}
-
-func TestEDVStore_Put(t *testing.T) {
 	t.Run("Success - document does not have encrypted attributes", func(t *testing.T) {
-		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
-		require.NoError(t, err)
-
-		store := Vault{CoreStore: memCoreStore, retrievalPageSize: 100}
-
-		err = store.Put(models.EncryptedDocument{ID: "someID"})
+		err = provider.Put(testVaultID, models.EncryptedDocument{ID: "someID"})
 		require.NoError(t, err)
 	})
 	t.Run("Success - document has encrypted attributes", func(t *testing.T) {
-		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
-		require.NoError(t, err)
-
-		store := Vault{CoreStore: memCoreStore, retrievalPageSize: 100}
-
 		var encryptedDocument models.EncryptedDocument
 
 		err = json.Unmarshal([]byte(testEncryptedDoc), &encryptedDocument)
 		require.NoError(t, err)
 
-		err = store.Put(encryptedDocument)
+		err = provider.Put(testVaultID, encryptedDocument)
 		require.NoError(t, err)
 	})
 }
@@ -409,16 +220,15 @@ func TestEDVStore_Get(t *testing.T) {
 			require.NoError(t, pool.Purge(mongoDBResource), "failed to purge MongoDB resource")
 		}()
 
-		coreStore, err := mongoDBProvider.OpenStore("corestore")
+		edvProvider, err := NewProvider(mongoDBProvider,
+			"configurations", "documents", 100)
 		require.NoError(t, err)
 
 		t.Run("Found", func(t *testing.T) {
-			store := Vault{CoreStore: coreStore, retrievalPageSize: 100}
-
-			err = store.Put(encryptedDocument)
+			err = edvProvider.Put(testVaultID, encryptedDocument)
 			require.NoError(t, err)
 
-			value, err := store.Get(testDocID1)
+			value, err := edvProvider.Get(testVaultID, testDocID1)
 			require.NoError(t, err)
 
 			var retrievedEncryptedDocument models.EncryptedDocument
@@ -429,24 +239,21 @@ func TestEDVStore_Get(t *testing.T) {
 			require.Equal(t, testDocID1, retrievedEncryptedDocument.ID)
 		})
 		t.Run("Not found", func(t *testing.T) {
-			store := Vault{CoreStore: coreStore, retrievalPageSize: 100}
-
-			value, err := store.Get("DocumentID")
+			value, err := edvProvider.Get(testVaultID, "NonExistentDocID")
 			require.Equal(t, storage.ErrDataNotFound, err)
 			require.Nil(t, value)
 		})
 	})
 	t.Run("Using in-memory storage", func(t *testing.T) {
-		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
+		edvProvider, err := NewProvider(mem.NewProvider(),
+			"configurations", "documents", 100)
 		require.NoError(t, err)
 
-		store := Vault{CoreStore: memCoreStore, retrievalPageSize: 100}
-
 		t.Run("Found", func(t *testing.T) {
-			err = store.Put(encryptedDocument)
+			err = edvProvider.Put(testVaultID, encryptedDocument)
 			require.NoError(t, err)
 
-			value, err := store.Get(testDocID1)
+			value, err := edvProvider.Get(testVaultID, testDocID1)
 			require.NoError(t, err)
 
 			var retrievedEncryptedDocument models.EncryptedDocument
@@ -457,7 +264,7 @@ func TestEDVStore_Get(t *testing.T) {
 			require.Equal(t, testDocID1, retrievedEncryptedDocument.ID)
 		})
 		t.Run("Not found", func(t *testing.T) {
-			value, err := store.Get("key")
+			value, err := edvProvider.Get(testVaultID, "NonExistentDocID")
 			require.Equal(t, storage.ErrDataNotFound, err)
 			require.Nil(t, value)
 		})
@@ -482,90 +289,31 @@ func TestEDVStore_Query(t *testing.T) {
 			require.NoError(t, pool.Purge(mongoDBResource), "failed to purge MongoDB resource")
 		}()
 
-		t.Run("Various single and multiple attribute queries", func(t *testing.T) {
-			testTable := generateQueryTestTable(t)
+		provider, err := NewProvider(mongoDBProvider,
+			"configurations", "documents", 100)
+		require.NoError(t, err)
 
-			edvProvider := NewProvider(mongoDBProvider, 100)
-
-			// For each test, we:
-			// 1. Create a fresh (empty) vault.
-			// 2. Store the test documents in it.
-			// 3. Do the test query.
-			// 4. Check if we got the expected results back.
-			for _, queryTest := range testTable {
-				testFailureExtraInfo := fmt.Sprintf("Scenario: %s", queryTest.testName)
-
-				vaultID, err := edvutils.GenerateEDVCompatibleID()
-				require.NoError(t, err)
-
-				err = edvProvider.CreateNewVault(vaultID, &models.DataVaultConfiguration{})
-				require.NoError(t, err)
-
-				store, err := edvProvider.OpenVault(vaultID)
-				require.NoError(t, err)
-
-				storeDocuments(t, store, queryTest.storedDocuments, testFailureExtraInfo)
-
-				documents, err := store.Query(queryTest.query)
-				require.NoError(t, err)
-
-				expectedDocumentIDs := extractDocumentIDs(queryTest.expectedDocuments)
-				actualDocumentIDs := extractDocumentIDs(documents)
-
-				verifyDocumentIDsMatch(t, actualDocumentIDs, expectedDocumentIDs, testFailureExtraInfo)
-			}
+		t.Run("Success cases", func(t *testing.T) {
+			doQueryTests(t, provider, false)
 		})
 	})
-	t.Run("Using other storage providers", func(t *testing.T) {
-		t.Run("Success: one document matches query", func(t *testing.T) {
-			t.Run(`"index + equals" query`, func(t *testing.T) {
-				mockCoreStore := mock.Store{
-					QueryReturn: &mockIterator{
-						maxTimesNextCanBeCalled: 1,
-						valueReturn:             []byte(testEncryptedDoc),
-					},
-				}
+	t.Run("Using in-memory storage", func(t *testing.T) {
+		t.Run("Success cases", func(t *testing.T) {
+			provider, err := NewProvider(mem.NewProvider(),
+				"configurations", "documents", 100)
+			require.NoError(t, err)
 
-				store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
-
-				query := models.Query{
-					Equals: []map[string]string{
-						{"CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ": "RV58Va4904K-18_L5g_vfARXRWEB00knFSGPpukUBro"},
-					},
-				}
-
-				docs, err := store.Query(query)
-				require.NoError(t, err)
-				require.Len(t, docs, 1)
-				require.Equal(t, testDocID1, docs[0].ID)
-			})
-			t.Run(`"has" query`, func(t *testing.T) {
-				mockCoreStore := mock.Store{
-					QueryReturn: &mockIterator{
-						maxTimesNextCanBeCalled: 1,
-						valueReturn:             []byte(testEncryptedDoc),
-					},
-				}
-
-				store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
-
-				query := models.Query{
-					Has: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
-				}
-
-				docs, err := store.Query(query)
-				require.NoError(t, err)
-				require.Len(t, docs, 1)
-				require.Equal(t, testDocID1, docs[0].ID)
-			})
+			doQueryTests(t, provider, true)
 		})
-		t.Run("Failure: coreStore query returns error", func(t *testing.T) {
+		t.Run("Failure: document store query call returns error", func(t *testing.T) {
 			errTest := errors.New("queryError")
 			mockCoreStore := mock.Store{ErrQuery: errTest}
 
-			store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
+			provider := Provider{
+				documentsStore: &mockCoreStore,
+			}
 
-			docs, err := store.Query(models.Query{Equals: []map[string]string{{}}})
+			docs, err := provider.Query(testVaultID, models.Query{Equals: []map[string]string{{}}})
 			require.EqualError(t, err, "failed to query underlying store: queryError")
 			require.Empty(t, docs)
 		})
@@ -575,9 +323,11 @@ func TestEDVStore_Query(t *testing.T) {
 				QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 0, errNext: errTest},
 			}
 
-			store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
+			provider := Provider{
+				documentsStore: &mockCoreStore,
+			}
 
-			docs, err := store.Query(models.Query{Equals: []map[string]string{{}}})
+			docs, err := provider.Query(testVaultID, models.Query{Equals: []map[string]string{{}}})
 			require.EqualError(t, err, "next error")
 			require.Empty(t, docs)
 		})
@@ -590,32 +340,44 @@ func TestEDVStore_Query(t *testing.T) {
 				},
 			}
 
-			store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
+			provider := Provider{
+				documentsStore: &mockCoreStore,
+			}
 
-			docs, err := store.Query(models.Query{Equals: []map[string]string{{}}})
+			docs, err := provider.Query(testVaultID, models.Query{Equals: []map[string]string{{}}})
 			require.EqualError(t, err, "next error")
 			require.Empty(t, docs)
 		})
 		t.Run("Failure: iterator value() call returns error", func(t *testing.T) {
 			errTest := errors.New("value error")
 			mockCoreStore := mock.Store{
-				QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 1, errValue: errTest},
+				QueryReturn: &mockIterator{
+					maxTimesNextCanBeCalled: 1,
+					errValue:                errTest,
+					tagsReturn: []storage.Tag{
+						{Name: vaultIDTagName, Value: testVaultID},
+					},
+				},
 			}
 
-			store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
+			provider := Provider{
+				documentsStore: &mockCoreStore,
+			}
 
-			docs, err := store.Query(models.Query{Equals: []map[string]string{{}}})
+			docs, err := provider.Query(testVaultID, models.Query{Equals: []map[string]string{{}}})
 			require.EqualError(t, err, "value error")
 			require.Empty(t, docs)
 		})
 		t.Run("Failure: support for multiple attribute queries not implemented for CouchDB or in-memory storage",
 			func(t *testing.T) {
-				memStore, err := mem.NewProvider().OpenStore("VaultID")
+				memStore, err := mem.NewProvider().OpenStore("documents")
 				require.NoError(t, err)
 
-				store := Vault{CoreStore: memStore, retrievalPageSize: 100}
+				provider := Provider{
+					documentsStore: memStore,
+				}
 
-				docs, err := store.Query(models.Query{Equals: []map[string]string{{}, {}}})
+				docs, err := provider.Query(testVaultID, models.Query{Equals: []map[string]string{{}, {}}})
 				require.EqualError(t, err, "support for multiple attribute queries not implemented for "+
 					"CouchDB or in-memory storage")
 				require.Empty(t, docs)
@@ -623,42 +385,85 @@ func TestEDVStore_Query(t *testing.T) {
 	})
 }
 
-func TestEDVStore_StoreDataVaultConfiguration(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		memCoreStore, err := mem.NewProvider().OpenStore("corestore")
-		require.NoError(t, err)
-
-		store := Vault{CoreStore: memCoreStore, retrievalPageSize: 100}
-
-		err = store.StoreDataVaultConfiguration(&models.DataVaultConfiguration{
-			ReferenceID: testReferenceID,
-		})
-		require.NoError(t, err)
+func TestEDVStore_Delete(t *testing.T) {
+	t.Run("Using MongoDB", func(t *testing.T) {
+		doDeleteTest(t, mem.NewProvider())
 	})
-	t.Run("Failure: error when putting config entry in coreStore", func(t *testing.T) {
-		errTest := errors.New("coreStore put config error")
-		mockCoreStore := mock.Store{
-			QueryReturn: &mockIterator{maxTimesNextCanBeCalled: 1, noResultsFound: true}, ErrPut: errTest,
-		}
-		store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
+	t.Run("Using in-memory storage", func(t *testing.T) {
+		mongoDBProvider, err := mongodb.NewProvider(mongoDBConnString)
+		require.NoError(t, err)
 
-		testConfig := models.DataVaultConfiguration{ReferenceID: testReferenceID}
+		pool, mongoDBResource := startMongoDBContainer(t, mongoDBProvider)
 
-		err := store.StoreDataVaultConfiguration(&testConfig)
-		require.Equal(t, errTest, err)
+		defer func() {
+			require.NoError(t, pool.Purge(mongoDBResource), "failed to purge MongoDB resource")
+		}()
+
+		doDeleteTest(t, mongoDBProvider)
 	})
 }
 
-func TestEDVStore_Delete(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		mockCoreStore := mock.Store{
-			QueryReturn: &mockIterator{},
-		}
-		store := Vault{CoreStore: &mockCoreStore, retrievalPageSize: 100}
+func doQueryTests(t *testing.T, edvProvider *Provider, skipMultipleAttributeQueries bool) {
+	t.Helper()
 
-		err := store.Delete(testDocID1)
+	testTable := generateQueryTestTable(t, skipMultipleAttributeQueries)
+
+	// For each test, we:
+	// 1. Create a fresh (empty) vault.
+	// 2. Store the test documents in it.
+	// 3. Do the test query.
+	// 4. Check if we got the expected results back.
+	for _, queryTest := range testTable { //nolint:gocritic // test file
+		testFailureExtraInfo := fmt.Sprintf("Scenario: %s", queryTest.testName)
+
+		vaultID, err := edvutils.GenerateEDVCompatibleID()
 		require.NoError(t, err)
-	})
+
+		err = edvProvider.CreateNewVault(vaultID, &models.DataVaultConfiguration{})
+		require.NoError(t, err)
+
+		storeDocuments(t, vaultID, edvProvider, queryTest.storedDocuments, testFailureExtraInfo)
+
+		documents, err := edvProvider.Query(vaultID, queryTest.query)
+		require.NoError(t, err)
+
+		expectedDocumentIDs := extractDocumentIDs(queryTest.expectedDocuments)
+		actualDocumentIDs := extractDocumentIDs(documents)
+
+		verifyDocumentIDsMatch(t, actualDocumentIDs, expectedDocumentIDs, testFailureExtraInfo)
+	}
+}
+
+func doDeleteTest(t *testing.T, underlyingProvider storage.Provider) {
+	t.Helper()
+
+	provider, err := NewProvider(underlyingProvider,
+		"configurations", "documents", 100)
+	require.NoError(t, err)
+
+	var encryptedDocument models.EncryptedDocument
+
+	err = json.Unmarshal([]byte(testEncryptedDoc), &encryptedDocument)
+	require.NoError(t, err)
+
+	err = provider.Put(testVaultID, encryptedDocument)
+	require.NoError(t, err)
+
+	retrievedDocumentBytes, err := provider.Get(testVaultID, encryptedDocument.ID)
+	require.NoError(t, err)
+
+	var retrievedEncryptedDocument models.EncryptedDocument
+
+	err = json.Unmarshal(retrievedDocumentBytes, &retrievedEncryptedDocument)
+	require.NoError(t, err)
+
+	require.Equal(t, encryptedDocument.ID, retrievedEncryptedDocument.ID)
+
+	err = provider.Delete(testVaultID, testDocID1)
+	require.NoError(t, err)
+
+	_, err = provider.Get(testVaultID, encryptedDocument.ID)
+	require.EqualError(t, err, storage.ErrDataNotFound.Error())
 }
 
 func startMongoDBContainer(t *testing.T, provider *mongodb.Provider) (*dctest.Pool, *dctest.Resource) {
@@ -685,7 +490,7 @@ func waitForMongoDBToBeUp(provider *mongodb.Provider) error {
 	return backoff.Retry(provider.Ping, backoff.WithMaxRetries(backoff.NewConstantBackOff(time.Second), 30))
 }
 
-func generateQueryTestTable(t *testing.T) []queryTestEntry {
+func generateQueryTestTable(t *testing.T, skipMultipleAttributeQueries bool) []queryTestEntry {
 	t.Helper()
 
 	testDocuments := generateTestDocuments(t)
@@ -694,41 +499,25 @@ func generateQueryTestTable(t *testing.T) []queryTestEntry {
 
 	testTable := []queryTestEntry{
 		{
-			testName:          "Vault a single document - query for one attribute pair - one result.",
+			testName:          "Store a single document - query for one attribute pair - one result.",
 			query:             testQueries[0],
 			storedDocuments:   []models.EncryptedDocument{testDocuments[0]},
 			expectedDocuments: []models.EncryptedDocument{testDocuments[0]},
 		},
 		{
-			testName:          "Vault three documents - query for one attribute pair - one result.",
+			testName:          "Store has three documents - query for one attribute pair - one result.",
 			query:             testQueries[0],
 			storedDocuments:   []models.EncryptedDocument{testDocuments[0], testDocuments[1], testDocuments[2]},
 			expectedDocuments: []models.EncryptedDocument{testDocuments[0]},
 		},
 		{
-			testName:          "Vault three documents - query for one attribute pair - two results.",
+			testName:          "Store has three documents - query for one attribute pair - two results.",
 			query:             testQueries[1],
 			storedDocuments:   []models.EncryptedDocument{testDocuments[0], testDocuments[1], testDocuments[2]},
 			expectedDocuments: []models.EncryptedDocument{testDocuments[0], testDocuments[1]},
 		},
 		{
-			testName:          "Vault three documents - query for two attribute pairs (AND) - one result.",
-			query:             testQueries[2],
-			storedDocuments:   []models.EncryptedDocument{testDocuments[0], testDocuments[1], testDocuments[2]},
-			expectedDocuments: []models.EncryptedDocument{testDocuments[1]},
-		},
-		{
-			testName: "Vault five documents - query for an attribute name AND another attribute pair" +
-				" - two results.",
-			query: testQueries[3],
-			storedDocuments: []models.EncryptedDocument{
-				testDocuments[0], testDocuments[1], testDocuments[2],
-				testDocuments[3], testDocuments[4],
-			},
-			expectedDocuments: []models.EncryptedDocument{testDocuments[3], testDocuments[4]},
-		},
-		{
-			testName: "Vault five documents - query for an attribute name only - three results.",
+			testName: "Store has five documents - query for an attribute name only - three results.",
 			query:    testQueries[4],
 			storedDocuments: []models.EncryptedDocument{
 				testDocuments[0], testDocuments[1], testDocuments[2],
@@ -737,44 +526,74 @@ func generateQueryTestTable(t *testing.T) []queryTestEntry {
 			expectedDocuments: []models.EncryptedDocument{testDocuments[0], testDocuments[1], testDocuments[2]},
 		},
 		{
-			testName: "Vault five documents - query for an attribute name OR a different attribute name" +
-				" - four results.",
-			query: testQueries[5],
+			testName: "Store has five documents - query for an attribute name only using " +
+				`a "has" query - three results.`,
+			query: testQueries[8],
 			storedDocuments: []models.EncryptedDocument{
 				testDocuments[0], testDocuments[1], testDocuments[2],
 				testDocuments[3], testDocuments[4],
 			},
-			expectedDocuments: []models.EncryptedDocument{
-				testDocuments[0], testDocuments[1],
-				testDocuments[3], testDocuments[4],
-			},
+			expectedDocuments: []models.EncryptedDocument{testDocuments[2], testDocuments[3], testDocuments[4]},
 		},
-		{
-			testName: "Vault five documents - query for an attribute name OR a different attribute pair" +
-				" - two results.",
-			query: testQueries[6],
-			storedDocuments: []models.EncryptedDocument{
-				testDocuments[0], testDocuments[1], testDocuments[2],
-				testDocuments[3], testDocuments[4],
+	}
+
+	if !skipMultipleAttributeQueries {
+		testTable = append(testTable,
+			queryTestEntry{
+				testName:          "Store has three documents - query for two attribute pairs (AND) - one result.",
+				query:             testQueries[2],
+				storedDocuments:   []models.EncryptedDocument{testDocuments[0], testDocuments[1], testDocuments[2]},
+				expectedDocuments: []models.EncryptedDocument{testDocuments[1]},
 			},
-			expectedDocuments: []models.EncryptedDocument{
-				testDocuments[0],
-				testDocuments[3],
+			queryTestEntry{
+				testName: "Store has five documents - query for an attribute name AND another attribute pair" +
+					" - two results.",
+				query: testQueries[3],
+				storedDocuments: []models.EncryptedDocument{
+					testDocuments[0], testDocuments[1], testDocuments[2],
+					testDocuments[3], testDocuments[4],
+				},
+				expectedDocuments: []models.EncryptedDocument{testDocuments[3], testDocuments[4]},
 			},
-		},
-		{
-			testName: "Vault five documents - query for a first attribute pair AND a second attribute pair" +
-				" OR a third attribute pair AND a fourth attribute pair - four results.",
-			query: testQueries[7],
-			storedDocuments: []models.EncryptedDocument{
-				testDocuments[0], testDocuments[1], testDocuments[2],
-				testDocuments[3], testDocuments[4],
+			queryTestEntry{
+				testName: "Store five documents - query for an attribute name OR a different attribute name" +
+					" - four results.",
+				query: testQueries[5],
+				storedDocuments: []models.EncryptedDocument{
+					testDocuments[0], testDocuments[1], testDocuments[2],
+					testDocuments[3], testDocuments[4],
+				},
+				expectedDocuments: []models.EncryptedDocument{
+					testDocuments[0], testDocuments[1],
+					testDocuments[3], testDocuments[4],
+				},
 			},
-			expectedDocuments: []models.EncryptedDocument{
-				testDocuments[0],
-				testDocuments[4],
+			queryTestEntry{
+				testName: "Store five documents - query for an attribute name OR a different attribute pair" +
+					" - two results.",
+				query: testQueries[6],
+				storedDocuments: []models.EncryptedDocument{
+					testDocuments[0], testDocuments[1], testDocuments[2],
+					testDocuments[3], testDocuments[4],
+				},
+				expectedDocuments: []models.EncryptedDocument{
+					testDocuments[0],
+					testDocuments[3],
+				},
 			},
-		},
+			queryTestEntry{
+				testName: "Store five documents - query for a first attribute pair AND a second attribute pair" +
+					" OR a third attribute pair AND a fourth attribute pair - four results.",
+				query: testQueries[7],
+				storedDocuments: []models.EncryptedDocument{
+					testDocuments[0], testDocuments[1], testDocuments[2],
+					testDocuments[3], testDocuments[4],
+				},
+				expectedDocuments: []models.EncryptedDocument{
+					testDocuments[0],
+					testDocuments[4],
+				},
+			})
 	}
 
 	return testTable
@@ -1065,9 +884,13 @@ func generateTestQueries() []models.Query {
 		},
 	}
 
+	testQuery9 := models.Query{
+		Has: "CUQaxPtSLtd8L3WBAIkJ4DiVJeqoF6bdnhR7lSaPloZ",
+	}
+
 	return []models.Query{
-		testQuery1, testQuery2, testQuery3, testQuery4,
-		testQuery5, testQuery6, testQuery7, testQuery8,
+		testQuery1, testQuery2, testQuery3, testQuery4, testQuery5,
+		testQuery6, testQuery7, testQuery8, testQuery9,
 	}
 }
 
@@ -1081,10 +904,11 @@ func extractDocumentIDs(documents []models.EncryptedDocument) []string {
 	return documentIDs
 }
 
-func storeDocuments(t *testing.T, store *Vault, documents []models.EncryptedDocument, testFailureExtraInfo string) {
+func storeDocuments(t *testing.T, vaultID string, provider *Provider,
+	documents []models.EncryptedDocument, testFailureExtraInfo string) {
 	t.Helper()
 
-	err := store.Put(documents...)
+	err := provider.Put(vaultID, documents...)
 	require.NoError(t, err, testFailureExtraInfo)
 }
 

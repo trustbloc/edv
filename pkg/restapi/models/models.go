@@ -32,6 +32,8 @@ type EncryptedDocument struct {
 	Sequence                    uint64                       `json:"sequence,omitempty"`
 	IndexedAttributeCollections []IndexedAttributeCollection `json:"indexed,omitempty"`
 	JWE                         json.RawMessage              `json:"jwe,omitempty"`
+	// VaultID is just used internally for storing to MongoDB. It's always removed before returning data to a client.
+	VaultID string `json:"vaultID,omitempty"`
 }
 
 // IndexedAttributeCollection represents a collection of indexed attributes,

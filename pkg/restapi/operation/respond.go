@@ -211,7 +211,7 @@ func writeErrorWithVaultIDAndReceivedData(rw http.ResponseWriter, statusCode int
 }
 
 func writeErrorWithVaultIDAndDocID(rw http.ResponseWriter, statusCode int, message string, err error,
-	docID, vaultID string) {
+	vaultID, docID string) {
 	logger.Errorf(message, docID, vaultID, err)
 
 	rw.WriteHeader(statusCode)

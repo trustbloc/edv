@@ -18,7 +18,6 @@ import (
 
 const (
 	testBase58encoded128bitString = "Sr7yHjomhn1aeaFnxREfRN"
-	testConvertedUUIDString       = "d15034fa-9525-4ebf-3352-d19c8b02cf05"
 
 	not128BitString = "testString"
 
@@ -88,19 +87,6 @@ func TestCheckIfBase58Encoded128BitValue(t *testing.T) {
 	t.Run("Failure - not 128 bit", func(t *testing.T) {
 		err := CheckIfBase58Encoded128BitValue(not128BitString)
 		require.Equal(t, messages.ErrNot128BitValue, err)
-	})
-}
-
-func TestBase58Encoded128BitToUUID(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		uuidString, err := Base58Encoded128BitToUUID(testBase58encoded128bitString)
-		require.NoError(t, err)
-		require.Equal(t, testConvertedUUIDString, uuidString)
-	})
-	t.Run("Failure - invalid UUID", func(t *testing.T) {
-		uuidString, err := Base58Encoded128BitToUUID("")
-		require.Empty(t, uuidString)
-		require.Error(t, err)
 	})
 }
 
