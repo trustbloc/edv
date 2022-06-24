@@ -80,7 +80,7 @@ require (
 	github.com/multiformats/go-multibase v0.0.3 // indirect
 	github.com/piprate/json-gold v0.4.1 // indirect
 	github.com/pquerna/cachecontrol v0.1.0 // indirect
-	github.com/stretchr/testify v1.7.1 // indirect
+	github.com/stretchr/testify v1.7.2 // indirect
 	github.com/trustbloc/edv v0.1.8
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

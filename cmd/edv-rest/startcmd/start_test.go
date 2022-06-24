@@ -58,9 +58,11 @@ func TestStartCmdWithMissingArg(t *testing.T) {
 	t.Run("test missing kms database url arg - couchdb", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
-		args := []string{"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem", "--" +
-			localKMSSecretsDatabaseTypeFlagName, "couchdb", "--" + authEnableFlagName, "true", "--" +
-			databaseTimeoutFlagName, "1"}
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem", "--" +
+				localKMSSecretsDatabaseTypeFlagName, "couchdb", "--" + authTypeFlagName, "ZCAP",
+			"--" + databaseTimeoutFlagName, "1",
+		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
@@ -69,18 +71,18 @@ func TestStartCmdWithMissingArg(t *testing.T) {
 			"EDV_LOCALKMS_SECRETS_DATABASE_URL (environment variable) have been set")
 	})
 
-	t.Run("test auth enable wrong value", func(t *testing.T) {
+	t.Run("test auth invalid type", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
 		args := []string{
 			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + authEnableFlagName, "wrong",
+			"--" + authTypeFlagName, "wrong",
 		}
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "strconv.ParseBool: parsing ")
+		require.EqualError(t, err, "wrong is not a valid auth type")
 	})
 }
 
@@ -97,7 +99,7 @@ func TestStartCmdValidArgs(t *testing.T) {
 
 		args := []string{
 			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
-			"--" + authEnableFlagName, "true", "--" + localKMSSecretsDatabaseTypeFlagName, "mem",
+			"--" + localKMSSecretsDatabaseTypeFlagName, "mem",
 			"--" + extensionsFlagName, batchExtensionName, "--" + corsEnableFlagName, "true",
 		}
 		startCmd.SetArgs(args)
@@ -300,19 +302,11 @@ func TestCreateProvider(t *testing.T) {
 }
 
 func TestHttpHandler_ServeHTTP(t *testing.T) {
-	t.Run("test svc is nil", func(t *testing.T) {
-		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
-			require.Nil(t, r)
-		}}
-		h := httpHandler{routerHandler: m}
-		h.ServeHTTP(&httptest.ResponseRecorder{}, nil)
-	})
-
 	t.Run("test create vault request", func(t *testing.T) {
 		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.RequestURI, createVaultPath)
 		}}
-		h := httpHandler{routerHandler: m, authSvc: &mockAuthService{}}
+		h := zcapAuthHandler{routerHandler: m, authZCAPSvc: &mockAuthService{}}
 		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: createVaultPath})
 	})
 
@@ -320,12 +314,12 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, r.RequestURI, healthCheckPath)
 		}}
-		h := httpHandler{routerHandler: m, authSvc: &mockAuthService{}}
+		h := zcapAuthHandler{routerHandler: m, authZCAPSvc: &mockAuthService{}}
 		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: healthCheckPath})
 	})
 
 	t.Run("test error from auth handler", func(t *testing.T) {
-		h := httpHandler{authSvc: &mockAuthService{
+		h := zcapAuthHandler{authZCAPSvc: &mockAuthService{
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
 				next http.HandlerFunc) (http.HandlerFunc, error) {
 				return nil, fmt.Errorf("failed to create auth handler")
@@ -339,7 +333,7 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 	})
 
 	t.Run("test auth handler success", func(t *testing.T) {
-		h := httpHandler{authSvc: &mockAuthService{
+		h := zcapAuthHandler{authZCAPSvc: &mockAuthService{
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
 				next http.HandlerFunc) (http.HandlerFunc, error) {
 				return func(w http.ResponseWriter, r *http.Request) {

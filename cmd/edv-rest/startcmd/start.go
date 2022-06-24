@@ -9,9 +9,12 @@ package startcmd
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +28,7 @@ import (
 	"github.com/hyperledger/aries-framework-go-ext/component/vdr/orb"
 	"github.com/hyperledger/aries-framework-go/component/storageutil/mem"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto/tinkcrypto"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/jose/jwk"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/ld"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
@@ -36,6 +40,10 @@ import (
 	"github.com/hyperledger/aries-framework-go/spi/storage"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
+	"github.com/square/go-jose/v3"
+	"github.com/trustbloc/auth/component/gnap/rs"
+	"github.com/trustbloc/auth/spi/gnap"
+	"github.com/trustbloc/auth/spi/gnap/proof/httpsig"
 	"github.com/trustbloc/edge-core/pkg/log"
 	"github.com/trustbloc/edge-core/pkg/restapi/logspec"
 	cmdutils "github.com/trustbloc/edge-core/pkg/utils/cmd"
@@ -167,10 +175,24 @@ const (
 	localKMSSecretsDatabasePrefixFlagUsage = "An optional prefix to be used when creating and retrieving the underlying " +
 		"KMS secrets database. " + commonEnvVarUsageText + localKMSSecretsDatabasePrefixEnvKey
 
-	authEnableFlagName  = "auth-enable"
-	authEnableFlagUsage = "Enable authorization. Possible values [true] [false]. " +
-		"Defaults to false if not set. " + commonEnvVarUsageText + authEnableEnvKey
-	authEnableEnvKey = "EDV_AUTH_ENABLE"
+	authTypeFlagName  = "auth-type"
+	authTypeFlagUsage = "The type of authorization to use. Possible values [none] [GNAP] [ZCAP]. " +
+		"Defaults to none if not set. " + commonEnvVarUsageText + authTypeEnvKey
+	authTypeEnvKey = "EDV_AUTH_TYPE"
+
+	noneAuthType = "none"
+	gnapAuthType = "gnap"
+	zcapAuthType = "zcap"
+
+	gnapSigningKeyPathFlagName  = "gnap-signing-key"
+	gnapSigningKeyPathEnvKey    = "EDV_GNAP_SIGNING_KEY"
+	gnapSigningKeyPathFlagUsage = "The path to the private key to use when signing GNAP introspection requests. " +
+		commonEnvVarUsageText + gnapSigningKeyPathEnvKey
+
+	authServerURLFlagName  = "auth-server-url"
+	authServerURLEnvKey    = "EDV_AUTH_SERVER_URL"
+	authServerURLFlagUsage = "The URL of Auth server. Required if using GNAP authorization. " +
+		commonEnvVarUsageText + authServerURLEnvKey
 
 	corsEnableFlagName  = "cors-enable"
 	corsEnableFlagUsage = "Enable cors. Possible values [true] [false]. " +
@@ -186,7 +208,7 @@ const (
 		"[" + batchExtensionName + "]. " +
 		"If not set, then no extensions will be used and the EDV server will be " +
 		"strictly conformant with the spec. These can all be safely enabled without breaking any core " +
-		"EDV functionality or non-extension-aware clients." + commonEnvVarUsageText + extensionsEnvKey
+		"EDV functionality or non-extension-aware clients. " + commonEnvVarUsageText + extensionsEnvKey
 	extensionsEnvKey = "EDV_EXTENSIONS"
 
 	didDomainFlagName  = "did-domain"
@@ -204,6 +226,10 @@ const (
 
 	createVaultPath = "/encrypted-data-vaults"
 	healthCheckPath = "/healthcheck"
+	logSpecEndpoint = "/logspec"
+
+	proofType = "httpsig"
+	gnapToken = "GNAP"
 )
 
 var logger = log.New("edv-rest")
@@ -263,7 +289,9 @@ type edvParameters struct {
 	logLevel                  string
 	didDomain                 string
 	tlsConfig                 *tlsConfig
-	authEnable                bool
+	authType                  string
+	gnapSigningKeyPath        string
+	authServerURL             string
 	corsEnable                bool
 	localKMSSecretsStorage    *storageParameters
 	extensionsToEnable        *operation.EnabledExtensions
@@ -295,7 +323,7 @@ func (k kmsProvider) SecretLock() secretlock.Service {
 	return k.secretLockService
 }
 
-type authService interface {
+type authZCAPService interface {
 	Create(resourceID, verificationMethod string) ([]byte, error)
 	Handler(resourceID string, req *http.Request, w http.ResponseWriter, next http.HandlerFunc) (http.HandlerFunc, error)
 }
@@ -406,7 +434,29 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				return err
 			}
 
-			authEnable, err := getAuthEnable(cmd)
+			authType, err := cmdutils.GetUserSetVarFromString(cmd, authTypeFlagName, authTypeEnvKey, true)
+			if err != nil {
+				return err
+			}
+
+			authType = strings.ToLower(authType)
+
+			if authType == "" {
+				authType = noneAuthType
+			}
+
+			if authType != noneAuthType && authType != gnapAuthType && authType != zcapAuthType {
+				return fmt.Errorf("%s is not a valid auth type", authType)
+			}
+
+			gnapSigningKeyPath, err := cmdutils.GetUserSetVarFromString(cmd, gnapSigningKeyPathFlagName,
+				gnapSigningKeyPathEnvKey, authType != gnapAuthType)
+			if err != nil {
+				return err
+			}
+
+			authServerURL, err := cmdutils.GetUserSetVarFromString(cmd, authServerURLFlagName,
+				authServerURLEnvKey, authType != gnapAuthType)
 			if err != nil {
 				return err
 			}
@@ -416,7 +466,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				return err
 			}
 
-			localKMSSecretsStorage, err := getLocalKMSSecretsStorageParameters(cmd, !authEnable)
+			localKMSSecretsStorage, err := getLocalKMSSecretsStorageParameters(cmd, authType == noneAuthType)
 			if err != nil {
 				return err
 			}
@@ -438,7 +488,9 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				databaseRetrievalPageSize: databaseRetrievalPageSize,
 				logLevel:                  loggingLevel,
 				tlsConfig:                 tlsConfig,
-				authEnable:                authEnable,
+				authType:                  authType,
+				gnapSigningKeyPath:        gnapSigningKeyPath,
+				authServerURL:             authServerURL,
 				corsEnable:                corsEnable,
 				localKMSSecretsStorage:    localKMSSecretsStorage,
 				extensionsToEnable:        enabledExtensions,
@@ -447,23 +499,6 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 			return startEDV(parameters)
 		},
 	}
-}
-
-func getAuthEnable(cmd *cobra.Command) (bool, error) {
-	authEnableString := cmdutils.GetUserSetOptionalVarFromString(cmd, authEnableFlagName, authEnableEnvKey)
-
-	authEnable := false
-
-	if authEnableString != "" {
-		var err error
-		authEnable, err = strconv.ParseBool(authEnableString)
-
-		if err != nil {
-			return false, err
-		}
-	}
-
-	return authEnable, nil
 }
 
 func getCORSEnable(cmd *cobra.Command) (bool, error) {
@@ -625,12 +660,24 @@ func createFlags(startCmd *cobra.Command) {
 		localKMSSecretsDatabaseURLFlagUsage)
 	startCmd.Flags().StringP(localKMSSecretsDatabasePrefixFlagName, "", "",
 		localKMSSecretsDatabasePrefixFlagUsage)
-	startCmd.Flags().StringP(authEnableFlagName, "", "", authEnableFlagUsage)
+	startCmd.Flags().StringP(authTypeFlagName, "", "", authTypeFlagUsage)
+	startCmd.Flags().StringP(gnapSigningKeyPathFlagName, "", "", gnapSigningKeyPathFlagUsage)
+	startCmd.Flags().StringP(authServerURLFlagName, "", "", authServerURLFlagUsage)
 	startCmd.Flags().StringP(extensionsFlagName, "", "", extensionsFlagUsage)
 	startCmd.Flags().StringP(corsEnableFlagName, "", "", corsEnableFlagUsage)
 	startCmd.Flags().StringP(didDomainFlagName, "", "", didDomainFlagUsage)
 	startCmd.Flags().StringP(tlsSystemCertPoolFlagName, "", "", tlsSystemCertPoolFlagUsage)
 	startCmd.Flags().StringArrayP(tlsCACertsFlagName, "", []string{}, tlsCACertsFlagUsage)
+}
+
+type gnapRSClient interface {
+	Introspect(req *gnap.IntrospectRequest) (*gnap.IntrospectResponse, error)
+}
+
+type gnapService struct {
+	Client    gnapRSClient
+	RSPubKey  *jwk.JWK
+	ClientKey *gnap.ClientKey
 }
 
 func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
@@ -643,10 +690,10 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		return err
 	}
 
-	// create auth service
-	var authSvc authService
+	// create ZCAP auth service
+	var authZCAPSvc authZCAPService
 
-	if parameters.authEnable { // nolint: nestif
+	if parameters.authType == zcapAuthType { // nolint: nestif
 		keyManager, errCreate := createKeyManager(parameters)
 		if errCreate != nil {
 			return errCreate
@@ -676,15 +723,61 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errLoader
 		}
 
-		authSvc, err = zcapld.New(keyManager, crypto, storageProvider, loader, vdrResolver)
+		authZCAPSvc, err = zcapld.New(keyManager, crypto, storageProvider, loader, vdrResolver)
 		if err != nil {
 			return err
 		}
 	}
 
+	var authGNAPSvc *gnapService
+
+	if parameters.authType == gnapAuthType {
+		privateJWK, publicJWK, errCreateGNAPSigningJWK := createGNAPSigningJWK(parameters.gnapSigningKeyPath)
+		if errCreateGNAPSigningJWK != nil {
+			return fmt.Errorf("failed to create gnap signing jwk: %w", errCreateGNAPSigningJWK)
+		}
+
+		rootCAs, errGetCertPool :=
+			tlsutils.GetCertPool(parameters.tlsConfig.tlsUseSystemCertPool, parameters.tlsConfig.tlsCACerts)
+		if errGetCertPool != nil {
+			return errGetCertPool
+		}
+
+		tlsConfig := &tls.Config{
+			RootCAs:    rootCAs,
+			MinVersion: tls.VersionTLS12,
+		}
+
+		httpClient := &http.Client{
+			Timeout: time.Minute,
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+			},
+		}
+
+		gnapRSClient, errNewClient := rs.NewClient(
+			&httpsig.Signer{SigningKey: privateJWK},
+			httpClient,
+			parameters.authServerURL,
+		)
+		if errNewClient != nil {
+			return errNewClient
+		}
+
+		authGNAPSvc = &gnapService{
+			Client: gnapRSClient,
+			ClientKey: &gnap.ClientKey{
+				Proof: proofType,
+				JWK:   *publicJWK,
+			},
+		}
+	}
+
 	edvService, err := restapi.New(&operation.Config{
-		Provider: provider, AuthService: authSvc,
-		AuthEnable: parameters.authEnable, EnabledExtensions: parameters.extensionsToEnable,
+		Provider:             provider,
+		AuthZCAPService:      authZCAPSvc,
+		AuthZCAPEnabled:      parameters.authType == zcapAuthType,
+		EnabledExtensions:    parameters.extensionsToEnable,
 		DocumentDatabaseName: parameters.documentDatabaseName,
 	})
 	if err != nil {
@@ -716,7 +809,42 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 
 	return parameters.srv.ListenAndServe(parameters.hostURL,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(parameters.corsEnable,
-			authSvc, router))
+			authZCAPSvc, authGNAPSvc, router))
+}
+
+func createGNAPSigningJWK(keyFilePath string) (*jwk.JWK, *jwk.JWK, error) {
+	b, err := ioutil.ReadFile(keyFilePath) //nolint:gosec // false positive
+	if err != nil {
+		return nil, nil, fmt.Errorf("read file: %w", err)
+	}
+
+	block, _ := pem.Decode(b)
+	if block == nil || block.Type != "EC PRIVATE KEY" {
+		return nil, nil, fmt.Errorf("invalid pem")
+	}
+
+	key, err := x509.ParseECPrivateKey(block.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse private key: %w", err)
+	}
+
+	// TODO: make key type configurable
+	privateJWK := &jwk.JWK{
+		JSONWebKey: jose.JSONWebKey{
+			Key:       key,
+			Algorithm: "ES256",
+		},
+		Kty: "EC",
+		Crv: "P-256",
+	}
+
+	publicJWK := &jwk.JWK{
+		JSONWebKey: privateJWK.Public(),
+		Kty:        "EC",
+		Crv:        "P-256",
+	}
+
+	return privateJWK, publicJWK, nil
 }
 
 func prepareVDR(params *edvParameters) (zcapldcore.VDRResolver, error) {
@@ -774,7 +902,20 @@ func createEDVProvider(parameters *edvParameters) (*edvprovider.Provider, error)
 	return edvProv, nil
 }
 
-func constructHandlers(enableCORS bool, authSvc authService, routerHandler http.Handler) http.Handler {
+func constructHandlers(enableCORS bool, authZCAPSvc authZCAPService, authGNAPSvc *gnapService,
+	routerHandler http.Handler) http.Handler {
+	if authGNAPSvc != nil {
+		routerHandler = &gnapAuthHandler{
+			authGNAPSvc:   authGNAPSvc,
+			routerHandler: routerHandler,
+		}
+	} else if authZCAPSvc != nil {
+		routerHandler = &zcapAuthHandler{
+			authZCAPSvc:   authZCAPSvc,
+			routerHandler: routerHandler,
+		}
+	}
+
 	if enableCORS {
 		return cors.New(
 			cors.Options{
@@ -783,10 +924,10 @@ func constructHandlers(enableCORS bool, authSvc authService, routerHandler http.
 				},
 				AllowedHeaders: []string{"*"},
 			},
-		).Handler(&httpHandler{authSvc: authSvc, routerHandler: routerHandler})
+		).Handler(routerHandler)
 	}
 
-	return &httpHandler{authSvc: authSvc, routerHandler: routerHandler}
+	return routerHandler
 }
 
 func retry(fn func() error, numRetries uint64) error {
@@ -882,25 +1023,63 @@ func createStorageProvider(parameters *storageParameters, databaseTimeout uint64
 func logStartupMessage(parameters *edvParameters) {
 	logger.Infof("Starting EDV REST server with the following parameters:   Host URL: %s, Database type: %s, "+
 		"Database URL: %s, Database prefix: %s, TLS certificate file: %s, TLS key file: %s, Extensions: %+v, "+
-		"Auth enabled?: %t, CORS enabled?: %t, Database timeout: %d, Local KMS secrets storage: %+v, Log level: %s",
+		"auth type: %s, CORS enabled?: %t, Database timeout: %d, Local KMS secrets storage: %+v, Log level: %s",
 		parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, parameters.extensionsToEnable,
-		parameters.authEnable, parameters.corsEnable, parameters.databaseTimeout, parameters.localKMSSecretsStorage,
+		parameters.authType, parameters.corsEnable, parameters.databaseTimeout, parameters.localKMSSecretsStorage,
 		parameters.logLevel)
 }
 
-type httpHandler struct {
-	authSvc       authService
+type gnapAuthHandler struct {
+	authGNAPSvc   *gnapService
 	routerHandler http.Handler
 }
 
-func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.authSvc == nil {
+func (h *gnapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.RequestURI == healthCheckPath || r.RequestURI == logSpecEndpoint {
 		h.routerHandler.ServeHTTP(w, r)
 
 		return
 	}
 
+	tokenHeader := strings.Split(strings.Trim(r.Header.Get("Authorization"), " "), " ")
+
+	if len(tokenHeader) < 2 || tokenHeader[0] != gnapToken {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+		return
+	}
+
+	introspectReq := &gnap.IntrospectRequest{
+		ResourceServer: &gnap.RequestClient{
+			Key: h.authGNAPSvc.ClientKey,
+		},
+		// Proof: proofType, // TODO: Enable httpsig verification
+		AccessToken: tokenHeader[1],
+	}
+
+	resp, err := h.authGNAPSvc.Client.Introspect(introspectReq)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("introspect token: %s", err.Error()), http.StatusInternalServerError)
+
+		return
+	}
+
+	if !resp.Active {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+		return
+	}
+
+	h.routerHandler.ServeHTTP(w, r)
+}
+
+type zcapAuthHandler struct {
+	authZCAPSvc   authZCAPService
+	routerHandler http.Handler
+}
+
+func (h *zcapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s := strings.SplitAfter(r.RequestURI, "/")
 
 	if r.RequestURI == createVaultPath || r.RequestURI == healthCheckPath || len(s) < 3 {
@@ -909,7 +1088,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authHandler, err := h.authSvc.Handler(strings.TrimSuffix(s[2], "/"), r, w,
+	authHandler, err := h.authZCAPSvc.Handler(strings.TrimSuffix(s[2], "/"), r, w,
 		func(writer http.ResponseWriter, request *http.Request) {
 			h.routerHandler.ServeHTTP(w, r)
 		})
