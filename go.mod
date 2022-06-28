@@ -17,7 +17,8 @@ require (
 	github.com/hyperledger/aries-framework-go/spi v0.0.0-20220614152730-3d817acfa48b
 	github.com/piprate/json-gold v0.4.1-0.20210813112359-33b90c4ca86c
 	github.com/square/go-jose v2.4.1+incompatible
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.2
+	github.com/trustbloc/auth/spi/gnap v0.0.0-20220624162029-852f8d5c6a35
 	github.com/trustbloc/edge-core v0.1.8
 	go.mongodb.org/mongo-driver v1.9.1
 )
@@ -84,7 +85,7 @@ require (
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (

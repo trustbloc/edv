@@ -30,7 +30,7 @@ services:
       - EDV_LOG_LEVEL=debug
       - EDV_TLS_CERT_FILE=/etc/tls/ec-pubCert.pem
       - EDV_TLS_KEY_FILE=/etc/tls/ec-key.pem
-      - EDV_AUTH_ENABLE=true
+      - EDV_AUTH_TYPE=ZCAP
       - EDV_LOCALKMS_SECRETS_DATABASE_TYPE=${EDV_DATABASE_TYPE}
       - EDV_LOCALKMS_SECRETS_DATABASE_URL=${EDV_DATABASE_URL}
       - EDV_LOCALKMS_SECRETS_DATABASE_PREFIX=kms
@@ -51,7 +51,7 @@ services:
       - EDV_LOG_LEVEL=debug
       - EDV_TLS_CERT_FILE=/etc/tls/ec-pubCert.pem
       - EDV_TLS_KEY_FILE=/etc/tls/ec-key.pem
-      - EDV_AUTH_ENABLE=true
+      - EDV_AUTH_TYPE=ZCAP
       - EDV_LOCALKMS_SECRETS_DATABASE_TYPE=${EDV_DATABASE_TYPE}
       - EDV_LOCALKMS_SECRETS_DATABASE_URL=${EDV_DATABASE_URL}
       - EDV_LOCALKMS_SECRETS_DATABASE_PREFIX=kms

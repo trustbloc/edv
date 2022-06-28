@@ -54,12 +54,12 @@ var logger = log.New(logModuleName)
 type Operation struct {
 	handlers          []Handler
 	vaultCollection   VaultCollection
-	authEnable        bool
-	authService       authService
+	authZCAPEnabled   bool
+	authZCAPService   authZCAPService
 	enabledExtensions *EnabledExtensions
 }
 
-type authService interface {
+type authZCAPService interface {
 	Create(resourceID, verificationMethod string) ([]byte, error)
 }
 
@@ -84,8 +84,8 @@ type EnabledExtensions struct {
 // Config defines the configuration for EDV operations
 type Config struct {
 	Provider             *edvprovider.Provider
-	AuthService          authService
-	AuthEnable           bool
+	AuthZCAPService      authZCAPService
+	AuthZCAPEnabled      bool
 	EnabledExtensions    *EnabledExtensions
 	DocumentDatabaseName string
 }
@@ -95,7 +95,8 @@ func New(config *Config) *Operation {
 	svc := &Operation{
 		vaultCollection: VaultCollection{
 			provider: config.Provider,
-		}, authEnable: config.AuthEnable, authService: config.AuthService, enabledExtensions: config.EnabledExtensions,
+		}, authZCAPEnabled: config.AuthZCAPEnabled, authZCAPService: config.AuthZCAPService,
+		enabledExtensions: config.EnabledExtensions,
 	}
 
 	svc.registerHandler()
@@ -191,8 +192,8 @@ func (c *Operation) createDataVault(rw http.ResponseWriter, config *models.DataV
 	// Add auth payload if enabled
 	var payload []byte
 
-	if c.authEnable {
-		payload, err = c.authService.Create(vaultID, config.Controller)
+	if c.authZCAPEnabled {
+		payload, err = c.authZCAPService.Create(vaultID, config.Controller)
 		if err != nil {
 			writeCreateDataVaultFailure(rw, err, configBytesForLog)
 			return
@@ -708,9 +709,10 @@ func validateDataVaultConfiguration(dataVaultConfig *models.DataVaultConfigurati
 		return err
 	}
 
-	if err := edvutils.CheckIfURI(dataVaultConfig.Controller); err != nil {
-		return fmt.Errorf(messages.InvalidControllerString, err)
-	}
+	// TODO (#242): Re-enable controller URI validation
+	// if err := edvutils.CheckIfURI(dataVaultConfig.Controller); err != nil {
+	//	 return fmt.Errorf(messages.InvalidControllerString, err)
+	// }
 
 	if err := checkFieldsWithURIArray(dataVaultConfig.Invoker); err != nil {
 		return fmt.Errorf(messages.InvalidInvokerStringArray, err)

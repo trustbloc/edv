@@ -232,8 +232,8 @@ func TestCreateDataVault(t *testing.T) {
 	testValidateIncomingDataVaultConfiguration(t)
 	t.Run("Success: without prefix", func(t *testing.T) {
 		op := New(&Config{
-			Provider: createEDVProvider(t, mem.NewProvider()), AuthEnable: true,
-			AuthService: &mockAuthService{createValue: []byte("authData")},
+			Provider: createEDVProvider(t, mem.NewProvider()), AuthZCAPEnabled: true,
+			AuthZCAPService: &mockAuthService{createValue: []byte("authData")},
 		})
 
 		_, resp := createDataVaultExpectSuccess(t, op, "")
@@ -242,8 +242,8 @@ func TestCreateDataVault(t *testing.T) {
 	})
 	t.Run("error from creating auth payload", func(t *testing.T) {
 		op := New(&Config{
-			Provider: createEDVProvider(t, mem.NewProvider()), AuthEnable: true,
-			AuthService: &mockAuthService{createErr: fmt.Errorf("failed to create auth")},
+			Provider: createEDVProvider(t, mem.NewProvider()), AuthZCAPEnabled: true,
+			AuthZCAPService: &mockAuthService{createErr: fmt.Errorf("failed to create auth")},
 		})
 
 		req, err := http.NewRequest(http.MethodPost, "", bytes.NewBuffer([]byte(testDataVaultConfiguration)))
@@ -330,13 +330,6 @@ func testValidateIncomingDataVaultConfiguration(t *testing.T) {
 		config := getDataVaultConfig(testValidURI, testValidURI, testKEKType, testValidURI,
 			"", []string{}, []string{})
 		createDataVaultExpectError(t, config, fmt.Sprintf(messages.InvalidVaultConfig, messages.BlankHMACType))
-	})
-	t.Run("Invalid incoming data vault configuration - controller is an invalid URI", func(t *testing.T) {
-		config := getDataVaultConfig(testInvalidURI, testValidURI, testKEKType, testValidURI,
-			testHMACType, []string{}, []string{})
-		createDataVaultExpectError(t, config,
-			fmt.Sprintf(messages.InvalidVaultConfig, fmt.Errorf(messages.InvalidControllerString,
-				fmt.Errorf(messages.InvalidURI, testInvalidURI))))
 	})
 	t.Run("Invalid incoming data vault configuration - KEK id is an invalid URI", func(t *testing.T) {
 		config := getDataVaultConfig(testValidURI, testInvalidURI, testKEKType, testValidURI,
