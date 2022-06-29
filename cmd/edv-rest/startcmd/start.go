@@ -919,10 +919,9 @@ func constructHandlers(enableCORS bool, authZCAPSvc authZCAPService, authGNAPSvc
 	if enableCORS {
 		return cors.New(
 			cors.Options{
-				AllowedMethods: []string{
-					http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions,
-				},
+				AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 				AllowedHeaders: []string{"*"},
+				ExposedHeaders: []string{"Location"},
 			},
 		).Handler(routerHandler)
 	}
