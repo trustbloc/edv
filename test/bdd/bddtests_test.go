@@ -21,7 +21,6 @@ import (
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
 	bddctx "github.com/trustbloc/edv/test/bdd/pkg/context"
 	"github.com/trustbloc/edv/test/bdd/pkg/edv"
-	"github.com/trustbloc/edv/test/bdd/pkg/interop"
 )
 
 func TestMain(m *testing.M) {
@@ -62,7 +61,7 @@ func runBDDTests(tags, format string) int { //nolint: gocognit
 				}
 
 				fmt.Println("docker-compose up ... waiting for containers to start ...")
-				testSleep := 25
+				testSleep := 35
 				if os.Getenv("TEST_SLEEP") != "" {
 					var e error
 
@@ -73,6 +72,8 @@ func runBDDTests(tags, format string) int { //nolint: gocognit
 				}
 
 				sleepAndWait(testSleep)
+
+				FeatureContext(s)
 			}
 		})
 		s.AfterSuite(func() {
@@ -87,7 +88,6 @@ func runBDDTests(tags, format string) int { //nolint: gocognit
 				}
 			}
 		})
-		FeatureContext(s)
 	}, godog.Options{
 		Tags:          tags,
 		Format:        format,
@@ -138,12 +138,6 @@ func FeatureContext(s *godog.Suite) {
 		panic(fmt.Sprintf("Failed to create a new NewBDDContext: %s", err))
 	}
 
-	bddInteropContext, err := bddctx.NewBDDInteropContext()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create a new NewBDDInteropContext: %s", err))
-	}
-
 	edv.NewSteps(bddContext).RegisterSteps(s)
 	common.NewSteps(bddContext).RegisterSteps(s)
-	interop.NewSteps(bddInteropContext).RegisterSteps(s)
 }

@@ -22,7 +22,10 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 DNS.2 = edv.example.com
 DNS.3 = third.party.oidc.provider.example.com
-DNS.4 = auth.rest.hydra.example.com" >> "$tmp"
+DNS.4 = auth.rest.hydra.example.com
+DNS.5 = auth.trustbloc.local
+DNS.6 = oidc.provider.example.com
+DNS.7 = testnet.orb.local" >> "$tmp"
 
 CERT_CA="test/bdd/fixtures/keys/tls/ec-cacert.pem"
 if [ ! -f "$CERT_CA" ]; then
@@ -42,5 +45,8 @@ openssl x509 -req -in test/bdd/fixtures/keys/tls/ec-key.csr -CA test/bdd/fixture
 mkdir -p test/bdd/fixtures/keys/session_cookies
 openssl rand -out test/bdd/fixtures/keys/session_cookies/auth.key 32
 openssl rand -out test/bdd/fixtures/keys/session_cookies/enc.key 32
+
+#create private key for GNAP signer
+openssl ecparam -name prime256v1 -genkey -noout -out test/bdd/fixtures/keys/gnap-priv-key.pem
 
 echo "done generating edv PKI"
