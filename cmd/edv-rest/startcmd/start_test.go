@@ -6,14 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 package startcmd
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/auth/spi/gnap"
 	"github.com/trustbloc/edge-core/pkg/log"
 )
 
@@ -94,7 +97,7 @@ func TestStartEDV_FailToCreateEDVProvider(t *testing.T) {
 }
 
 func TestStartCmdValidArgs(t *testing.T) {
-	t.Run("database type: mem", func(t *testing.T) {
+	t.Run("auth type: none", func(t *testing.T) {
 		startCmd := GetStartCmd(&mockServer{})
 
 		args := []string{
@@ -105,7 +108,50 @@ func TestStartCmdValidArgs(t *testing.T) {
 		startCmd.SetArgs(args)
 
 		err := startCmd.Execute()
+		require.NoError(t, err)
+	})
+	t.Run("auth type: ZCAP", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
 
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + localKMSSecretsDatabaseTypeFlagName, "mem",
+			"--" + extensionsFlagName, batchExtensionName, "--" + corsEnableFlagName, "true",
+			"--" + authTypeFlagName, "ZCAP",
+		}
+		startCmd.SetArgs(args)
+
+		err := startCmd.Execute()
+		require.NoError(t, err)
+	})
+	t.Run("auth type: GNAP", func(t *testing.T) {
+		startCmd := GetStartCmd(&mockServer{})
+
+		testSigningKeyFileName := "testSigningKeyFile-" + uuid.New().String()
+
+		const testGnapKey = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEINZmobflCTvl6BBzGpbbhA+KFx6+Sariitjz6wIsU1jEoAoGCCqGSM49
+AwEHoUQDQgAEnCacKwI7j9SuvH150dAZ5sEbpHMCMkmjVjJbS5gD/XXE3HgNlHc+
+oohTo0aQ9u6MA4AlUFjcSkTTQtObtD7RdQ==
+-----END EC PRIVATE KEY-----`
+
+		err := os.WriteFile(testSigningKeyFileName, []byte(testGnapKey), 0o600)
+		require.NoError(t, err)
+
+		defer func() {
+			require.NoError(t, os.Remove(testSigningKeyFileName))
+		}()
+
+		args := []string{
+			"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+			"--" + localKMSSecretsDatabaseTypeFlagName, "mem",
+			"--" + extensionsFlagName, batchExtensionName, "--" + corsEnableFlagName, "true",
+			"--" + authTypeFlagName, "GNAP", "--" + gnapSigningKeyPathFlagName, testSigningKeyFileName,
+			"--" + authServerURLFlagName, "someURL",
+		}
+		startCmd.SetArgs(args)
+
+		err = startCmd.Execute()
 		require.NoError(t, err)
 	})
 }
@@ -241,6 +287,31 @@ func TestStartCmdValidArgsEnvVar(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func TestStartCmdFailToCreateGNAPSigningJWK(t *testing.T) {
+	startCmd := GetStartCmd(&mockServer{})
+
+	testSigningKeyFileName := "testSigningKeyFile-" + uuid.New().String()
+
+	err := os.WriteFile(testSigningKeyFileName, []byte("Not a valid GNAP signing key"), 0o600)
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.Remove(testSigningKeyFileName))
+	}()
+
+	args := []string{
+		"--" + hostURLFlagName, "localhost:8080", "--" + databaseTypeFlagName, "mem",
+		"--" + localKMSSecretsDatabaseTypeFlagName, "mem",
+		"--" + extensionsFlagName, batchExtensionName, "--" + corsEnableFlagName, "true",
+		"--" + authTypeFlagName, "GNAP", "--" + gnapSigningKeyPathFlagName, testSigningKeyFileName,
+		"--" + authServerURLFlagName, "someURL",
+	}
+	startCmd.SetArgs(args)
+
+	err = startCmd.Execute()
+	require.EqualError(t, err, "failed to create gnap signing jwk: invalid pem")
+}
+
 func TestKeyManager(t *testing.T) {
 	t.Run("Error - invalid database type", func(t *testing.T) {
 		parameters := edvParameters{localKMSSecretsStorage: &storageParameters{storageType: "NotARealDatabaseType"}}
@@ -332,7 +403,7 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 		require.Contains(t, responseRecorder.Body.String(), "failed to create auth handler")
 	})
 
-	t.Run("test auth handler success", func(t *testing.T) {
+	t.Run("test ZCAP auth handler success", func(t *testing.T) {
 		h := zcapAuthHandler{authZCAPSvc: &mockAuthService{
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
 				next http.HandlerFunc) (http.HandlerFunc, error) {
@@ -344,7 +415,96 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 
 		responseRecorder := httptest.NewRecorder()
 		h.ServeHTTP(responseRecorder, &http.Request{RequestURI: createVaultPath + "/vaultID"})
+
+		require.Equal(t, http.StatusOK, responseRecorder.Code)
 	})
+
+	t.Run("test GNAP auth handler", func(t *testing.T) {
+		t.Run("Request URI is health check path, so auth check is skipped", func(t *testing.T) {
+			h := gnapAuthHandler{routerHandler: &mockHTTPHandler{}}
+
+			responseRecorder := httptest.NewRecorder()
+			h.ServeHTTP(responseRecorder, &http.Request{RequestURI: healthCheckPath})
+
+			require.Equal(t, http.StatusOK, responseRecorder.Code)
+		})
+		t.Run("Missing token header", func(t *testing.T) {
+			h := gnapAuthHandler{}
+
+			responseRecorder := httptest.NewRecorder()
+			h.ServeHTTP(responseRecorder, &http.Request{})
+
+			require.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
+			require.Contains(t, responseRecorder.Body.String(), "unauthorized")
+		})
+		t.Run("Failure while introspecting token", func(t *testing.T) {
+			h := gnapAuthHandler{
+				authGNAPSvc: &gnapService{
+					Client:    &mockGNAPRSClient{errIntrospect: errors.New("introspection error")},
+					RSPubKey:  nil,
+					ClientKey: nil,
+				},
+			}
+
+			responseRecorder := httptest.NewRecorder()
+			h.ServeHTTP(responseRecorder,
+				&http.Request{
+					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
+				})
+
+			require.Equal(t, http.StatusInternalServerError, responseRecorder.Code)
+			require.Contains(t, responseRecorder.Body.String(), "introspect token: introspection error")
+		})
+		t.Run("Token is not active", func(t *testing.T) {
+			h := gnapAuthHandler{
+				authGNAPSvc: &gnapService{
+					Client:    &mockGNAPRSClient{},
+					RSPubKey:  nil,
+					ClientKey: nil,
+				},
+			}
+
+			responseRecorder := httptest.NewRecorder()
+			h.ServeHTTP(responseRecorder,
+				&http.Request{
+					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
+				})
+
+			require.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
+			require.Contains(t, responseRecorder.Body.String(), "unauthorized")
+		})
+		t.Run("Token is active", func(t *testing.T) {
+			h := gnapAuthHandler{
+				authGNAPSvc: &gnapService{
+					Client:    &mockGNAPRSClient{active: true},
+					RSPubKey:  nil,
+					ClientKey: nil,
+				},
+				routerHandler: &mockHTTPHandler{},
+			}
+
+			responseRecorder := httptest.NewRecorder()
+			h.ServeHTTP(responseRecorder,
+				&http.Request{
+					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
+				})
+
+			require.Equal(t, http.StatusOK, responseRecorder.Code)
+		})
+	})
+}
+
+type mockGNAPRSClient struct {
+	errIntrospect error
+	active        bool
+}
+
+func (m *mockGNAPRSClient) Introspect(req *gnap.IntrospectRequest) (*gnap.IntrospectResponse, error) {
+	if m.errIntrospect != nil {
+		return nil, m.errIntrospect
+	}
+
+	return &gnap.IntrospectResponse{Active: m.active}, nil
 }
 
 type mockHTTPHandler struct {
