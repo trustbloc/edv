@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,7 +33,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/vdr/fingerprint"
 	"github.com/trustbloc/edge-core/pkg/zcapld"
 
-	"github.com/trustbloc/edv/pkg/client"
+	edvclient "github.com/trustbloc/edv/pkg/client"
 	"github.com/trustbloc/edv/pkg/edvutils"
 	"github.com/trustbloc/edv/pkg/restapi/models"
 	"github.com/trustbloc/edv/test/bdd/pkg/common"
@@ -73,8 +74,6 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 	s.Step(`^Client constructs a Structured Document with id "([^"]*)"$`, e.clientConstructsAStructuredDocument)
 	s.Step(`^Client encrypts the Structured Document and uses it to construct an Encrypted Document$`,
 		e.clientEncryptsTheStructuredDocument)
-	s.Step(`^Client stores the Encrypted Document in the data vault with empty signature header`,
-		e.storeDocumentInVaultWithoutSignature)
 	s.Step(`^Client stores the Encrypted Document in the data vault`, e.storeDocumentInVault)
 	s.Step(`^Client sends request to retrieve the previously stored Encrypted Document with id "([^"]*)"`+
 		` in the data vault and receives the previously stored Encrypted Document in response$`,
@@ -98,26 +97,47 @@ func (e *Steps) RegisterSteps(s *godog.Suite) {
 	s.Step(`^Client stores (\d+) documents using (\d+) threads$`, e.clientStoresDocumentsInParallel)
 }
 
-func (e *Steps) createDataVault() error {
-	signer, err := signature.NewCryptoSigner(e.bddContext.Crypto, e.bddContext.KeyManager, kms.ED25519)
-	if err != nil {
-		return fmt.Errorf("failed to create crypto signer: %w", err)
-	}
+func (e *Steps) createDataVault() error { //nolint:funlen // test file
+	controller := "TestControllerName"
 
-	_, didKeyURL := fingerprint.CreateDIDKey(signer.PublicKeyBytes())
+	var signer signature.Signer
+
+	authType := os.Getenv("EDV_AUTH_TYPE")
+
+	var opts []edvclient.ReqOption
+
+	if strings.EqualFold(authType, "zcap") {
+		println("Preparing controller name for ZCAP...")
+
+		var err error
+
+		signer, err = signature.NewCryptoSigner(e.bddContext.Crypto, e.bddContext.KeyManager, kms.ED25519)
+		if err != nil {
+			return fmt.Errorf("failed to create crypto signer: %w", err)
+		}
+
+		_, controller = fingerprint.CreateDIDKey(signer.PublicKeyBytes())
+
+		println(fmt.Sprintf("Successfully prepared controller name for ZCAP (%s)", controller))
+
+		// This option below will override the request header set in context.go. We do this since for the first call,
+		// we don't have the ZCAP capability yet, and so the add header code in context.go will fail since the
+		// capability is still nil. After the CreateDataVault call (below), we add the capability to the BDD context
+		// for future calls.
+		opts = append(opts, edvclient.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
+			return nil, nil
+		}))
+	}
 
 	config := models.DataVaultConfiguration{
 		Sequence:    0,
-		Controller:  didKeyURL,
+		Controller:  controller,
 		ReferenceID: uuid.New().String(),
 		KEK:         models.IDTypePair{ID: "https://example.com/kms/12345", Type: "AesKeyWrappingKey2019"},
 		HMAC:        models.IDTypePair{ID: "https://example.com/kms/67891", Type: "Sha256HmacKey2019"},
 	}
 
-	vaultLocation, resp, err := e.bddContext.EDVClient.CreateDataVault(&config,
-		client.WithRequestHeader(func(req *http.Request) (*http.Header, error) {
-			return nil, nil
-		}))
+	vaultLocation, resp, err := e.bddContext.EDVClient.CreateDataVault(&config, opts...)
 	if err != nil {
 		return err
 	}
@@ -126,22 +146,24 @@ func (e *Steps) createDataVault() error {
 	vaultID := s[len(s)-1]
 	e.bddContext.VaultID = vaultID
 
-	capability, err := zcapld.ParseCapability(resp)
-	if err != nil {
-		return err
-	}
+	if strings.EqualFold(authType, "zcap") {
+		capability, err := zcapld.ParseCapability(resp)
+		if err != nil {
+			return err
+		}
 
-	if capability.Context != zcapld.SecurityContextV2 {
-		return fmt.Errorf("wrong ctx return for zcapld")
-	}
+		if capability.Context != zcapld.SecurityContextV2 {
+			return fmt.Errorf("wrong ctx return for zcapld")
+		}
 
-	// create chain capability
-	c, err := e.createChainCapability(capability, signer, vaultID)
-	if err != nil {
-		return err
-	}
+		// create chain capability
+		c, err := e.createChainCapability(capability, signer, vaultID)
+		if err != nil {
+			return err
+		}
 
-	e.bddContext.Capability = c
+		e.bddContext.Capability = c
+	}
 
 	return nil
 }
@@ -220,21 +242,6 @@ func (e *Steps) clientEncryptsTheStructuredDocument() error {
 
 	e.bddContext.EncryptedDocToStore = encryptedDocToStore
 	e.bddContext.JWEDecrypter = jose.NewJWEDecrypt(nil, e.bddContext.Crypto, e.bddContext.KeyManager)
-
-	return nil
-}
-
-func (e *Steps) storeDocumentInVaultWithoutSignature() error {
-	_, err := e.bddContext.EDVClient.CreateDocument(e.bddContext.VaultID, e.bddContext.EncryptedDocToStore)
-
-	if err == nil {
-		return fmt.Errorf("create docment didn't failed with empty signature header")
-	}
-
-	errMsg := "signature header not found"
-	if !strings.Contains(err.Error(), errMsg) {
-		return fmt.Errorf("error msg %s didn't contains %s", err.Error(), errMsg) //nolint:errorlint
-	}
 
 	return nil
 }
@@ -331,18 +338,11 @@ func (e *Steps) clientReconstructsAStructuredDocument(docID string) error {
 }
 
 func (e *Steps) updateDocumentInVault(docID string) error {
-	err := e.bddContext.EDVClient.UpdateDocument(e.bddContext.VaultID, docID, e.bddContext.EncryptedDocToStore)
-
-	return err
+	return e.bddContext.EDVClient.UpdateDocument(e.bddContext.VaultID, docID, e.bddContext.EncryptedDocToStore)
 }
 
 func (e *Steps) deleteDocument(docID string) error {
-	err := e.bddContext.EDVClient.DeleteDocument(e.bddContext.VaultID, docID)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return e.bddContext.EDVClient.DeleteDocument(e.bddContext.VaultID, docID)
 }
 
 func (e *Steps) buildEncryptedDoc(jweEncrypter jose.Encrypter,
