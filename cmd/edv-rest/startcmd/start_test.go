@@ -373,22 +373,6 @@ func TestCreateProvider(t *testing.T) {
 }
 
 func TestHttpHandler_ServeHTTP(t *testing.T) {
-	t.Run("test create vault request", func(t *testing.T) {
-		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, r.RequestURI, createVaultPath)
-		}}
-		h := zcapAuthHandler{routerHandler: m, authZCAPSvc: &mockAuthService{}}
-		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: createVaultPath})
-	})
-
-	t.Run("test health check request", func(t *testing.T) {
-		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, r.RequestURI, healthCheckPath)
-		}}
-		h := zcapAuthHandler{routerHandler: m, authZCAPSvc: &mockAuthService{}}
-		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: healthCheckPath})
-	})
-
 	t.Run("test error from auth handler", func(t *testing.T) {
 		h := zcapAuthHandler{authZCAPSvc: &mockAuthService{
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
@@ -420,14 +404,6 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 	})
 
 	t.Run("test GNAP auth handler", func(t *testing.T) {
-		t.Run("Request URI is health check path, so auth check is skipped", func(t *testing.T) {
-			h := gnapAuthHandler{routerHandler: &mockHTTPHandler{}}
-
-			responseRecorder := httptest.NewRecorder()
-			h.ServeHTTP(responseRecorder, &http.Request{RequestURI: healthCheckPath})
-
-			require.Equal(t, http.StatusOK, responseRecorder.Code)
-		})
 		t.Run("Missing token header", func(t *testing.T) {
 			h := gnapAuthHandler{}
 

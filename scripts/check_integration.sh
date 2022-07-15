@@ -11,14 +11,21 @@ cd test/bdd
 
 # TODO (#220): Reduce BDD test running time by only starting storage containers as needed.
 
-echo "Running EDV integration tests using MongoDB + GNAP authorization..."
+echo "Running EDV integration tests using MongoDB + GNAP or ZCAP authorization..."
+
+export EDV_DATABASE_TYPE=mongodb
+export EDV_DATABASE_URL=mongodb://mongodb.example.com:27017
+export EDV_AUTH_TYPE=GNAP,ZCAP
+go test -count=1 -v -cover . -p 1 -timeout=20m -race
+
+echo "Running EDV integration tests using MongoDB + GNAP only authorization..."
 
 export EDV_DATABASE_TYPE=mongodb
 export EDV_DATABASE_URL=mongodb://mongodb.example.com:27017
 export EDV_AUTH_TYPE=GNAP
 go test -count=1 -v -cover . -p 1 -timeout=20m -race
 
-echo "Running EDV integration tests using MongoDB + ZCAP authorization..."
+echo "Running EDV integration tests using MongoDB + ZCAP only authorization..."
 
 export EDV_DATABASE_TYPE=mongodb
 export EDV_DATABASE_URL=mongodb://mongodb.example.com:27017
@@ -29,7 +36,7 @@ echo "Running EDV integration tests using MongoDB + no authorization..."
 
 export EDV_DATABASE_TYPE=mongodb
 export EDV_DATABASE_URL=mongodb://mongodb.example.com:27017
-export EDV_AUTH_TYPE=none
+export EDV_AUTH_TYPE=
 go test -count=1 -v -cover . -p 1 -timeout=20m -race
 
 echo "Running EDV integration tests using CouchDB + GNAP authorization..."
