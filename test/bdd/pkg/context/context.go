@@ -295,7 +295,7 @@ func createProxyEDVClient(ctx *BDDContext) (*edvclient.Client, error) {
 
 	options := []edvclient.Option{withTLSConfigOpt}
 
-	authType := os.Getenv("EDV_AUTH_TYPE")
+	authType := os.Getenv("EDV_CLIENT_AUTH_TYPE") // Set in check_integration.sh
 
 	if strings.EqualFold(authType, "zcap") { //nolint: nestif // test file
 		println("Adding header function to EDV client for ZCAP...")
@@ -613,7 +613,7 @@ func createTrustBlocEDVClient(ctx *BDDInteropContext) (*edvclient.Client, error)
 
 	options := []edvclient.Option{withTLSConfigOpt}
 
-	authType := os.Getenv("EDV_AUTH_TYPE")
+	authType := os.Getenv("EDV_CLIENT_AUTH_TYPE") // Set in check_integration.sh
 
 	if strings.EqualFold(authType, "zcap") { //nolint: nestif // test file
 		println("Adding header function to EDV client for ZCAP...")
@@ -647,7 +647,7 @@ func createTrustBlocEDVClient(ctx *BDDInteropContext) (*edvclient.Client, error)
 		})
 
 		options = append(options, withHeadersOpt)
-	} else if strings.EqualFold(authType, "gnap") || strings.EqualFold(authType, "GNAP,ZCAP") {
+	} else if strings.EqualFold(authType, "gnap") {
 		println("Adding header function to EDV client for GNAP...")
 
 		option, err := addGNAPHeaderOption(&tlsConfig)
