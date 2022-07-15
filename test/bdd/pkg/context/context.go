@@ -329,7 +329,9 @@ func createProxyEDVClient(ctx *BDDContext) (*edvclient.Client, error) {
 		})
 
 		options = append(options, withHeadersOpt)
-	} else if strings.EqualFold(authType, "gnap") {
+	} else if strings.EqualFold(authType, "gnap") || strings.EqualFold(authType, "GNAP,ZCAP") {
+		println("Adding header function to EDV client for GNAP...")
+
 		option, err := addGNAPHeaderOption(&tlsConfig)
 		if err != nil {
 			return nil, err
@@ -645,7 +647,9 @@ func createTrustBlocEDVClient(ctx *BDDInteropContext) (*edvclient.Client, error)
 		})
 
 		options = append(options, withHeadersOpt)
-	} else if strings.EqualFold(authType, "gnap") {
+	} else if strings.EqualFold(authType, "gnap") || strings.EqualFold(authType, "GNAP,ZCAP") {
+		println("Adding header function to EDV client for GNAP...")
+
 		option, err := addGNAPHeaderOption(&tlsConfig)
 		if err != nil {
 			return nil, err

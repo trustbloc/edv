@@ -147,6 +147,8 @@ func (e *Steps) createDataVault() error { //nolint:funlen // test file
 	e.bddContext.VaultID = vaultID
 
 	if strings.EqualFold(authType, "zcap") {
+		println(fmt.Sprintf("Received the following ZCAP payload: %s", string(resp)))
+
 		capability, err := zcapld.ParseCapability(resp)
 		if err != nil {
 			return err

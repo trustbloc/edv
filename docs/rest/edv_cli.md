@@ -14,8 +14,8 @@ Parameters can be set by command line arguments or environment variables:
 
 ```      
 Flags:
-      --auth-server-url                    string                    The URL of Auth server. Required if using GNAP authorization. Alternatively, this can be set with the following environment variable: EDV_AUTH_SERVER_URL
-      --auth-type                          string                          The type of authorization to use. Possible values [none] [GNAP] [ZCAP]. Defaults to none if not set. Alternatively, this can be set with the following environment variable: EDV_AUTH_TYPE
+      --auth-server-url                    string                    The URL of the authorization server. Required if using GNAP authorization. Ignored otherwise. Alternatively, this can be set with the following environment variable: EDV_AUTH_SERVER_URL
+      --auth-type                          string                          Comma-separated list of the types of authorization to enable. Authorization is server-wide, not per-vault. Possible values [GNAP] [ZCAP]. If GNAP and ZCAP are both enabled, then a client may authorize themselves with either one (rather than the two stacking on top of each other). If no options are specified, then no authorization will be required. Alternatively, this can be set with the following environment variable: EDV_AUTH_TYPE
   -c, --config-database-name               string               The name of the main database where data vault configurations will be stored. Defaults to "configurations" if not set Alternatively, this can be set with the following environment variable: EDV_DOCUMENT_DATABASE_NAME
       --cors-enable                        string                        Enable cors. Possible values [true] [false]. Defaults to false if not set. Alternatively, this can be set with the following environment variable: EDV_CORS_ENABLE
   -p, --database-prefix                    string                    An optional prefix to be used for the names for all databases. Alternatively, this can be set with the following environment variable: EDV_DATABASE_PREFIX
@@ -25,7 +25,7 @@ Flags:
   -r, --database-url                       string                       The URL (or connection string) of the database. Not needed if using memstore. For CouchDB, include the username:password@ text if required. Alternatively, this can be set with the following environment variable: EDV_DATABASE_URL
       --did-domain                         string                         URL to the did consortium's domain. Alternatively, this can be set with the following environment variable: EDV_DID_DOMAIN
   -d, --document-database-name             string             The name of the database where encrypted documents will be stored. Defaults to "documents" if not set Alternatively, this can be set with the following environment variable: EDV_DOCUMENT_DATABASE_NAME
-      --gnap-signing-key                   string                   The path to the private key to use when signing GNAP introspection requests. Alternatively, this can be set with the following environment variable: EDV_GNAP_SIGNING_KEY
+      --gnap-signing-key                   string                   The path to the private key to use when signing GNAP introspection requests. Required if using GNAP authorization. Ignored otherwise. Alternatively, this can be set with the following environment variable: EDV_GNAP_SIGNING_KEY
   -h, --help                                      help for start
   -u, --host-url                           string                           URL to run the edv instance on. Format: HostName:Port. Alternatively, this can be set with the following environment variable: EDV_HOST_URL
       --localkms-secrets-database-prefix   string   An optional prefix to be used when creating and retrieving the underlying KMS secrets database. Alternatively, this can be set with the following environment variable: EDV_LOCALKMS_SECRETS_DATABASE_PREFIX
