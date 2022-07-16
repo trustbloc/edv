@@ -102,7 +102,7 @@ func (e *Steps) createDataVault() error { //nolint:funlen // test file
 
 	var signer signature.Signer
 
-	authType := os.Getenv("EDV_AUTH_TYPE")
+	authType := os.Getenv("EDV_CLIENT_AUTH_TYPE") // Set in check_integration.sh
 
 	var opts []edvclient.ReqOption
 

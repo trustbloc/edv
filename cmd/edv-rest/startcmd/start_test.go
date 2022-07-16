@@ -373,7 +373,39 @@ func TestCreateProvider(t *testing.T) {
 }
 
 func TestHttpHandler_ServeHTTP(t *testing.T) {
-	t.Run("test error from auth handler", func(t *testing.T) {
+	t.Run("test create vault request", func(t *testing.T) {
+		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.RequestURI, createVaultPath)
+		}}
+
+		mockZCAPAuthHandler := &zcapAuthHandler{routerHandler: m, authZCAPSvc: &mockAuthService{}}
+
+		h := authHandler{
+			gnapAuthHandler: nil,
+			zcapAuthHandler: mockZCAPAuthHandler,
+			routerHandler:   m,
+		}
+
+		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: createVaultPath})
+	})
+
+	t.Run("test health check request", func(t *testing.T) {
+		m := &mockHTTPHandler{serveHTTPFun: func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, r.RequestURI, healthCheckPath)
+		}}
+
+		mockZCAPAuthHandler := &zcapAuthHandler{routerHandler: m, authZCAPSvc: &mockAuthService{}}
+
+		h := authHandler{
+			gnapAuthHandler: nil,
+			zcapAuthHandler: mockZCAPAuthHandler,
+			routerHandler:   m,
+		}
+
+		h.ServeHTTP(&httptest.ResponseRecorder{}, &http.Request{RequestURI: healthCheckPath})
+	})
+
+	t.Run("test error from ZCAP auth handler", func(t *testing.T) {
 		h := zcapAuthHandler{authZCAPSvc: &mockAuthService{
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
 				next http.HandlerFunc) (http.HandlerFunc, error) {
@@ -387,8 +419,8 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 		require.Contains(t, responseRecorder.Body.String(), "failed to create auth handler")
 	})
 
-	t.Run("test ZCAP auth handler success", func(t *testing.T) {
-		h := zcapAuthHandler{authZCAPSvc: &mockAuthService{
+	t.Run("test auth handler success using ZCAP", func(t *testing.T) {
+		h := &zcapAuthHandler{authZCAPSvc: &mockAuthService{
 			handlerFunc: func(resourceID string, req *http.Request, w http.ResponseWriter,
 				next http.HandlerFunc) (http.HandlerFunc, error) {
 				return func(w http.ResponseWriter, r *http.Request) {
@@ -397,13 +429,21 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 			},
 		}}
 
+		testHeader := map[string][]string{"Capability-Invocation": {"Some capability invocation"}}
+
+		authHandlerInstance := authHandler{
+			gnapAuthHandler: nil,
+			zcapAuthHandler: h,
+		}
+
 		responseRecorder := httptest.NewRecorder()
-		h.ServeHTTP(responseRecorder, &http.Request{RequestURI: createVaultPath + "/vaultID"})
+		authHandlerInstance.ServeHTTP(responseRecorder,
+			&http.Request{RequestURI: createVaultPath + "/vaultID", Header: testHeader})
 
 		require.Equal(t, http.StatusOK, responseRecorder.Code)
 	})
 
-	t.Run("test GNAP auth handler", func(t *testing.T) {
+	t.Run("test auth handler - GNAP cases", func(t *testing.T) {
 		t.Run("Missing token header", func(t *testing.T) {
 			h := gnapAuthHandler{}
 
@@ -450,17 +490,24 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 			require.Contains(t, responseRecorder.Body.String(), "unauthorized")
 		})
 		t.Run("Token is active", func(t *testing.T) {
-			h := gnapAuthHandler{
+			mockHandler := &mockHTTPHandler{}
+
+			gnapHandler := &gnapAuthHandler{
 				authGNAPSvc: &gnapService{
 					Client:    &mockGNAPRSClient{active: true},
 					RSPubKey:  nil,
 					ClientKey: nil,
 				},
-				routerHandler: &mockHTTPHandler{},
+				routerHandler: mockHandler,
+			}
+
+			authHandlerInstance := authHandler{
+				gnapAuthHandler: gnapHandler,
+				routerHandler:   mockHandler,
 			}
 
 			responseRecorder := httptest.NewRecorder()
-			h.ServeHTTP(responseRecorder,
+			authHandlerInstance.ServeHTTP(responseRecorder,
 				&http.Request{
 					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
 				})
