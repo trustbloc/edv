@@ -1094,15 +1094,20 @@ func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func headerContainsGNAPToken(header http.Header) bool {
-	authorizationString := header.Get("Authorization")
+	authHeaderValues := header.Values("Authorization")
+	for _, headerValue := range authHeaderValues {
+		if strings.Contains(headerValue, gnapToken) {
+			return true
+		}
+	}
 
-	return strings.Contains(authorizationString, gnapToken)
+	return false
 }
 
 func headerContainsCapabilityInvocation(header http.Header) bool {
-	capabilityInvocation := header.Get("Capability-Invocation")
+	capabilityInvocationHeadValues := header.Values("Capability-Invocation")
 
-	return capabilityInvocation != ""
+	return len(capabilityInvocationHeadValues) > 0
 }
 
 type gnapAuthHandler struct {
@@ -1111,9 +1116,20 @@ type gnapAuthHandler struct {
 }
 
 func (h *gnapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	tokenHeader := strings.Split(strings.Trim(r.Header.Get("Authorization"), " "), " ")
+	var tokenHeader string
 
-	if len(tokenHeader) < 2 || tokenHeader[0] != gnapToken {
+	authHeaderValues := r.Header.Values("Authorization")
+	for _, headerValue := range authHeaderValues {
+		if strings.Contains(headerValue, gnapToken) {
+			tokenHeader = headerValue
+
+			break
+		}
+	}
+
+	tokenHeaderSplit := strings.Split(strings.Trim(tokenHeader, " "), " ")
+
+	if len(tokenHeaderSplit) < 2 || tokenHeaderSplit[0] != gnapToken {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 
 		return
@@ -1124,7 +1140,7 @@ func (h *gnapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Key: h.authGNAPSvc.ClientKey,
 		},
 		// Proof: proofType, // TODO: Enable httpsig verification
-		AccessToken: tokenHeader[1],
+		AccessToken: tokenHeaderSplit[1],
 	}
 
 	resp, err := h.authGNAPSvc.Client.Introspect(introspectReq)
