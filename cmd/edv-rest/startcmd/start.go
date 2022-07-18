@@ -438,31 +438,20 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				return err
 			}
 
-			authTypesCSV, err := cmdutils.GetUserSetVarFromString(cmd, authTypeFlagName, authTypeEnvKey, true)
-			if err != nil {
-				return err
-			}
-
-			authTypes := strings.Split(authTypesCSV, ",")
+			authTypes := cmdutils.GetUserSetOptionalCSVVar(cmd, authTypeFlagName, authTypeEnvKey)
 
 			var gnapAuthEnabled, zcapAuthEnabled bool
 
-			noAuthorizationModeSpecified := len(authTypes) == 1 && authTypes[0] == ""
+			for _, authType := range authTypes {
+				authType = strings.ToLower(authType)
 
-			atLeastOneAuthorizationModeSpecified := !noAuthorizationModeSpecified
-
-			if atLeastOneAuthorizationModeSpecified {
-				for _, authType := range authTypes {
-					authType = strings.ToLower(authType)
-
-					switch authType {
-					case gnapAuthType:
-						gnapAuthEnabled = true
-					case zcapAuthType:
-						zcapAuthEnabled = true
-					default:
-						return fmt.Errorf("%s is not a valid auth type", authType)
-					}
+				switch authType {
+				case gnapAuthType:
+					gnapAuthEnabled = true
+				case zcapAuthType:
+					zcapAuthEnabled = true
+				default:
+					return fmt.Errorf("%s is not a valid authorization type", authType)
 				}
 			}
 
@@ -487,7 +476,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				return err
 			}
 
-			localKMSSecretsStorage, err := getLocalKMSSecretsStorageParameters(cmd, noAuthorizationModeSpecified)
+			localKMSSecretsStorage, err := getLocalKMSSecretsStorageParameters(cmd, len(authTypes) == 0)
 			if err != nil {
 				return err
 			}
@@ -651,7 +640,7 @@ func getTLS(cmd *cobra.Command) (*tlsConfig, error) {
 		}
 	}
 
-	tlsCACerts := cmdutils.GetUserSetOptionalVarFromArrayString(cmd, tlsCACertsFlagName, tlsCACertsEnvKey)
+	tlsCACerts := cmdutils.GetUserSetOptionalCSVVar(cmd, tlsCACertsFlagName, tlsCACertsEnvKey)
 
 	return &tlsConfig{
 		certFile:             tlsCertFile,
@@ -682,14 +671,14 @@ func createFlags(startCmd *cobra.Command) {
 		localKMSSecretsDatabaseURLFlagUsage)
 	startCmd.Flags().StringP(localKMSSecretsDatabasePrefixFlagName, "", "",
 		localKMSSecretsDatabasePrefixFlagUsage)
-	startCmd.Flags().StringP(authTypeFlagName, "", "", authTypeFlagUsage)
+	startCmd.Flags().StringSliceP(authTypeFlagName, "", []string{}, authTypeFlagUsage)
 	startCmd.Flags().StringP(gnapSigningKeyPathFlagName, "", "", gnapSigningKeyPathFlagUsage)
 	startCmd.Flags().StringP(authServerURLFlagName, "", "", authServerURLFlagUsage)
 	startCmd.Flags().StringP(extensionsFlagName, "", "", extensionsFlagUsage)
 	startCmd.Flags().StringP(corsEnableFlagName, "", "", corsEnableFlagUsage)
 	startCmd.Flags().StringP(didDomainFlagName, "", "", didDomainFlagUsage)
 	startCmd.Flags().StringP(tlsSystemCertPoolFlagName, "", "", tlsSystemCertPoolFlagUsage)
-	startCmd.Flags().StringArrayP(tlsCACertsFlagName, "", []string{}, tlsCACertsFlagUsage)
+	startCmd.Flags().StringSliceP(tlsCACertsFlagName, "", []string{}, tlsCACertsFlagUsage)
 }
 
 type gnapRSClient interface {
