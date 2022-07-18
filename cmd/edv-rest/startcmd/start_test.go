@@ -85,7 +85,7 @@ func TestStartCmdWithMissingArg(t *testing.T) {
 
 		err := startCmd.Execute()
 		require.Error(t, err)
-		require.EqualError(t, err, "wrong is not a valid auth type")
+		require.EqualError(t, err, "wrong is not a valid authorization type")
 	})
 }
 

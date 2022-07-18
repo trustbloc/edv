@@ -22,7 +22,7 @@ require (
 	github.com/stretchr/testify v1.7.2
 	github.com/trustbloc/auth v0.1.9-0.20220624162029-852f8d5c6a35
 	github.com/trustbloc/auth/spi/gnap v0.0.0-20220624162029-852f8d5c6a35
-	github.com/trustbloc/edge-core v0.1.8
+	github.com/trustbloc/edge-core v0.1.9-0.20220718150010-aa7941986372
 	github.com/trustbloc/edv v0.0.0-00010101000000-000000000000
 )
 
