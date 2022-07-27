@@ -8,6 +8,7 @@ package startcmd
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +67,14 @@ const (
 	hostURLFlagShorthand = "u"
 	hostURLFlagUsage     = "URL to run the edv instance on. Format: HostName:Port." +
 		" Alternatively, this can be set with the following environment variable: " + hostURLEnvKey
+
+	hostURLExternalFlagName      = "host-url-external"
+	hostURLExternalFlagShorthand = "x"
+	hostURLExternalEnvKey        = "EDV_HOST_URL_EXTERNAL"
+	hostURLExternalFlagUsage     = "This is the URL for the host server as seen externally." +
+		" This is only used if GNAP authorization and HTTP signature validation is enabled. If using a reverse " +
+		" proxy, then this needs to be set for HTTP signature validation to work correctly. " +
+		commonEnvVarUsageText + hostURLExternalEnvKey
 
 	databaseTypeFlagName      = "database-type"
 	databaseTypeEnvKey        = "EDV_DATABASE_TYPE"
@@ -197,6 +207,12 @@ const (
 		"Required if using GNAP authorization. Ignored otherwise. " +
 		commonEnvVarUsageText + authServerURLEnvKey
 
+	disableHTTPSigFlagName  = "disable-HTTPSIG"
+	disableHTTPSigEnvKey    = "EDV_GNAP_HTTPSIG_DISABLE"
+	disableHTTPSIGFlagUsage = "Disables GNAP HTTPSIG validation. This setting is ignored if GNAP authorization is " +
+		"disabled. Possible values: [true] [false]. Defaults to false. " +
+		commonEnvVarUsageText + disableHTTPSigEnvKey
+
 	corsEnableFlagName  = "cors-enable"
 	corsEnableFlagUsage = "Enable cors. Possible values [true] [false]. " +
 		"Defaults to false if not set. " + commonEnvVarUsageText + corsEnableEnvKey
@@ -282,6 +298,7 @@ var supportedAriesStorageProviders = map[string]func(string, string) (storage.Pr
 type edvParameters struct {
 	srv                       server
 	hostURL                   string
+	externalHostURL           string
 	databaseType              string
 	databaseURL               string
 	documentDatabaseName      string
@@ -296,6 +313,7 @@ type edvParameters struct {
 	zcapAuthEnabled           bool
 	gnapSigningKeyPath        string
 	authServerURL             string
+	disableHTTPSig            bool
 	corsEnable                bool
 	localKMSSecretsStorage    *storageParameters
 	extensionsToEnable        *operation.EnabledExtensions
@@ -367,6 +385,9 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 			if err != nil {
 				return err
 			}
+
+			externalHostURL := cmdutils.GetUserSetOptionalVarFromString(cmd, hostURLExternalFlagName,
+				hostURLExternalEnvKey)
 
 			didDomain, err := cmdutils.GetUserSetVarFromString(cmd, didDomainFlagName, didDomainEnvKey, true)
 			if err != nil {
@@ -457,7 +478,9 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 
 			var gnapSigningKeyPath, authServerURL string
 
-			if gnapAuthEnabled {
+			var disableHTTPSig bool
+
+			if gnapAuthEnabled { //nolint: nestif
 				gnapSigningKeyPath, err = cmdutils.GetUserSetVarFromString(cmd, gnapSigningKeyPathFlagName,
 					gnapSigningKeyPathEnvKey, true)
 				if err != nil {
@@ -468,6 +491,16 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 					authServerURLEnvKey, true)
 				if err != nil {
 					return err
+				}
+
+				disableHTTPSigStr := cmdutils.GetUserSetOptionalVarFromString(cmd, disableHTTPSigFlagName,
+					disableHTTPSigEnvKey)
+
+				if disableHTTPSigStr != "" {
+					disableHTTPSig, err = strconv.ParseBool(disableHTTPSigStr)
+					if err != nil {
+						return fmt.Errorf("failed to parse the disable HTTP signature setting: %w", err)
+					}
 				}
 			}
 
@@ -489,6 +522,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 			parameters := &edvParameters{
 				srv:                       srv,
 				hostURL:                   hostURL,
+				externalHostURL:           externalHostURL,
 				databaseType:              databaseType,
 				databaseURL:               databaseURL,
 				documentDatabaseName:      documentDatabaseName,
@@ -502,6 +536,7 @@ func createStartCmd(srv server) *cobra.Command { //nolint: funlen,gocyclo,gocogn
 				zcapAuthEnabled:           zcapAuthEnabled,
 				gnapSigningKeyPath:        gnapSigningKeyPath,
 				authServerURL:             authServerURL,
+				disableHTTPSig:            disableHTTPSig,
 				corsEnable:                corsEnable,
 				localKMSSecretsStorage:    localKMSSecretsStorage,
 				extensionsToEnable:        enabledExtensions,
@@ -652,6 +687,7 @@ func getTLS(cmd *cobra.Command) (*tlsConfig, error) {
 
 func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringP(hostURLFlagName, hostURLFlagShorthand, "", hostURLFlagUsage)
+	startCmd.Flags().StringP(hostURLExternalFlagName, hostURLExternalFlagShorthand, "", hostURLExternalFlagUsage)
 	startCmd.Flags().StringP(databaseTypeFlagName, databaseTypeFlagShorthand, "", databaseTypeFlagUsage)
 	startCmd.Flags().StringP(databaseURLFlagName, databaseURLFlagShorthand, "", databaseURLFlagUsage)
 	startCmd.Flags().StringP(configDatabaseNameFlagName, configDatabaseNameFlagShorthand, "",
@@ -674,6 +710,7 @@ func createFlags(startCmd *cobra.Command) {
 	startCmd.Flags().StringSliceP(authTypeFlagName, "", []string{}, authTypeFlagUsage)
 	startCmd.Flags().StringP(gnapSigningKeyPathFlagName, "", "", gnapSigningKeyPathFlagUsage)
 	startCmd.Flags().StringP(authServerURLFlagName, "", "", authServerURLFlagUsage)
+	startCmd.Flags().String(disableHTTPSigFlagName, "false", disableHTTPSIGFlagUsage)
 	startCmd.Flags().StringP(extensionsFlagName, "", "", extensionsFlagUsage)
 	startCmd.Flags().StringP(corsEnableFlagName, "", "", corsEnableFlagUsage)
 	startCmd.Flags().StringP(didDomainFlagName, "", "", didDomainFlagUsage)
@@ -711,7 +748,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 		}
 
 		// create crypto
-		crypto, errCreate := tinkcrypto.New()
+		cryptoInstance, errCreate := tinkcrypto.New()
 		if errCreate != nil {
 			return errCreate
 		}
@@ -734,7 +771,7 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 			return errLoader
 		}
 
-		authZCAPSvc, err = zcapld.New(keyManager, crypto, storageProvider, loader, vdrResolver)
+		authZCAPSvc, err = zcapld.New(keyManager, cryptoInstance, storageProvider, loader, vdrResolver)
 		if err != nil {
 			return err
 		}
@@ -818,10 +855,21 @@ func startEDV(parameters *edvParameters) error { //nolint: funlen,gocyclo
 
 	logStartupMessage(parameters)
 
+	createGNAPVerifier := func(req *http.Request) GNAPVerifier {
+		return httpsig.NewVerifier(req)
+	}
+
 	return parameters.srv.ListenAndServe(parameters.hostURL,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, constructHandlers(parameters.corsEnable,
-			authZCAPSvc, authGNAPSvc, router))
+			authZCAPSvc, authGNAPSvc, router, parameters.disableHTTPSig, parameters.externalHostURL, createGNAPVerifier))
 }
+
+// GNAPVerifier interface to support injecting a verifier in the middleware.
+type GNAPVerifier interface {
+	Verify(key *gnap.ClientKey) error
+}
+
+type createVerifierFunc func(req *http.Request) GNAPVerifier
 
 func createGNAPSigningJWK(keyFilePath string) (*jwk.JWK, *jwk.JWK, error) {
 	b, err := ioutil.ReadFile(keyFilePath) //nolint:gosec // false positive
@@ -848,6 +896,13 @@ func createGNAPSigningJWK(keyFilePath string) (*jwk.JWK, *jwk.JWK, error) {
 		Kty: "EC",
 		Crv: "P-256",
 	}
+
+	keyID, err := privateJWK.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse private key's keyID: %w", err)
+	}
+
+	privateJWK.KeyID = base64.RawURLEncoding.EncodeToString(keyID)
 
 	publicJWK := &jwk.JWK{
 		JSONWebKey: privateJWK.Public(),
@@ -914,15 +969,18 @@ func createEDVProvider(parameters *edvParameters) (*edvprovider.Provider, error)
 }
 
 func constructHandlers(enableCORS bool, authZCAPSvc authZCAPService, authGNAPSvc *gnapService,
-	routerHandler http.Handler) http.Handler {
+	routerHandler http.Handler, disableHTTPSig bool, externalURL string, createVerifier createVerifierFunc) http.Handler {
 	var gnapAuthHandlerInstance *gnapAuthHandler
 
 	var zcapAuthHandlerInstance *zcapAuthHandler
 
 	if authGNAPSvc != nil {
 		gnapAuthHandlerInstance = &gnapAuthHandler{
-			authGNAPSvc:   authGNAPSvc,
-			routerHandler: routerHandler,
+			authGNAPSvc:    authGNAPSvc,
+			routerHandler:  routerHandler,
+			disableHTTPSig: disableHTTPSig,
+			externalURL:    externalURL,
+			createVerifier: createVerifier,
 		}
 	}
 
@@ -1045,11 +1103,13 @@ func createStorageProvider(parameters *storageParameters, databaseTimeout uint64
 }
 
 func logStartupMessage(parameters *edvParameters) {
-	logger.Infof("Starting EDV REST server with the following parameters:   Host URL: %s, Database type: %s, "+
+	logger.Infof("Starting EDV REST server with the following parameters:   Host URL: %s, External Host URL: %s,"+
+		" Database type: %s, "+
 		"Database URL: %s, Database prefix: %s, TLS certificate file: %s, TLS key file: %s, Extensions: %+v, "+
 		"GNAP auth enabled?: %t, ZCAP auth enabled?: %t, CORS enabled?: %t, Database timeout: %d, "+
 		"Local KMS secrets storage: %+v, Log level: %s",
-		parameters.hostURL, parameters.databaseType, parameters.databaseURL, parameters.databasePrefix,
+		parameters.hostURL, parameters.externalHostURL, parameters.databaseType, parameters.databaseURL,
+		parameters.databasePrefix,
 		parameters.tlsConfig.certFile, parameters.tlsConfig.keyFile, parameters.extensionsToEnable,
 		parameters.gnapAuthEnabled, parameters.zcapAuthEnabled, parameters.corsEnable, parameters.databaseTimeout,
 		parameters.localKMSSecretsStorage, parameters.logLevel)
@@ -1094,14 +1154,7 @@ func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func headerContainsGNAPToken(header http.Header) bool {
-	authHeaderValues := header.Values("Authorization")
-	for _, headerValue := range authHeaderValues {
-		if strings.Contains(headerValue, gnapToken) {
-			return true
-		}
-	}
-
-	return false
+	return getGnapTokenHeaderValue(header) != ""
 }
 
 func headerContainsCapabilityInvocation(header http.Header) bool {
@@ -1111,21 +1164,15 @@ func headerContainsCapabilityInvocation(header http.Header) bool {
 }
 
 type gnapAuthHandler struct {
-	authGNAPSvc   *gnapService
-	routerHandler http.Handler
+	authGNAPSvc    *gnapService
+	routerHandler  http.Handler
+	disableHTTPSig bool
+	externalURL    string
+	createVerifier createVerifierFunc
 }
 
 func (h *gnapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var tokenHeader string
-
-	authHeaderValues := r.Header.Values("Authorization")
-	for _, headerValue := range authHeaderValues {
-		if strings.Contains(headerValue, gnapToken) {
-			tokenHeader = headerValue
-
-			break
-		}
-	}
+	tokenHeader := getGnapTokenHeaderValue(r.Header)
 
 	tokenHeaderSplit := strings.Split(strings.Trim(tokenHeader, " "), " ")
 
@@ -1139,7 +1186,7 @@ func (h *gnapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ResourceServer: &gnap.RequestClient{
 			Key: h.authGNAPSvc.ClientKey,
 		},
-		// Proof: proofType, // TODO: Enable httpsig verification
+		Proof:       proofType,
 		AccessToken: tokenHeaderSplit[1],
 	}
 
@@ -1150,10 +1197,33 @@ func (h *gnapAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !resp.Active {
+	if !resp.Active || resp.Key == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 
 		return
+	}
+
+	// perform HTTPSignature verification if enabled.
+	if !h.disableHTTPSig {
+		originalURL := r.URL
+
+		r.URL, err = url.Parse(h.externalURL + r.URL.String())
+		if err != nil {
+			logger.Warnf("prepending external URL to request URL failed, reverting")
+
+			r.URL = originalURL
+		}
+
+		v := h.createVerifier(r)
+
+		err = v.Verify(resp.Key)
+		if err != nil {
+			logger.Warnf("gnap verification failure during HTTP sig validation: %s", err)
+			http.Error(w, fmt.Sprintf("verify gnap request (HTTP sig validation): %s", err.Error()),
+				http.StatusUnauthorized)
+
+			return
+		}
 	}
 
 	h.routerHandler.ServeHTTP(w, r)
@@ -1220,4 +1290,20 @@ func createJSONLDDocumentLoader(provider storage.Provider) (*ld.DocumentLoader, 
 	}
 
 	return documentLoader, nil
+}
+
+// Returns an empty string if one can't be found.
+func getGnapTokenHeaderValue(header http.Header) string {
+	var tokenHeader string
+
+	authHeaderValues := header.Values("Authorization")
+	for _, headerValue := range authHeaderValues {
+		if strings.Contains(headerValue, gnapToken) {
+			tokenHeader = headerValue
+
+			break
+		}
+	}
+
+	return tokenHeader
 }

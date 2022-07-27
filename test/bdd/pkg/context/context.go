@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -565,11 +566,31 @@ func addGNAPHeaderOption(tlsConfig *tls.Config) (edvclient.Option, error) { //no
 
 	println(fmt.Sprintf("Successfully got GNAP access token (%s)", continueResp.AccessToken[0].Value))
 
-	return edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
-		header := http.Header{}
+	didOwner.PrivateKey.Algorithm = "ES256"
 
-		header.Add("Authorization", "GNAP "+continueResp.AccessToken[0].Value)
-		return &header, nil
+	return edvclient.WithHeaders(func(req *http.Request) (*http.Header, error) {
+		req.Header.Set("Authorization", fmt.Sprintf("GNAP %s", continueResp.AccessToken[0].Value))
+
+		var (
+			body []byte
+			e    error
+		)
+
+		if req.Body != nil {
+			body, e = ioutil.ReadAll(req.Body)
+			if e != nil {
+				return nil, fmt.Errorf("failed to read body: %w", err)
+			}
+
+			req.Body = ioutil.NopCloser(bytes.NewReader(body))
+		}
+
+		r, err := httpsig.Sign(req, body, didOwner.PrivateKey, "sha-256")
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign request: %w", err)
+		}
+
+		return &r.Header, nil
 	}), nil
 }
 

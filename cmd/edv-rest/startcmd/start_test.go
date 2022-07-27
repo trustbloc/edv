@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -489,7 +490,7 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 			require.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
 			require.Contains(t, responseRecorder.Body.String(), "unauthorized")
 		})
-		t.Run("Token is active", func(t *testing.T) {
+		t.Run("Token is active (HTTP signature validation disabled)", func(t *testing.T) {
 			mockHandler := &mockHTTPHandler{}
 
 			gnapHandler := &gnapAuthHandler{
@@ -498,7 +499,8 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 					RSPubKey:  nil,
 					ClientKey: nil,
 				},
-				routerHandler: mockHandler,
+				routerHandler:  mockHandler,
+				disableHTTPSig: true,
 			}
 
 			authHandlerInstance := authHandler{
@@ -514,7 +516,118 @@ func TestHttpHandler_ServeHTTP(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, responseRecorder.Code)
 		})
+		t.Run("Fail to validate HTTP signature", func(t *testing.T) {
+			mockHandler := &mockHTTPHandler{}
+
+			mockGNAPVerifierInstance := &mockGNAPVerifier{errReturn: errors.New("validation failure")}
+
+			mockCreateVerifierFunc := func(req *http.Request) GNAPVerifier {
+				return mockGNAPVerifierInstance
+			}
+
+			gnapHandler := &gnapAuthHandler{
+				authGNAPSvc: &gnapService{
+					Client:    &mockGNAPRSClient{active: true},
+					RSPubKey:  nil,
+					ClientKey: nil,
+				},
+				routerHandler:  mockHandler,
+				createVerifier: mockCreateVerifierFunc,
+			}
+
+			authHandlerInstance := authHandler{
+				gnapAuthHandler: gnapHandler,
+				routerHandler:   mockHandler,
+			}
+
+			responseRecorder := httptest.NewRecorder()
+			authHandlerInstance.ServeHTTP(responseRecorder,
+				&http.Request{
+					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
+					URL:    &url.URL{},
+				})
+
+			require.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
+			require.Contains(t, responseRecorder.Body.String(),
+				"verify gnap request (HTTP sig validation): validation failure")
+		})
+		t.Run("Successfully validate HTTP signature", func(t *testing.T) {
+			mockHandler := &mockHTTPHandler{}
+
+			mockGNAPVerifierInstance := &mockGNAPVerifier{}
+
+			mockCreateVerifierFunc := func(req *http.Request) GNAPVerifier {
+				return mockGNAPVerifierInstance
+			}
+
+			gnapHandler := &gnapAuthHandler{
+				authGNAPSvc: &gnapService{
+					Client:    &mockGNAPRSClient{active: true},
+					RSPubKey:  nil,
+					ClientKey: nil,
+				},
+				routerHandler:  mockHandler,
+				createVerifier: mockCreateVerifierFunc,
+			}
+
+			authHandlerInstance := authHandler{
+				gnapAuthHandler: gnapHandler,
+				routerHandler:   mockHandler,
+			}
+
+			responseRecorder := httptest.NewRecorder()
+			authHandlerInstance.ServeHTTP(responseRecorder,
+				&http.Request{
+					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
+					URL:    &url.URL{},
+				})
+
+			require.Equal(t, http.StatusOK, responseRecorder.Code)
+		})
+		t.Run("Successfully validate HTTP signature, "+
+			"but external URL prepending gets reverted", func(t *testing.T) {
+			mockHandler := &mockHTTPHandler{}
+
+			mockGNAPVerifierInstance := &mockGNAPVerifier{}
+
+			mockCreateVerifierFunc := func(req *http.Request) GNAPVerifier {
+				return mockGNAPVerifierInstance
+			}
+
+			gnapHandler := &gnapAuthHandler{
+				authGNAPSvc: &gnapService{
+					Client:    &mockGNAPRSClient{active: true},
+					RSPubKey:  nil,
+					ClientKey: nil,
+				},
+				routerHandler:  mockHandler,
+				createVerifier: mockCreateVerifierFunc,
+				externalURL:    "%",
+			}
+
+			authHandlerInstance := authHandler{
+				gnapAuthHandler: gnapHandler,
+				routerHandler:   mockHandler,
+			}
+
+			responseRecorder := httptest.NewRecorder()
+			authHandlerInstance.ServeHTTP(responseRecorder,
+				&http.Request{
+					Header: map[string][]string{"Authorization": {"GNAP aeeac7c8-0cf7-401b-af5b-5b1806204346"}},
+					URL:    &url.URL{},
+				})
+
+			require.Equal(t, http.StatusOK, responseRecorder.Code)
+		})
 	})
+}
+
+type mockGNAPVerifier struct {
+	errReturn error
+}
+
+func (m *mockGNAPVerifier) Verify(*gnap.ClientKey) error {
+	return m.errReturn
 }
 
 type mockGNAPRSClient struct {
@@ -527,7 +640,7 @@ func (m *mockGNAPRSClient) Introspect(req *gnap.IntrospectRequest) (*gnap.Intros
 		return nil, m.errIntrospect
 	}
 
-	return &gnap.IntrospectResponse{Active: m.active}, nil
+	return &gnap.IntrospectResponse{Active: m.active, Key: &gnap.ClientKey{}}, nil
 }
 
 type mockHTTPHandler struct {

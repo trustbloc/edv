@@ -18,7 +18,6 @@ require (
 	github.com/piprate/json-gold v0.4.1-0.20210813112359-33b90c4ca86c
 	github.com/square/go-jose v2.4.1+incompatible
 	github.com/stretchr/testify v1.7.2
-	github.com/trustbloc/auth/spi/gnap v0.0.0-20220624162029-852f8d5c6a35
 	github.com/trustbloc/edge-core v0.1.8
 	go.mongodb.org/mongo-driver v1.9.1
 )
