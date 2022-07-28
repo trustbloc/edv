@@ -11,6 +11,15 @@ cd test/bdd
 
 # TODO (#220): Reduce BDD test running time by only starting storage containers as needed.
 
+echo "---
+Important: for these tests to run correctly, you must ensure that your hosts file has the following entries:
+127.0.0.1 edv.example.com
+127.0.0.1 testnet.orb.local
+127.0.0.1 auth.trustbloc.local
+127.0.0.1 oidc.provider.example.com
+---
+"
+
 echo "Running EDV integration tests for the following scenario: Database: MongoDB. Server auth mechanism: GNAP+ZCAP. Client auth method: GNAP."
 
 export EDV_DATABASE_TYPE=mongodb
