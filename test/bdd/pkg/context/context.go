@@ -132,7 +132,7 @@ const (
     "sequence": 0
 }`
 
-	trustBlocEDVHostURL     = "localhost:8076/encrypted-data-vaults"
+	trustBlocEDVHostURL     = "https://edv.example.com:8076/encrypted-data-vaults"
 	authServerURL           = "https://auth.trustbloc.local:8070"
 	proofType               = "httpsig"
 	mockClientFinishURI     = "https://mock.client.example.com/"
@@ -341,7 +341,7 @@ func createProxyEDVClient(ctx *BDDContext) (*edvclient.Client, error) {
 		options = append(options, option)
 	}
 
-	return edvclient.New("https://"+trustBlocEDVHostURL, options...), nil
+	return edvclient.New(trustBlocEDVHostURL, options...), nil
 }
 
 func addGNAPHeaderOption(tlsConfig *tls.Config) (edvclient.Option, error) { //nolint: funlen,gocyclo,gocognit
@@ -679,7 +679,7 @@ func createTrustBlocEDVClient(ctx *BDDInteropContext) (*edvclient.Client, error)
 		options = append(options, option)
 	}
 
-	return edvclient.New("https://"+trustBlocEDVHostURL, options...), nil
+	return edvclient.New(trustBlocEDVHostURL, options...), nil
 }
 
 func compressZCAP(zcap *zcapld.Capability) (string, error) {
