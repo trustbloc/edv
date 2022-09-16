@@ -8,14 +8,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/trustbloc/edv)](https://goreportcard.com/report/github.com/trustbloc/edv)
 
 # edv
-An implementation of Encrypted Data Vaults [from the Confidential Storage 0.1 (04 December 2020) specification](https://identity.foundation/confidential-storage/). This implementation is a work in progress; be sure to read the [limitations](#limitations) section which outlines which parts of the specification have yet to be implemented.
+An implementation of the [Encrypted Data Vaults v0.1 (20 June 2022) specification](https://identity.foundation/edv-spec/). This implementation is a work in progress; be sure to read the [limitations](#limitations) section which outlines which parts of the specification have yet to be implemented.
 
 ## Limitations
 The following has not yet been implemented:
 * Service endpoint discovery
 * Encrypted attribute querying with multiple name+value pairs
 * Support for the unique property on an encrypted attribute pair
-* Streams (also a work in-progress in the [specification](https://identity.foundation/confidential-storage/))
+* Streams (also a work in-progress in the [specification](https://identity.foundation/edv-spec/))
 
 ## Underlying Storage
 This EDV server is not by itself a database - a database provider must be chosen for it to work. This underlying database is used by the EDV server for storage of encrypted data. Currently, three database providers are supported:
