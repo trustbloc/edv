@@ -72,9 +72,8 @@ func runBDDTests(tags, format string) int { //nolint: gocognit
 				}
 
 				sleepAndWait(testSleep)
-
-				FeatureContext(s)
 			}
+			FeatureContext(s)
 		})
 		s.AfterSuite(func() {
 			for _, c := range composition {

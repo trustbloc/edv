@@ -18,6 +18,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	ariesmemstorage "github.com/hyperledger/aries-framework-go/component/storageutil/mem"
@@ -546,7 +547,17 @@ func addGNAPHeaderOption(tlsConfig *tls.Config) (edvclient.Option, error) { //no
 		}
 	}()
 
-	clientRedirect := resp8.Header.Get("Location")
+	body, err := ioutil.ReadAll(resp8.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read result body: %w", err)
+	}
+
+	rx := regexp.MustCompile("window.opener.location.href = '(.*)';")
+	res := rx.FindStringSubmatch(string(body))
+
+	clientRedirect := res[1]
+	clientRedirect = strings.ReplaceAll(clientRedirect, "\\u0026", "\u0026")
+	clientRedirect = strings.ReplaceAll(clientRedirect, "\\/", "/")
 
 	crURL, err := url.Parse(clientRedirect)
 	if err != nil {
